@@ -2,7 +2,7 @@
 
 The application is hosted on a server and used in mobile browsers, with a possible connected app later. Every platform, including iPhone and app WebViews, prefers the same self-hosted Inter for Latin text and Noto Sans SC for Chinese. System fonts are fallback fonts during loading or when a glyph is unavailable. Apple font files are not bundled. Both bundled fonts use SIL OFL 1.1 and support variable weights, avoiding separate files for every weight.
 
-- Noto Sans SC 2.004: copyright 2014–2021 Adobe, with Reserved Font Name “Source”. Original `Sans/Variable/TTF/Subset/NotoSansSC-VF.ttf` from https://github.com/notofonts/noto-cjk/tree/f8d157532fbfaeda587e826d4cd5b21a49186f7c . Converted to WOFF2 with FontTools, without changing glyphs, names or weights. See `NotoSansSC-OFL.txt`.
+- Noto Sans SC 2.004 is copyright 2014–2021 Adobe, with Reserved Font Name “Source”. The original is `Sans/Variable/TTF/Subset/NotoSansSC-VF.ttf` in [Noto CJK](https://github.com/notofonts/noto-cjk/tree/f8d157532fbfaeda587e826d4cd5b21a49186f7c). The browser gets a common WOFF2 subset for the 6,763 GB2312 ideographs and common symbols, then requests the extended subset when necessary. Both retain variable weights. The subset family is named “Pipi Noto SC” in the files, with the same CSS family alias. See `NotoSansSC-OFL.txt`.
 - Inter: copyright 2016 The Inter Project Authors, https://github.com/rsms/inter . Unmodified `docs/font-files/InterVariable.woff2`, Git blob `5a8d3e72ad7ffb62af3b146e1b1f54ab5813a212`; SHA-256 `693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3`. See `Inter-OFL.txt`.
 
 Fonts are served locally. No Google Fonts CDN, tracker, font runtime library or font build dependency is required to run the app.
@@ -13,4 +13,15 @@ Apple documents San Francisco as its system family for Latin and other supported
 
 Inter and Noto Sans SC are a visual approximation using neutral sans-serif letterforms; they are not identical Apple fonts. OFL 1.1 permits commercial use and embedding subject to its terms, including preserving the license and not selling the font by itself. The two complete license files above accompany distribution.
 
-The files total about 8.1 MB before HTTP transfer overhead. Browsers can retain the downloaded font files and revalidate them with ETag/304 responses; authenticated API responses remain `no-store`. The first visit still downloads the fonts. An app that displays this webpage can reuse these resources; a future native UI must configure its own font assets separately.
+The common Chinese file is 1,890,520 bytes. The extended file is 6,160,056 bytes and is requested only for text containing its characters. Inter adds 352,240 bytes when used. Browsers can revalidate the files with ETag/304 responses. A future native UI can configure its own font assets.
+
+## Rebuild
+
+Use Python with FontTools 4.68.0 and Brotli 1.2.1 on the development machine. The exact original WOFF2 used for this build lives at `public/fonts/NotoSansSC-VF.woff2` in Git commit `f63ca19`. Its SHA-256 is `1a58ad5f03659f6f86d399ec62469861ac8a235f4a5f72eea7c6d7bfb7098833`. Export it to a temporary directory, then run these commands in the repository.
+
+```sh
+python -m pip install 'fonttools[woff]==4.68.0' 'brotli==1.2.1'
+python scripts/split-chinese-font.py /path/to/NotoSansSC-VF.woff2
+```
+
+The build writes both WOFF2 files and the generated `noto-sans-sc.css`. It checks that the supported characters, default weight and variable-weight range are preserved. [FontTools subset documentation](https://fonttools.readthedocs.io/en/stable/subset/)

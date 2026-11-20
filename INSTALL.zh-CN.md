@@ -1,4 +1,4 @@
-# 屁屁机 0.12.1 安装与升级
+# 屁屁机 0.13.0 安装与升级
 
 首次打开默认使用微信经典版。更新后可在「我 → 皮肤」切换「原图纯净水滴」，已有浏览器会恢复上次选择。正在编辑资料或消息时请先保存草稿。
 
@@ -18,7 +18,7 @@
 
 ## 已有实例升级
 
-0.12.1 增加 Docker Compose 部署的网页版本提醒与一键更新接入。旧实例首次切换按本节完成，再按[网页更新说明](docs/WEB-UPDATE.zh-CN.md)启用宿主机更新服务。
+先从原程序导出备份，并保留原数据目录或数据卷。0.13.0 启动时会先保存迁移前的备份，再把旧内嵌图音频整理成文件。目录、空间要求和旧版本恢复见[0.13.0 升级说明](升级说明_0.13.0.md)。使用 Docker Compose 的用户仍可按[网页更新说明](docs/WEB-UPDATE.zh-CN.md)启用网页更新。
 
 真机反馈版可直接解压安装。升级时沿用原数据目录或 Docker 数据卷，重启后刷新网页。聊天备份恢复仅在确实丢失某项存储密钥时提示重新填写，具体缺失的模型可在模型页查看。
 
@@ -41,7 +41,7 @@
    原来用过 `-p 项目名` 的，继续带相同的 `-p`。Compose 会更新同一服务并保留 `/app/data` 原卷（`pipi-data`）；不要在每个版本的新目录里另起一套，也不要执行 `down -v`。
 4. 如果原实例直接运行 Node，保留原数据目录（`DATA_DIR`）和环境变量，停止旧进程后按原启动方式重启。
 
-更新后在“我 → 设置 → 关于屁屁机”确认显示目标版本，例如 `v0.12.1`。数据卷 `/app/data` 会自动持久化：
+更新后在「我 → 设置 → 关于屁屁机」确认版本为 `v0.13.0`。数据卷 `/app/data` 会自动持久化。
 - `pipi.sqlite`：主业务数据、消息、好友与设置
 - `livingmemory.sqlite`：长期记忆卡片与角色人物画像独立侧库
 - `media/`：人物正脸/全身参考图与生成的自拍原图（经 `/api/media/*` 安全读写）
@@ -99,7 +99,64 @@ Docker 和直接运行 Node 都内置 `https://choupi.tech/v1` 与下列分组�
 
 首次登录读取浏览器时区，可在“小手机 → 时区”修改。聊天时间、免打扰、作息周期、定时提醒、模型用量和每日联系上限使用该设置。服务器需要保持运行；没有系统通知，关闭网页后生成的提醒或日常联系消息须再次打开小手机查看。
 
-备份入口为「我 → 设置 → 聊天记录管理」。备份含隐藏摘要、提醒、角色表情库、执行记录、作息与计划及模块参数和数据。可勾选迁移模型 API Key，密钥只会恢复给匹配的服务商和地址。含密钥的 JSON 未加密，请妥善保管。目标实例保留自己的登录密码和会话。单独记忆卡片与画像可在「共同记忆与迁移 → 迁移与备份」导出为 `.json`。
+备份入口为「我 → 设置 → 聊天记录管理」。新版导出 `.tar`，默认包含 API 密钥、图片和语音。导入支持新版 `.tar` 和 88 MB 以内的旧版 `.json`。恢复会替换业务资料，目标实例继续使用自己的登录密码和会话。密钥只恢复给匹配的服务商及原地址。备份未加密，请保管好含密钥的文件。独立记忆卡片与画像仍可从「共同记忆与迁移 → 迁移与备份」导出。
+
+图片和语音独立存放在 `DATA_DIR/media/`。聊天图片和语音默认保留 7 天，留存期限与磁盘使用情况可在「我 → 设置 → 存储空间」查看。磁盘保留空间约为总空间的 5%，最低 500 MB，最高 2 GB。空间不足时会优先处理最旧的聊天附件；收藏及相册里的独立副本继续保留。聊天消息上限为 50,000 条。
+
+## 反向代理和大备份
+
+直接访问小手机时，保持 `TRUST_PROXY` 未设置。同一台机器、同一网络环境内的 Nginx 或 Caddy 可设 `TRUST_PROXY=loopback`。程序和代理分开运行时，填应用实际接收到请求的代理 IP 或必要的最小网段，例如 `172.30.44.2` 或 `172.30.44.2/32`。启用后首次设置必须使用一次性令牌。可信代理报告 HTTPS 时，程序会自动给登录 Cookie 加 `Secure`。否则如需强制仅通过 HTTPS 携带登录凭证，可设置 `COOKIE_SECURE=1`。
+
+代理应覆盖或追加真实连接地址。应用只接受受信任的上一跳，沿 `X-Forwarded-For` 从右往左判断客户端。将公网来源或共享网段误设为信任范围会让外部请求伪造来源地址。Docker 的 `.env` 只参与 Compose 变量替换。要让 `COOKIE_SECURE`、`TRUST_PROXY` 或 `RESET_PASSWORD` 进到容器，应明确写在 `pipi-phone` 服务的 `environment`，然后按正常配置更新流程重建服务。
+
+```yaml
+services:
+  pipi-phone:
+    environment:
+      TRUST_PROXY: "172.30.44.2"
+      COOKIE_SECURE: "1"
+```
+
+上面的 IP 要换成实际连接应用的代理地址。代理在宿主机、应用在 Docker 容器时，容器看到的地址可能是网桥网关，可按实际连接地址配置。`COOKIE_SECURE=1` 适用于浏览器使用 HTTPS 的部署。
+
+Nginx 可在小手机站点的反代位置使用下面的设置。`client_max_body_size 0` 取消 Nginx 请求体上限，关闭代理缓冲让较大的备份逐步传输。应用本身会在连续两分钟没有传输时断开。[Nginx 请求体设置](https://nginx.org/en/docs/http/ngx_http_core_module.html#client_max_body_size) · [Nginx 代理模块](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_request_buffering)
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:18766;
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 0;
+    client_body_timeout 180s;
+    proxy_request_buffering off;
+    proxy_buffering off;
+    proxy_read_timeout 180s;
+    proxy_send_timeout 180s;
+}
+```
+
+用 Caddy 时，保留 `reverse_proxy` 的默认逐步转发。站点不配置 `request_body max_size` 上限，也不启用把备份读进缓冲区的 `request_buffers`。如全局配置了读写超时，确认它允许备份请求持续传输。[Caddy 反代文档](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy) · [Caddy 请求体文档](https://caddyserver.com/docs/caddyfile/directives/request_body)
+
+```caddyfile
+pipi.example.com {
+    reverse_proxy 127.0.0.1:18766
+}
+```
+
+Cloudflare Tunnel 可将源服务设为 `http://127.0.0.1:18766`。在同一网络环境直接转发时，应用设 `TRUST_PROXY=loopback`，并将外部域名加入 `ALLOWED_HOSTS`。使用容器或再接一级代理时，按实际上一跳配置可信来源。Cloudflare 域名自身有请求体上限。超限的大备份可在服务器本机或通过自己的内网入口恢复。[Cloudflare 上传限制](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/4xx-client-error/error-413/)
+
+```yaml
+ingress:
+  - hostname: pipi.example.com
+    service: http://127.0.0.1:18766
+  - service: http_status:404
+```
+
+## 忘记访问密码
+
+自行部署的用户可在服务器设置 `RESET_PASSWORD=1` 后启动一次。例如 PowerShell 可先执行 `$env:RESET_PASSWORD='1'`，再从同一个窗口启动小手机。Docker 将该变量加到应用的 `environment` 后重建应用服务。程序清除旧密码和会话，保留业务资料。用控制台或 `DATA_DIR/setup-token.txt` 中的一次性设置令牌在网页设置新密码。随后去掉该变量并重启。变量留在配置里时，后续普通重启不会反复清除密码；以后要再次执行重置，须先以没有该变量的配置启动一次。
 
 ## 关于页源码入口
 

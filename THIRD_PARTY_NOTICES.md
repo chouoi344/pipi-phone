@@ -2,7 +2,7 @@
 
 ## Local UI fonts
 
-- Inter and Noto Sans SC are bundled under SIL Open Font License 1.1. Copyright, sources, conversion details and complete license texts are retained in `public/fonts/`.
+- Inter and Noto Sans SC are bundled under SIL Open Font License 1.1. Noto Sans SC 2.004 is distributed as the “Pipi Noto SC” common and extended subsets, with Adobe copyright retained. The build instructions, source attribution and complete licenses are in `public/fonts/`.
 - Apple system fonts are selected only from the user's device through CSS; no Apple font files are distributed. These open fonts approximate the requested neutral iPhone-style typography, without claiming identical proprietary glyphs.
 
 ## LiangNiang/fake-world

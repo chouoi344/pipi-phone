@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>水滴皮肤发码工具</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root { color: #202823; background: #f1f5f2; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    body { margin: 0; min-height: 100dvh; padding: 60px 20px; }
+    main { width: min(100%, 520px); margin: 0 auto; }
+    h1 { margin: 0; font-size: 26px; line-height: 1.4; letter-spacing: -.5px; }
+    .intro { margin: 12px 0 28px; color: #65736a; font-size: 15px; line-height: 1.8; }
+    .panel { padding: 28px; border: 1px solid #e0e8e2; border-radius: 24px; background: #fff; box-shadow: 0 12px 35px #20372807; }
+    label, .result-label { display: block; margin: 0 0 10px; font-size: 15px; line-height: 1.5; font-weight: 600; }
+    input, textarea, button { font: inherit; }
+    input, textarea { display: block; width: 100%; padding: 13px 14px; border: 1px solid #dce4df; border-radius: 12px; color: #202823; background: #f8faf9; font-family: ui-monospace, Consolas, monospace; font-size: 14px; line-height: 1.65; }
+    input { min-height: 50px; }
+    input::placeholder { color: #8a958e; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    input:focus, textarea:focus { outline: 2px solid #169957; outline-offset: 2px; }
+    button { min-height: 48px; padding: 12px 20px; border: 0; border-radius: 12px; font-size: 15px; line-height: 24px; font-weight: 600; cursor: pointer; }
+    button:focus-visible { outline: 2px solid #169957; outline-offset: 3px; }
+    button:disabled { cursor: wait; opacity: .65; }
+    .generate { width: 100%; margin-top: 20px; color: #fff; background: #129657; }
+    .generate:hover { background: #0e824b; }
+    .error { margin: 12px 0 0; color: #bf3636; font-size: 14px; line-height: 1.65; }
+    .error:empty { display: none; }
+    .result { margin-top: 26px; padding-top: 24px; border-top: 1px solid #e8ede9; }
+    textarea { min-height: 112px; resize: none; overflow-wrap: anywhere; }
+    .copy { width: 100%; margin-top: 14px; color: #0b7e47; background: #eaf7ef; }
+    .copy:hover { background: #dff2e6; }
+    .status { margin: 12px 0 0; color: #52695c; font-size: 13px; line-height: 1.7; }
+    .status:empty { display: none; }
+    .hint { margin: 18px 6px 0; color: #738078; font-size: 13px; line-height: 1.8; }
+    [hidden] { display: none !important; }
+    @media (max-width: 420px) {
+      body { padding: 32px 16px; }
+      h1 { font-size: 24px; }
+      .panel { padding: 22px 18px; border-radius: 20px; }
+      input { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>水滴皮肤发码</h1>
+    <p class="intro">粘贴用户的安装编号，生成仅供该套小手机使用的激活码。</p>
+    <section class="panel" aria-label="生成激活码">
+      <form id="issuer-form" novalidate>
+        <label for="installation-id">用户安装编号</label>
+        <input id="installation-id" name="installationId" placeholder="粘贴安装编号" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="80" required>
+        <button type="submit" class="generate" id="generate">生成激活码</button>
+        <p id="error" class="error" role="alert"></p>
+      </form>
+      <div id="result" class="result" hidden>
+        <label for="activation-code" class="result-label">专属激活码</label>
+        <textarea id="activation-code" rows="4" readonly spellcheck="false" aria-describedby="code-status"></textarea>
+        <button type="button" class="copy" id="copy-code">复制激活码</button>
+        <p id="code-status" class="status" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+    <p class="hint">用户在「我 → 皮肤 → 激活」复制安装编号。把生成的激活码发回给他即可。</p>
+  </main>
+  <script>
+    'use strict';
+    const form = document.getElementById('issuer-form');
+    const installation = document.getElementById('installation-id');
+    const generate = document.getElementById('generate');
+    const error = document.getElementById('error');
+    const result = document.getElementById('result');
+    const code = document.getElementById('activation-code');
+    const copy = document.getElementById('copy-code');
+    const status = document.getElementById('code-status');
+    installation.addEventListener('input', () => {
+      result.hidden = true;
+      code.value = '';
+      error.textContent = '';
+      status.textContent = '';
+    });
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (generate.disabled) return;
+      error.textContent = '';
+      result.hidden = true;
+      const installationId = installation.value.trim();
+      if (!installationId) {
+        error.textContent = '请先粘贴用户的安装编号。';
+        installation.focus();
+        return;
+      }
+      generate.disabled = true;
+      installation.disabled = true;
+      generate.textContent = '正在生成…';
+      try {
+        const response = await fetch('/api/issue', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({installationId})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error);
+        installation.value = data.installationId;
+        code.value = data.code;
+        result.hidden = false;
+        status.textContent = '已生成，可复制发给用户。';
+      } catch (failure) {
+        error.textContent = failure instanceof TypeError ? '连接发码工具失败，请重新打开工具后再试。' : failure.message;
+      } finally {
+        generate.disabled = false;
+        installation.disabled = false;
+        generate.textContent = '生成激活码';
+      }
+    });
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(code.value);
+        status.textContent = '激活码已复制。';
+      } catch {
+        code.focus();
+        code.select();
+        status.textContent = '请按 Ctrl+C 复制选中的激活码。';
+      }
+    });
+  </script>
+</body>
+</html>

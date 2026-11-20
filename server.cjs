@@ -13,6 +13,7 @@ const {Readable}=require('node:stream'),{pipeline}=require('node:stream/promises
 const requestDeadline=Symbol('pipi.requestDeadline');
 const {createUpdateService}=require('./lib/updates.cjs');
 const JsonResponse=require('./lib/json-response.cjs');
+const Waterdrop=require('./lib/waterdrop-activation.cjs');
 const scrypt=promisify(crypto.scrypt),VERSION=require('./package.json').version;
 const MAX_BACKUP_BYTES=88*1024*1024;
 const UPDATE_MAINTENANCE_PHASES=new Set(['backing-up','installing','verifying','rolling-back']);
@@ -49,9 +50,15 @@ function createApp(options={}){
   db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS app (id INTEGER PRIMARY KEY CHECK(id=1), json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY,csrf TEXT NOT NULL,expires INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS requests (id TEXT PRIMARY KEY, roleId TEXT NOT NULL, signature TEXT NOT NULL, messageId TEXT NOT NULL);');
   const getMeta=k=>db.prepare('SELECT value FROM meta WHERE key=?').get(k)?.value;
   const setMeta=(k,v)=>db.prepare('INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(k,v);
+  db.prepare('INSERT OR IGNORE INTO meta(key,value) VALUES(?,?)').run('installationId',crypto.randomUUID());
+  const installationId=getMeta('installationId');
+  const publicKeyInput=options.waterdropPublicKey||fs.readFileSync(path.join(__dirname,'lib','waterdrop-public.pem'));
+  const waterdropPublicKey=publicKeyInput instanceof crypto.KeyObject?publicKeyInput:crypto.createPublicKey(publicKeyInput);
+  if(waterdropPublicKey.asymmetricKeyType!=='ed25519')throw new Error('水滴激活公钥必须为 Ed25519');
+  const appearance=()=>({installationId,waterdropActivated:Waterdrop.verifyCode(installationId,getMeta('waterdropCode'),waterdropPublicKey)});
   if(!db.prepare('SELECT id FROM app WHERE id=1').get()){
     const initialState=options.initialState||S.initial;
-    db.prepare('INSERT INTO app(id,json) VALUES(1,?)').run(JSON.stringify(initialState()));
+    db.prepare('INSERT OR IGNORE INTO app(id,json) VALUES(1,?)').run(JSON.stringify(initialState()));
   }
   try{require('./lib/password-reset.cjs').apply({requested:options.resetPassword??process.env.RESET_PASSWORD==='1',dataDir,getMeta,setMeta,db,transaction});}
   catch(error){db.close();throw error;}
@@ -477,7 +484,7 @@ function createApp(options={}){
       const auth=session(req);
       return json(res,200,{
         setupRequired:!getMeta('password'),authenticated:!!auth,...(auth?{
-          csrfToken:auth.csrf
+          csrfToken:auth.csrf,appearance:appearance()
         }:{}),version:VERSION,sourceUrl,rolePanel:true,softwareUpdates:true,binaryMedia:true,imageVariants:true,storageMaintenance:true,streamingBackup:true,accountSecurity:true,setupTokenRequired:setupTokenRequired(),messageLimit:50000,momentExclusions:true
       });
     }
@@ -511,7 +518,7 @@ function createApp(options={}){
         }
         catch{}
         return json(res,200,{
-          csrfToken:makeSession(req,res),state:S.publicState(read())
+          csrfToken:makeSession(req,res),state:S.publicState(read()),appearance:appearance()
         });
       }
       const stored=getMeta('password');
@@ -523,7 +530,7 @@ function createApp(options={}){
       if(closed)S.fail('服务器正在关闭',503,'CLOSING');
       if(getMeta('password')!==stored)S.fail('密码已更新，请重新登录',401,'INVALID_PASSWORD');
       return json(res,200,{
-        csrfToken:makeSession(req,res),state:S.publicState(read())
+        csrfToken:makeSession(req,res),state:S.publicState(read()),appearance:appearance()
       });
     }
     const mutating=!['GET','HEAD'].includes(req.method),auth=authorized(req,mutating);
@@ -541,6 +548,16 @@ function createApp(options={}){
     }
     if(mutating&&p!=='/api/logout'&&await updateMaintenance())S.fail('小手机正在更新，请稍后再试',503,'UPDATE_IN_PROGRESS');
     if(mutating&&p!=='/api/logout'&&storageOperation==='restore')S.fail('资料正在恢复，请稍后重试',409,'BUSY');
+    if(req.method==='GET'&&p==='/api/appearance')return json(res,200,appearance());
+    if(req.method==='POST'&&p==='/api/appearance/waterdrop'){
+      const input=await body(req,4096);authorized(req,true);assertWritable();
+      if(typeof input.code!=='string'||!input.code.trim())S.fail('请填写水滴激活码',400,'WATERDROP_CODE_REQUIRED');
+      const code=input.code.trim();
+      if(!/^PIPI-W1-[A-Za-z0-9_-]{86}$/.test(code))S.fail('水滴激活码格式无效，请检查是否完整复制',400,'WATERDROP_CODE_INVALID');
+      if(!Waterdrop.verifyCode(installationId,code,waterdropPublicKey))S.fail('水滴激活码与当前安装不匹配，请核对安装编号',400,'WATERDROP_CODE_MISMATCH');
+      setMeta('waterdropCode',code);
+      return json(res,200,appearance());
+    }
     if(req.method==='GET'&&p==='/api/backup/download'){
       const unlock=storageLock('download');
       let snapshot;

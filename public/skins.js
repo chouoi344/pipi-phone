@@ -10,8 +10,10 @@
   const key = 'pipi.appearance.skin';
   const root = document.documentElement;
   let active = installed[0];
+  let appearance = null;
 
   function apply(id) {
+    if (id === 'waterdrop' && !appearance?.waterdropActivated) id = 'classic';
     active = installed.find(skin => skin.id === id) || installed[0];
     root.dataset.skin = active.id;
     for (const name of document.querySelectorAll('[data-skin-wallpaper-name]')) {
@@ -31,14 +33,26 @@
     }
   }
 
+  function configure(next) {
+    const activationChanged = Boolean(appearance?.waterdropActivated) !== Boolean(next?.waterdropActivated);
+    appearance = next;
+    if (activationChanged) restore();
+    return activationChanged;
+  }
+
   function select(id) {
-    localStorage.setItem(key, id);
+    if (id === 'waterdrop' && !appearance?.waterdropActivated) return;
     apply(id);
+    localStorage.setItem(key, id);
   }
 
   restore();
   window.addEventListener('storage', event => {
     if (event.key === key || event.key === null) restore();
   });
-  window.PipiSkins = { installed, select, get wallpaperName() { return active.wallpaper || '经典浅灰'; } };
+  window.PipiSkins = {
+    installed, configure, select,
+    get appearance() { return appearance; },
+    get wallpaperName() { return active.wallpaper || '经典浅灰'; }
+  };
 })();

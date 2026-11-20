@@ -547,6 +547,7 @@
     refresh({resetScroll:Boolean(momentsPosition)});
     if(momentsPosition)restorePagePosition(view.querySelector('.moments-content'),momentsPosition);
     playTransition?.();
+    if(name==='skins')refreshSkinActivation();
     if(name==='chat'){syncVisibleChatRead();syncChatProgress();}
   }
   // A long-press menu opens while the finger is still down. The release must not
@@ -567,9 +568,11 @@
     const preserve=!resetScroll&&!['chat','contacts','settings','role-config','life-workbench'].includes(route.name)&&view.dataset.pageKey===pageKey;
     const content=preserve?view.querySelector('.content'):null;
     const position=content?capturePagePosition(content):null;
+    const restoreActivationFocus=route.name==='skins'&&document.activeElement?.matches('[data-action="activate-waterdrop"]');
     renderView();
     view.dataset.pageKey=JSON.stringify([route.name,route.arg]);
     if(position&&view.dataset.pageKey===pageKey)restorePagePosition(view.querySelector('.content'),position);
+    if(restoreActivationFocus)view.querySelector('[data-action="activate-waterdrop"]')?.focus({preventScroll:true});
   }
   function capturePagePosition(content){
     const position={top:content.scrollTop,left:content.scrollLeft,details:[...content.querySelectorAll('details.engine-details,details.model-context-details')].map(node=>node.open)};
@@ -720,18 +723,76 @@
   }
   function renderSkins() {
     const current = document.documentElement.dataset.skin;
-    const options = window.PipiSkins.installed.map(({id, name, wallpaper}) => `
-      <label class="skin-option">
-        <input type="radio" name="appearance-skin" value="${esc(id)}" aria-label="${esc(name)}" ${wallpaper ? `aria-describedby="skin-wallpaper-${esc(id)}"` : ''} ${id === current ? 'checked' : ''}>
+    const { installed, appearance } = window.PipiSkins;
+    function card({id, name, wallpaper}, locked = false) {
+      return `${locked ? '<article class="skin-option skin-option-locked">' : `<label class="skin-option">
+        <input type="radio" name="appearance-skin" value="${esc(id)}" aria-label="${esc(name)}" ${wallpaper ? `aria-describedby="skin-wallpaper-${esc(id)}"` : ''} ${id === current ? 'checked' : ''}>`}
         <span class="skin-sample" data-preview-skin="${esc(id)}" aria-hidden="true">
           <span class="skin-sample-row"><span class="skin-sample-avatar">${icons.me}</span><span class="skin-sample-bubble">早上好！</span></span>
           <span class="skin-sample-row outgoing"><span class="skin-sample-avatar">${icons.me}</span><span class="skin-sample-bubble">早呀</span></span>
         </span>
-        <span class="skin-option-caption"><span class="skin-option-title"><span class="skin-option-name">${esc(name)}</span>${wallpaper ? `<span id="skin-wallpaper-${esc(id)}" class="skin-option-wallpaper">聊天壁纸 · ${esc(wallpaper)}</span>` : ''}</span>
-          <span class="skin-option-state" aria-hidden="true">${icons.check}使用中</span>
-        </span>
-      </label>`).join('');
-    return header('皮肤', {back:true}) + `<div class="content skin-picker" role="radiogroup" aria-label="选择皮肤">${options}</div>`;
+        <span class="skin-option-caption"><span class="skin-option-title"><span class="skin-option-name">${esc(name)}</span>${wallpaper ? `<span id="skin-wallpaper-${esc(id)}" class="skin-option-wallpaper">内测股东专属美化，不售卖</span>` : ''}</span>
+          ${locked ? '<button type="button" class="skin-option-activate" data-action="activate-waterdrop" aria-label="激活水滴皮肤"><span>激活</span></button>' : `<span class="skin-option-state" aria-hidden="true">${icons.check}使用中</span>${id === 'waterdrop' ? '<span class="skin-option-unlocked">已激活</span>' : ''}`}
+        </span>${locked ? '</article>' : '</label>'}`;
+    }
+    const options = installed.filter(skin => skin.id !== 'waterdrop' || appearance?.waterdropActivated);
+    const locked = appearance?.waterdropActivated ? '' : card(installed.find(skin => skin.id === 'waterdrop'), true);
+    return header('皮肤', {back:true}) + `<div class="content skin-picker"><div class="skin-picker-options" role="radiogroup" aria-label="选择皮肤">${options.map(skin => card(skin)).join('')}</div>${locked}</div>`;
+  }
+  function refreshSkinActivation() {
+    const opened = route;
+    const previous = window.PipiSkins.appearance;
+    if (previous?.waterdropActivated) return;
+    api('/api/appearance').then(appearance => {
+      if (route !== opened || window.PipiSkins.appearance !== previous) return;
+      if (window.PipiSkins.configure(appearance)) scheduleRender();
+    }).catch(error => {
+      if (!error.stale && state && route === opened) toast(error.message, true);
+    });
+  }
+  function selectSkin(id) {
+    try {
+      window.PipiSkins.select(id);
+      return true;
+    } catch (error) {
+      if (error.name !== 'SecurityError' && error.name !== 'QuotaExceededError') throw error;
+      toast('浏览器未能保存皮肤选择', true);
+      return false;
+    }
+  }
+  async function activateWaterdrop(trigger) {
+    const opened = route;
+    let appearance = window.PipiSkins.appearance;
+    if (!appearance?.installationId) {
+      appearance = await api('/api/appearance');
+      if (route !== opened || modalOpen) return;
+      window.PipiSkins.configure(appearance);
+      if (appearance.waterdropActivated) { refresh(); return; }
+    }
+    const { installationId } = appearance;
+    if (!installationId) throw new Error('暂时无法获取安装编号，请重试');
+    trigger.focus({preventScroll:true});
+    openModal('激活水滴皮肤', `<div class="skin-installation-label field-label">安装编号</div>
+      <div class="skin-installation-row"><span class="skin-installation-id">${esc(installationId)}</span><button type="button" class="skin-copy-btn" data-copy-installation aria-label="复制安装编号">复制</button></div>
+      <p class="skin-activation-note">发给皮肤提供者获取激活码。一枚码仅能激活一套小手机。</p>
+      ${field('激活码', 'code', '', '粘贴激活码')}`, async form => {
+      const code = form.elements.code.value.trim();
+      if (!code) throw new Error('请输入激活码');
+      const appearance = await api('/api/appearance/waterdrop', {code});
+      if (!form.isConnected) return;
+      window.PipiSkins.configure(appearance);
+      closeModal(false);
+      const saved = selectSkin('waterdrop');
+      refresh();
+      if (saved) toast('水滴皮肤已激活');
+    }, '激活', undefined, 'cancel', {lockWhileSaving:true});
+    const sheet = overlay.querySelector(':scope > .page-editor');
+    sheet.classList.add('model-sheet', 'skin-activation-sheet');
+    sheet.querySelector('[data-copy-installation]').onclick = () => copyText(installationId);
+    const codeInput = sheet.querySelector('[name="code"]');
+    codeInput.autocapitalize = 'off';
+    codeInput.spellcheck = false;
+    codeInput.maxLength = 256;
   }
   function renderMe() {
     const profile=state.profile||{};
@@ -855,7 +916,7 @@
   function editProfileField(key){const labels={name:'名字',wechatId:'微信号',region:'地区',bio:'个性签名',patText:'拍一拍'},p=state.profile||{};openModal(labels[key],field(labels[key],key,p[key]||'','',key==='bio'?'textarea':'text',key==='patText'?'填写“拍了拍自己的”后面的内容。留空可恢复默认。':''),async form=>{const raw=formValues(form)[key],value=key==='wechatId'&&raw===p[key]?raw:raw.trim();if(key==='name'&&!value)throw new Error('名字不能为空');if(key==='wechatId')checkWechatId(value,p.wechatId);await act('profile.save',{[key]:value});if(form.isConnected){closeModal();refresh();}});if(key==='patText')overlay.querySelector('[name=patText]').maxLength=100;}
   function renderAbout() {
     const sourceRow=sourceUrl?`<a class="cell plain-cell" href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer"><span class="cell-body"><span class="cell-title">源代码</span></span><span class="cell-value">查看</span>${icons.chevron}</a>`:`<div class="cell plain-cell"><span class="cell-body"><span class="cell-title">源代码</span></span><span class="cell-value">随安装包提供</span></div>`;
-    return header('关于屁屁机',{back:true})+`<div class="content page-content"><div class="about-logo"><div class="auth-logo">${icons.chat}</div><h3>屁屁机</h3><p>v${esc(globalThis.__pipiVersion||'0.13.0')}</p></div>${globalThis.__pipiUpdatesEnabled?(globalThis.PipiUpdates?.markup()||''):''}<div class="about-text">一个独立账号，一部只属于你的小手机。<br>聊天、日常与共同记忆，都留在你的服务器。<br><br>首次安装时，通讯录和聊天记录为空。真实回复需要配置模型服务；调用与费用由你选择的服务商决定。钱包与红包仅为虚拟互动，不涉及真实资金。<br><br>本项目为开源、非售卖项目，无付费会员或激活码。界面复用 MIT 许可的 WeUI 与 GPL-3.0-only 许可的 LiangNiang/fake-world；本项目整体以 AGPL-3.0-only 发布。原生菜单尺寸、聊天信息分组与面板分页参考 alexiscn/WeChatSwift（MIT 代码）；未复制其截图素材、头像或字体。</div><section class="section">${sourceRow}</section><p class="page-note">尚未开放：群聊、扫码、音视频通话等展示入口。不会将未完成的功能伪装为真实能力。</p></div>`;
+    return header('关于屁屁机',{back:true})+`<div class="content page-content"><div class="about-logo"><div class="auth-logo">${icons.chat}</div><h3>屁屁机</h3><p>v${esc(globalThis.__pipiVersion||'0.13.0')}</p></div>${globalThis.__pipiUpdatesEnabled?(globalThis.PipiUpdates?.markup()||''):''}<div class="about-text">一个独立账号，一部只属于你的小手机。<br>聊天、日常与共同记忆，都留在你的服务器。<br><br>首次安装时，通讯录和聊天记录为空。真实回复需要配置模型服务；调用与费用由你选择的服务商决定。钱包与红包仅为虚拟互动，不涉及真实资金。<br><br>本项目为开源、非售卖项目。界面复用 MIT 许可的 WeUI 与 GPL-3.0-only 许可的 LiangNiang/fake-world；本项目整体以 AGPL-3.0-only 发布。原生菜单尺寸、聊天信息分组与面板分页参考 alexiscn/WeChatSwift（MIT 代码）；未复制其截图素材、头像或字体。</div><section class="section">${sourceRow}</section><p class="page-note">尚未开放：群聊、扫码、音视频通话等展示入口。不会将未完成的功能伪装为真实能力。</p></div>`;
   }
   function renderBackup() {
     return header('备份与恢复',{back:true})+`<div class="content page-content"><section class="section">${cell('导出完整备份','backupExport','download-backup','','#5382b3','包括聊天、角色、记忆、图片和日常记录')}${cell('从备份恢复','backupRestore','restore-backup','','#5382b3','恢复前会再次提示确认')}</section><p class="page-note">导出时可包含模型 API Key。恢复会覆盖当前业务资料，并保留当前登录密码。密钥只用于与备份匹配的服务商地址。</p></div>`;
@@ -1097,13 +1158,7 @@
     bindActionButtons(view);
     if (route.name === 'skins') {
       view.querySelector('.skin-picker').onchange = event => {
-        try {
-          window.PipiSkins.select(event.target.value);
-        } catch (error) {
-          if (error.name !== 'SecurityError' && error.name !== 'QuotaExceededError') throw error;
-          renderView();
-          toast('浏览器未能保存皮肤选择', true);
-        }
+        if (event.target.name === 'appearance-skin') selectSkin(event.target.value);
       };
     }
     if(route.name==='status-editor')bindStatusEditor();
@@ -1146,6 +1201,7 @@
     if(action==='engine-usage'){await window.PipiUsage.open();return;}
     if(action==='engine-home'||action==='engine-functions'){await openWhenReady(action,window.PipiEngine.refreshConfig,trigger);return;}
     if(action==='role-stickers'||action==='role-reminders'){if(r){if(action==='role-reminders')window.PipiEngine?.invalidateJobs(r.id);showView(action,r.id);}return;}
+    if(action==='activate-waterdrop')return activateWaterdrop(trigger);
     if (['skins','settings','providers','role-personas','about','backup','moments','ledger','farm','favorites','services','wallet'].includes(action)) { showView(action); return; }
     if(action==='friend-permissions'){showView(action);return;}
     if(action==='friend-profile'&&r){showView(action,r.id);return;}
@@ -2103,6 +2159,7 @@
     };input.click();
   }
   function renderAuth(setup, connectionError = '') {
+    window.PipiSkins.configure(null);
     stopSpeech();authSetup=setup;authEpoch++;state=null;window.PipiEngine?.stop();view.dataset.route='auth';
     view.innerHTML=`<div class="auth-content"><div class="auth-logo">${icons.chat}</div><h1>屁屁机</h1>${setup?'':'<p class="auth-subtitle">熟悉的人和日常，都在这里等你。</p>'}${connectionError?`<div class="inline-note">${esc(connectionError)}</div><button class="primary-btn weui-btn weui-btn_primary" id="retry-boot">重新连接</button>`:`<form id="auth-form">${setup?field('你的名字','displayName','','怎么称呼你'):''}${field(setup?'设置访问密码':'访问密码','password','',setup?'至少 8 个字符':'','password')}${setup?field('再次输入密码','confirmPassword','','再输入一次','password')+field(setupTokenRequired?'首次设置令牌':'首次设置令牌（仅远程部署需要）','setupToken','',setupTokenRequired?'请输入服务器控制台提供的设置令牌':'本机访问可留空','password'):''}<div class="auth-error" role="alert"></div><button type="submit" class="primary-btn weui-btn weui-btn_primary">${setup?'开启我的小手机':'进入小手机'}</button></form>`}<div class="auth-bottom">${setup?'一个账号 · 一部独立小手机<br>请保存好密码，当前版本不提供邮箱找回':'你的数据保存在当前服务器<br>密码仅用于访问这部小手机'}<br>开源 · 非售卖 · 无内置模型密钥</div></div>`;
     view.querySelector('#retry-boot')?.addEventListener('click',boot);
@@ -2113,13 +2170,13 @@
       if(!values.password||(setup&&values.password.length<8)){error.textContent=setup?'请设置至少 8 个字符的密码':'请输入访问密码';return;}
       if(setup&&values.password!==values.confirmPassword){error.textContent='两次输入的密码不一致';return;}
       button.disabled=true;error.textContent='';button.textContent='正在进入…';
-      try{const result=await api(setup?'/api/setup':'/api/login',{password:values.password,...(setup?{displayName:values.displayName,setupToken:values.setupToken}:{})});setState(result.state);if(!state){const next=await api('/api/state');setState(next.state||next);}restoreChatDrafts();showView(initialView);}
+      try{const result=await api(setup?'/api/setup':'/api/login',{password:values.password,...(setup?{displayName:values.displayName,setupToken:values.setupToken}:{})});window.PipiSkins.configure(result.appearance);setState(result.state);if(!state){const next=await api('/api/state');setState(next.state||next);}restoreChatDrafts();showView(initialView);}
       catch(err){error.textContent=err.message;button.textContent=setup?'开启我的小手机':'进入小手机';}
       finally{button.disabled=false;}
     };
   }
   async function boot() {
-    try{const status=await api('/api/status');sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;imageVariants=binaryMedia&&status.imageVariants===true;storageMaintenance=status.storageMaintenance===true;streamingBackup=status.streamingBackup===true;accountSecurity=status.accountSecurity===true;setupTokenRequired=status.setupTokenRequired===true;momentExclusions=status.momentExclusions===true;window.PipiMessageLimit?.configure(status.messageLimit);rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
+    try{const status=await api('/api/status');sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;imageVariants=binaryMedia&&status.imageVariants===true;storageMaintenance=status.storageMaintenance===true;streamingBackup=status.streamingBackup===true;accountSecurity=status.accountSecurity===true;setupTokenRequired=status.setupTokenRequired===true;momentExclusions=status.momentExclusions===true;window.PipiMessageLimit?.configure(status.messageLimit);rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){window.PipiSkins.configure(status.appearance);const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
     catch(err){renderAuth(false,`暂时无法连接这部小手机。${err.message}`);}
   }
   window.PipiExpiry={sync:syncExpiredMedia};

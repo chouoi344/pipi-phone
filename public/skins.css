@@ -1,22 +1,44 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+ * Appearance / Skin Picker page with authentic live preview cards for both skins.
+ */
 .skin-picker {
   display: grid;
   align-content: start;
   gap: 16px;
-  padding: 16px;
+  padding: 16px 14px calc(28px + var(--safe-bottom, 0px));
   background: var(--bg);
+}
+.skin-picker-options {
+  display: grid;
+  gap: inherit;
+  min-width: 0;
 }
 .skin-option {
   position: relative;
   display: block;
-  padding: 5px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: #fff;
+  padding: 6px;
+  border: 1.5px solid var(--line);
+  border-radius: 20px;
+  background: #ffffff;
   color: var(--ink);
   cursor: pointer;
+  box-shadow: 0 3px 12px rgba(15, 25, 42, 0.045);
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.18s ease, box-shadow 0.2s ease;
 }
-.skin-option:has(input:checked) { border-color: var(--green); }
-.skin-option:has(input:focus-visible) { outline: 3px solid var(--green); outline-offset: 2px; }
+.skin-option:not(.skin-option-locked):active {
+  transform: scale(0.985);
+}
+.skin-option-locked {
+  cursor: default;
+}
+.skin-option:has(input:checked) {
+  border-color: var(--green);
+  box-shadow: 0 6px 20px rgba(7, 193, 96, 0.14);
+}
+.skin-option:has(input:focus-visible) {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
 .skin-option input {
   position: absolute;
   width: 1px;
@@ -26,49 +48,216 @@
 }
 .skin-sample {
   --sample-canvas: #ededed;
-  --sample-in: white;
+  --sample-in: #ffffff;
   --sample-out: #95ec69;
-  --sample-ink: #191a1d;
+  --sample-ink: #18191b;
   display: grid;
-  gap: 10px;
-  padding: 20px clamp(16px, 6vw, 30px);
-  border-radius: 11px;
+  gap: 11px;
+  padding: 22px clamp(18px, 6vw, 30px);
+  border-radius: 14px;
   background: var(--sample-canvas);
   color: var(--sample-ink);
+  overflow: hidden;
 }
-.skin-sample-row { display: flex; align-items: center; gap: 7px; }
-.skin-sample-row.outgoing { flex-direction: row-reverse; }
+.skin-sample-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.skin-sample-row.outgoing {
+  flex-direction: row-reverse;
+}
 .skin-sample-avatar {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
   background: #e3d1c0;
   color: #695340;
+  flex-shrink: 0;
 }
-.skin-sample-row.outgoing .skin-sample-avatar { background: #c2dacb; color: #455e50; }
-.skin-sample-avatar .icon { width: 15px; height: 15px; }
+.skin-sample-row.outgoing .skin-sample-avatar {
+  background: #c2dacb;
+  color: #455e50;
+}
+.skin-sample-avatar .icon {
+  width: 15px;
+  height: 15px;
+}
 .skin-sample-bubble {
-  padding: 6px 10px;
-  border-radius: 4px;
+  position: relative;
+  padding: 6.5px 11px;
+  border-radius: 5px;
   background: var(--sample-in);
   font-size: 13px;
   line-height: 18px;
+  box-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.05);
 }
-.skin-sample-row.outgoing .skin-sample-bubble { background: var(--sample-out); }
+.skin-sample-bubble::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  left: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  transform: rotate(45deg);
+  background: inherit;
+}
+.skin-sample-row.outgoing .skin-sample-bubble {
+  background: var(--sample-out);
+}
+.skin-sample-row.outgoing .skin-sample-bubble::before {
+  left: auto;
+  right: -3px;
+}
 .skin-option-caption {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 11px 11px 8px;
-  min-height: 44px;
+  padding: 12px 12px 9px;
+  min-height: 48px;
 }
-.skin-option-name { font-size: 16px; font-weight: 600; }
-.skin-option-state { display: none; align-items: center; gap: 4px; color: #147540; font-size: 13px; }
-.skin-option-state .icon { width: 16px; height: 16px; }
-.skin-option input:checked ~ .skin-option-caption .skin-option-state { display: inline-flex; }
+.skin-option-title {
+  display: grid;
+  gap: 2px;
+  text-align: start;
+}
+.skin-option-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.skin-option-wallpaper {
+  color: #79818e;
+  font-size: 12px;
+  line-height: 18px;
+}
+.skin-option-state,
+.skin-option-activate > span,
+.skin-option-unlocked {
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eafaf1;
+  color: #08793f;
+  font-size: 12.5px;
+  font-weight: 600;
+  flex: none;
+  white-space: nowrap;
+}
+.skin-option-state {
+  display: none;
+}
+.skin-option-unlocked {
+  background: #f1f3f4;
+  color: #545d65;
+}
+.skin-option-state .icon {
+  width: 14px;
+  height: 14px;
+}
+.skin-option input:checked ~ .skin-option-caption .skin-option-state {
+  display: inline-flex;
+}
+.skin-option input:checked ~ .skin-option-caption .skin-option-unlocked {
+  display: none;
+}
+.skin-option-activate {
+  display: grid;
+  place-items: center;
+  flex: none;
+  min-height: 44px;
+  min-width: 64px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+}
+.skin-option-activate > span {
+  display: inline-flex;
+  min-width: 64px;
+  min-height: 30px;
+}
+.skin-option-activate:active > span,
+.skin-copy-btn:active {
+  background: #d7f4e4;
+}
+.skin-option-activate:focus-visible,
+.skin-copy-btn:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.skin-activation-sheet .modal-body {
+  padding: 14px 16px 8px;
+}
+.skin-installation-label {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.skin-installation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+  padding: 0 8px 0 12px;
+  border-radius: 12px;
+  min-height: 46px;
+  background: #f5f6f6;
+}
+.skin-installation-id {
+  font: 13px/1.5 ui-monospace, Consolas, monospace;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.skin-copy-btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #08793f;
+  font-weight: 600;
+}
+.skin-activation-note {
+  margin: 8px 0 0;
+  color: #656973;
+  font-size: 12px;
+  line-height: 1.5;
+}
+#overlay > .skin-activation-sheet .modal-header {
+  min-height: 60px;
+  padding: 6px 12px;
+}
+#overlay > .skin-activation-sheet .modal-header > .modal-submit {
+  min-width: 60px;
+  border-radius: 10px;
+  font-size: 15px;
+}
+.skin-activation-sheet .form-field {
+  padding-block: 14px 8px;
+}
+.skin-activation-sheet .form-field input {
+  min-height: 46px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: #f5f6f6;
+}
+.skin-activation-sheet .form-field input:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skin-option { transition: none; }
+  .skin-option:not(.skin-option-locked):active { transform: none; }
+}
 
 :root {
   /* The four layers of the reference workshop's 晴空樱花 wallpaper. */
@@ -78,23 +267,63 @@
     radial-gradient(circle at 75% 68%, rgba(255,178,206,.65) 0%, transparent 38%),
     linear-gradient(180deg, #dceeff 0%, #eaf4ff 38%, #fde7f0 78%, #f9dce8 100%);
 }
-.skin-option-title { display: grid; gap: 2px; text-align: start; }
-.skin-option-wallpaper { color: #656973; font-size: 12px; line-height: 18px; }
+
 .skin-sample[data-preview-skin="waterdrop"] {
-  background: var(--waterdrop-sakura-wallpaper);
-  color: #1c1d1f;
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --skin-sample-sakura-wallpaper:
+    radial-gradient(ellipse 68% 36% at 82% 20%, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0) 68%),
+    radial-gradient(circle at 18% 42%, rgba(164, 219, 255, 0.68) 0%, rgba(164, 219, 255, 0) 48%),
+    radial-gradient(circle at 78% 58%, rgba(255, 166, 204, 0.64) 0%, rgba(255, 166, 204, 0) 46%),
+    radial-gradient(circle at 30% 78%, rgba(255, 198, 224, 0.72) 0%, rgba(255, 198, 224, 0) 52%),
+    radial-gradient(circle at 52% 48%, rgba(214, 198, 255, 0.42) 0%, rgba(214, 198, 255, 0) 44%),
+    linear-gradient(180deg, #d6ecff 0%, #e4f2ff 26%, #f0e8fb 54%, #fbdce9 80%, #f6d1e3 100%);
+  background: var(--skin-sample-sakura-wallpaper);
+  color: #191c22;
 }
 .skin-sample[data-preview-skin="waterdrop"] .skin-sample-avatar {
   border-radius: 50%;
-  box-shadow: inset 0 1px 1px #ffffffb5, 0 2px 5px #382c3d1c;
+  border: 1.2px solid rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.7), 0 3px 8px rgba(42, 34, 58, 0.14);
 }
 .skin-sample[data-preview-skin="waterdrop"] .skin-sample-bubble {
-  border-radius: 24px;
+  border-radius: 999px;
+  padding: 7px 14px;
   font-weight: 500;
-  background: linear-gradient(165deg, #ffffff4d, #ffffff1f 42%, #ffffff13 72%, #ffffff45);
-  -webkit-backdrop-filter: blur(3px) saturate(140%) brightness(1.03);
-  backdrop-filter: blur(3px) saturate(140%) brightness(1.03);
-  box-shadow: inset 0 1.5px 1.5px #fffffff0, inset 1px 0 2px #ffffff7d,
-    inset 0 -3px 5px #ffffffa8, inset 0 -1px 1px #ffffffdb, 0 3px 9px #19283c1a;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.14) 42%, rgba(255, 255, 255, 0.08) 72%, rgba(255, 255, 255, 0.30));
+  -webkit-backdrop-filter: blur(3.5px) saturate(148%) brightness(1.04);
+  backdrop-filter: blur(3.5px) saturate(148%) brightness(1.04);
+  box-shadow:
+    inset 0 1.5px 1.5px rgba(255, 255, 255, 0.96),
+    inset 1.5px 0 2px rgba(255, 255, 255, 0.54),
+    inset 0 -3px 5px rgba(255, 255, 255, 0.70),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.90),
+    0 5px 14px rgba(22, 38, 62, 0.12);
+}
+.skin-sample[data-preview-skin="waterdrop"] .skin-sample-bubble::before {
+  display: none;
+}
+.skin-sample[data-preview-skin="waterdrop"] .skin-sample-bubble::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(136deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.15) 55%, rgba(255, 255, 255, 0.88));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+html[data-skin="waterdrop"] .skin-option {
+  border-radius: 24px;
+  border: 1.5px solid rgba(255, 255, 255, 0.96);
+  background: var(--wd-panel);
+  box-shadow: var(--wd-card-shadow);
+}
+html[data-skin="waterdrop"] .skin-option:has(input:checked) {
+  border-color: #1ec96b;
+  box-shadow: 0 8px 24px rgba(30, 201, 107, 0.16);
+}
+html[data-skin="waterdrop"] .skin-sample {
+  border-radius: 18px;
 }

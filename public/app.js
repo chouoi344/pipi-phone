@@ -17,10 +17,11 @@
   // Reference artwork/fonts are not copied; this app reuses the GPL icon set below.
   // Masks are rendering derivatives: the upstream React SVG root fill is resolved
   // to black while original licensed SVG bytes remain intact in /icons.
+  const iconVersion = '0.13.1';
   const assetIcon = (name, color = false, cls = '') => color
-    ? `<img class="icon asset-icon ${cls}" src="/vendor/fake-world/icons/${name}.svg" alt="" aria-hidden="true">`
-    : `<span class="icon mask-icon ${cls}" style="--icon-url:url('/vendor/fake-world/masks/${name}.svg')" aria-hidden="true"></span>`;
-  const nativeIcon = name => `<span class="icon mask-icon" style="--icon-url:url('/vendor/native-icons/${name}.svg')" aria-hidden="true"></span>`;
+    ? `<img class="icon asset-icon ${cls}" src="/vendor/fake-world/icons/${name}.svg?v=${iconVersion}" alt="" aria-hidden="true">`
+    : `<span class="icon mask-icon ${cls}" style="--icon-url:url('/vendor/fake-world/masks/${name}.svg?v=${iconVersion}')" aria-hidden="true"></span>`;
+  const nativeIcon = name => `<span class="icon mask-icon" style="--icon-url:url('/vendor/native-icons/${name}.svg?v=${iconVersion}')" aria-hidden="true"></span>`;
   // The upstream chat mark uses a white fill / dark stroke when inactive. Keep its
   // licensed path unchanged so both states follow BottomNavbar, rather than drawing a substitute.
   const chatMark = `<svg class="icon chat-mark" viewBox="0 0 29 28" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M14.875 23.3333C21.3184 23.3333 26.5417 18.8935 26.5417 13.4167C26.5417 7.93984 21.3184 3.5 14.875 3.5C8.43172 3.5 3.20837 7.93984 3.20837 13.4167C3.20837 16.3758 4.73321 19.0322 7.15142 20.8492L6.79898 23.8812C6.76178 24.2012 6.99104 24.4908 7.31105 24.528C7.42049 24.5407 7.53129 24.5222 7.63063 24.4746L11.1107 22.8058C12.2917 23.1478 13.5579 23.3333 14.875 23.3333Z"/></svg>`;
@@ -658,7 +659,7 @@
     if(['stickers','contact-tags','tag-contacts'].includes(name)){view.innerHTML=name==='stickers'?renderStickers():renderContactTags();bindMain();return;}
     const renderers = {chats:renderChats,'global-search':renderGlobalSearch,contacts:renderContacts,discover:renderDiscover,me:renderMe,skins:renderSkins,chat:renderChat,role:renderRole,settings:renderSettings,memories:renderMemories,profile:renderProfile,about:renderAbout,backup:renderBackup,'chat-info':renderChatInfo,'role-config':renderRoleConfig,'contact-settings':renderContactSettings,'contact-permissions':renderContactPermissions,blacklist:renderBlacklist,'chat-search':renderChatSearch,'new-friends':renderNewFriends,'add-friend':renderAddFriend,'profile-more':renderProfileMore,'status':renderStatus,'status-history':renderStatusHistory,'status-picker':renderStatusPicker,'status-editor':renderStatusEditor};
     if (!renderers[name]) { route = {name:'chats',arg:null}; }
-    view.innerHTML = (renderers[route.name] || renderChats)(); bindMain();
+    paintMainView((renderers[route.name] || renderChats)()); bindMain();
     if (route.name === 'chat') { bindChat(); scrollChat(focusMessageId); }
     if (route.name === 'chats' || route.name==='contacts') bindConversations();
     if(route.name==='chats')view.querySelector('.content').scrollTop=chatsReturn;
@@ -668,6 +669,26 @@
       if(globalThis.__pipiUpdatesEnabled)window.PipiUpdates?.bindSettings(view);
     }
     if(route.name==='about'&&globalThis.__pipiUpdatesEnabled)window.PipiUpdates?.bindAbout(view);
+  }
+  function paintMainView(html) {
+    const tabs=view.querySelector(':scope > .bottom-tabs');
+    view.innerHTML=html;
+    const nextTabs=view.querySelector(':scope > .bottom-tabs');
+    if(tabs&&nextTabs){
+      for(const next of nextTabs.querySelectorAll('[data-nav]')){
+        const button=tabs.querySelector(`[data-nav="${next.dataset.nav}"]`);
+        button.classList.toggle('active',next.classList.contains('active'));
+        if(next.hasAttribute('aria-current'))button.setAttribute('aria-current','page');
+        else button.removeAttribute('aria-current');
+        const icon=button.querySelector('.mask-icon'),nextIcon=next.querySelector('.mask-icon');
+        if(icon&&icon.style.cssText!==nextIcon.style.cssText)icon.style.cssText=nextIcon.style.cssText;
+        const dot=button.querySelector('.tab-dot'),nextDot=next.querySelector('.tab-dot');
+        if(nextDot){if(dot)dot.textContent=nextDot.textContent;else button.append(nextDot);}
+        else dot?.remove();
+      }
+      nextTabs.replaceWith(tabs);
+    }
+    paintAvatars(view);
   }
   const clockFormat=new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});
   function shortTime(value, inChat = false) {
@@ -1164,7 +1185,7 @@
     if(route.name==='status-editor')bindStatusEditor();
     view.querySelectorAll('[data-status-preset]').forEach(button=>button.onclick=()=>{statusDraft={preset:button.dataset.statusPreset,description:statusDraft?.description||''};showView('status-editor');});
     view.querySelectorAll('[data-status-history]').forEach(button=>button.onclick=()=>{const item=state.statusHistory.find(item=>item.id===button.dataset.statusHistory),choice=statusChoice(item.preset);openPage('历史状态',`<div class="status-history-detail"><h3>${icons[choice[2]]}${esc(choice[1])}</h3><p>${esc(item.description||'未填写说明')}</p><time>${esc(new Date(item.startedAt).toLocaleString('zh-CN',{hour12:false}))}</time><p>已结束</p></div>`,null);});
-    view.querySelectorAll('[data-nav]').forEach(el=>el.addEventListener('click',()=>showView(el.dataset.nav,el.dataset.arg||undefined)));
+    view.querySelectorAll('[data-nav]').forEach(el=>el.onclick=()=>showView(el.dataset.nav,el.dataset.arg||undefined));
     view.querySelectorAll('[data-edit-memory]').forEach(el=>el.onclick=()=>editMemory(el.dataset.editMemory));
     view.querySelectorAll('[data-delete-memory]').forEach(el=>el.onclick=()=>confirmDialog('删除这条记忆？','删除后将不再向角色提供这条记忆。',()=>act('memory.delete',{id:el.dataset.deleteMemory}),'删除'));
     const search=view.querySelector('#list-search');
@@ -2218,7 +2239,24 @@
   });
   for(const type of ['input','compositionstart'])document.addEventListener(type,event=>{if(event.target.closest('.chat-composer'))cancelAvatarTaps();},true);
   history.replaceState({pipi:true,route:{...route},stack:[...navStack]},'');window.addEventListener('popstate',event=>{if(overlayBackPending){overlayBackPending=false;if(overlayCloseQueued){const discardAll=overlayCloseQueued==='all';overlayCloseQueued=false;if(history.state?.overlay){overlayBackPending=true;if(discardAll)history.go(-(history.state.overlayDepth||1));else history.back();return;}}if(queuedView){const next=queuedView;queuedView=null;queuedBack=false;if(modalOpen&&history.state?.overlay){closeModal(false);queuedView=next;return;}if(modalOpen)closeModal(false,true);showView(next.name,next.arg,next.fromBack);}else if(queuedBack){queuedBack=false;goBack();}else if(modalOpen)trackModalHistory();if(!overlayBackPending&&!modalOpen)window.PipiFeatures?.handleBack?.('history');if(!overlayBackPending)overlayBackWaiters.splice(0).forEach(resolve=>resolve());return;}if(bootStale){if(event.state?.overlay||event.state?.chatSelection||event.state?.childDialog||event.state?.featureSelection){history.back();return;}bootStale=false;}if(childDialog){closeChildDialog(true);return;}if(modalOpen){closeModal(true,true);return;}if(window.PipiFeatures?.handleBack?.('history'))return;if(chatSelection&&!event.state?.chatSelection){finishMessageSelection(true);return;}if(event.state?.overlay||event.state?.chatSelection||event.state?.childDialog||event.state?.featureSelection){history.back();return;}const previous=event.state?.route||{name:'chats',arg:null};navStack.splice(0,navStack.length,...(event.state?.stack||[]));showView(previous.name,previous.arg,true);});
-  const viewport=window.visualViewport;const sizeViewport=()=>{const anchor=captureChatLayout(),height=viewport?.height||innerHeight;document.documentElement.style.setProperty('--app-height',height+'px');document.documentElement.style.setProperty('--viewport-top',(viewport?.offsetTop||0)+'px');restoreChatLayout(anchor);};viewport?.addEventListener('resize',sizeViewport);viewport?.addEventListener('scroll',sizeViewport);window.addEventListener('resize',sizeViewport);sizeViewport();
+  const viewport=window.visualViewport;
+  let viewportFrame=0,lastViewportSize='';
+  function sizeViewport(){
+    viewportFrame=0;
+    // Pinch zoom is handled by the browser. Resizing the shell again would
+    // shrink its layout a second time and displace the composer.
+    if(viewport&&Math.abs(viewport.scale-1)>.01)return;
+    const height=Math.round(viewport?.height||innerHeight),top=Math.round(viewport?.offsetTop||0),size=height+':'+top;
+    if(size===lastViewportSize)return;
+    const anchor=captureChatLayout();
+    document.documentElement.style.setProperty('--app-height',height+'px');
+    document.documentElement.style.setProperty('--viewport-top',top+'px');
+    lastViewportSize=size;
+    restoreChatLayout(anchor);
+  }
+  function scheduleViewport(){if(!viewportFrame)viewportFrame=requestAnimationFrame(sizeViewport);}
+  viewport?.addEventListener('resize',scheduleViewport);viewport?.addEventListener('scroll',scheduleViewport);
+  window.addEventListener('resize',scheduleViewport);document.addEventListener('focusout',scheduleViewport);sizeViewport();
   document.addEventListener('visibilitychange',()=>{if(document.hidden)persistChatDrafts();if(document.hidden&&(recordingSession))stopRecording(true);else if(!document.hidden)syncVisibleChatRead();});window.addEventListener('pagehide',()=>{persistChatDrafts();saveBrowserPosition();if(recordingSession)stopRecording(true);});
   let polling=false;
   setInterval(async()=>{

@@ -52,8 +52,8 @@ test('release rejects prereleases, drafts, inconsistent tags, misdirected assets
 });
 
 test('missing releases, up-to-date versions, disabled configuration and an offline feed are distinct',async t=>{
-  const missing=createUpdateService({repository,currentVersion,updateDir:'',fetchImpl:async()=>new Response('',{status:404})});
-  const noRelease=await missing.check();assert.equal(noRelease.state,'ok');assert.equal(noRelease.release,undefined);assert.equal(noRelease.canUpdate,false);
+  const missing=createUpdateService({repository,currentVersion,updateDir:'',fetchImpl:async url=>url.endsWith('/latest')?new Response('',{status:404}):Response.json([])});
+  const noRelease=await missing.check();assert.equal(noRelease.state,'no-release');assert.equal(noRelease.release,undefined);assert.equal(noRelease.canUpdate,false);
   const latest=createUpdateService({repository,currentVersion:version,updateDir:'',fetchImpl:feed().fetchImpl});assert.equal((await latest.check()).state,'ok');
   const disabled=createUpdateService({repository:'',currentVersion,updateDir:'',fetchImpl:()=>assert.fail('disabled config fetched')});assert.equal((await disabled.check()).state,'disabled');
   const f=await fixture(t,{fetchError:new Error('secret upstream details')});
@@ -83,7 +83,7 @@ test('stale worker and unavailable current release cannot queue a request',async
 
 test('a removed release is rechecked after an earlier available result and never submitted from cache',async t=>{
   const f=await fixture(t);let removed=false;
-  const service=createUpdateService({...f.config,fetchImpl:(url,options)=>removed?Promise.resolve(new Response('',{status:404})):f.remote.fetchImpl(url,options)});
+  const service=createUpdateService({...f.config,fetchImpl:(url,options)=>removed?Promise.resolve(url.endsWith('/latest')?new Response('',{status:404}):Response.json([])):f.remote.fetchImpl(url,options)});
   assert.equal((await service.check()).state,'available');removed=true;
   await assert.rejects(service.request({version}),{code:'UPDATE_CHANGED'});
   await assert.rejects(fs.access(path.join(f.directory,'request.json')),{code:'ENOENT'});
@@ -125,4 +125,16 @@ test('malformed shared state fails visibly and never overwrites the request',asy
   const f=await fixture(t);await f.write('request.json',{id:'kept',version:'bad',previousVersion:currentVersion});
   assert.equal((await f.service.check()).state,'offline');await assert.rejects(f.service.request({version}));
   assert.equal(JSON.parse(await fs.readFile(path.join(f.directory,'request.json'),'utf8')).id,'kept');
+});
+
+test('official default and installation readiness remain distinct from release availability',async()=>{
+  const result=await createUpdateService({currentVersion,updateDir:'',fetchImpl:async url=>{
+    assert(url.startsWith('https://api.github.com/repos/chouoi344/pipi-phone/'));
+    return url.endsWith('/latest')?new Response('',{status:404}):Response.json([]);
+  }}).check();
+  assert.equal(result.repository,'chouoi344/pipi-phone');assert.equal(result.state,'no-release');assert.equal(result.canUpdate,false);
+  const available=await createUpdateService({repository,currentVersion,updateDir:'',fetchImpl:feed().fetchImpl}).check();
+  assert.equal(available.repository,repository);assert.equal(available.state,'available');assert.equal(available.canUpdate,false);assert.match(available.reason,/未启用一键更新/);
+  const missingRepo=await createUpdateService({repository,currentVersion,updateDir:'',fetchImpl:async()=>new Response('',{status:404})}).check();
+  assert.equal(missingRepo.state,'offline');assert.equal(missingRepo.canUpdate,false);
 });

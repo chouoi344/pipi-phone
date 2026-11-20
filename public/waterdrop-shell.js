@@ -42,7 +42,12 @@
     const index = rootTabs.indexOf(route.name);
     if (index < 0) return;
     const nav = view.querySelector(':scope > .bottom-tabs');
-    if (nav.querySelector('.waterdrop-dock-slider')) return;
+    const existing = nav.querySelector('.waterdrop-dock-slider');
+    if (existing) {
+      existing.style.transform = `translateX(${index * 100}%)`;
+      previousTab = index;
+      return;
+    }
     const slider = document.createElement('span');
     slider.className = 'waterdrop-dock-slider';
     slider.setAttribute('aria-hidden', 'true');

@@ -480,7 +480,7 @@ function createApp(options={}){
       S.fail('URL 无效');
     }
     const p=u.pathname;
-    if(!p.startsWith('/api/'))return staticFile(req,res,p);
+    if(!p.startsWith('/api/'))return staticFile(req,res,p,u.searchParams);
     if(req.method==='GET'&&p==='/api/status'){
       const auth=session(req);
       return json(res,200,{
@@ -1263,7 +1263,7 @@ function createApp(options={}){
       default:S.fail('接口不存在',404,'NOT_FOUND');
     }
   }
-  function staticFile(req,res,pathname){
+  function staticFile(req,res,pathname,searchParams){
     if(pathname==='/life-preview.html'&&!options.lifePreview)S.fail('独立验收页仅在隔离实例开放',404,'NOT_FOUND');
     if(!['GET','HEAD'].includes(req.method))S.fail('页面不存在',404);
     let decoded;
@@ -1294,7 +1294,8 @@ function createApp(options={}){
     if(!contentType)S.fail('文件类型不允许',404);
     if(['.woff2','.svg','.css','.js'].includes(path.extname(file))){
       const etag=`"${stat.size}-${Math.trunc(stat.mtimeMs)}"`;
-      res.setHeader('Cache-Control','public, max-age=0, must-revalidate');
+      const versionedIcon=/^\/vendor\/(?:fake-world\/(?:icons|masks)|native-icons)\/[^/]+\.svg$/.test(pathname)&&searchParams.get('v')===VERSION;
+      res.setHeader('Cache-Control',versionedIcon?'public, max-age=604800, immutable':'public, max-age=0, must-revalidate');
       res.setHeader('ETag',etag);
       if(req.headers['if-none-match']===etag){res.writeHead(304);res.end();return;}
     }

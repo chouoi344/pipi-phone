@@ -43,7 +43,9 @@
     );
     // iOS can keep its home inset while the keyboard shrinks the visual
     // viewport. Retain this state during blur/keyboard-dismiss animation.
-    const reduced = viewport && viewport.scale === 1 && window.innerHeight - viewport.height > 120;
+    // Compare unzoomed heights so a pinch alone is not a keyboard, while a
+    // keyboard still removes the covered inset when the user has zoomed in.
+    const reduced = viewport && window.innerHeight - viewport.height * viewport.scale > 120;
     keyboardCovered = Boolean(reduced && (editing || keyboardCovered));
     if (keyboardCovered) insets.bottom = 0;
     // Bottom bars already consume the inset. Plain leaf pages need it once.

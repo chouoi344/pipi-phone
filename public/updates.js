@@ -77,7 +77,7 @@
       const line = showJob ? phases[job.phase] : latest ? '发现新版本 v' + latest.version :
         result.state === 'disabled' ? '未配置版本发布来源' :
         result.state === 'offline' ? '暂时无法检查更新' :
-        result.release ? '当前已是最新版本' : '暂无已发布版本';
+        result.release ? '当前已是最新版本' : '暂无正式发布版本';
       status.textContent = line;
       const workVersion = showJob && job?.version && job.phase !== 'succeeded' ? '目标版本 v' + job.version : '';
       detail.textContent = [workVersion, showJob && job.message, result.reason].filter(Boolean).join(' · ');

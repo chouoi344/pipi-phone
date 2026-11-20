@@ -37,10 +37,24 @@ test('后台任务跨await保持计忙，完成后才允许恢复，关闭初始
   try{
     const running=f.runtime.tick();await until(()=>started===1);
     assert.equal(f.runtime.active,0);assert.equal(f.runtime.backgroundBusy,true);
-    await f.runtime.tick();assert.equal(started,1);assert.equal(scheduled,2);
+    await f.runtime.tick();assert.equal(started,1);assert.equal(scheduled,0);
     hold.resolve();await running;assert.equal(f.runtime.backgroundBusy,false);
     ready=false;await f.runtime.tick();assert.equal(started,1);assert.equal(f.runtime.backgroundBusy,false);
   }finally{hold.resolve();await f.runtime.close();}
+});
+
+test('无到期提醒时少读一次快照，暂停期间到期的提醒恢复后立即送达',async t=>{
+  let at=Date.now(),ready=true,reads=0;
+  const f=fixture({now:()=>at,isInitialized:()=>ready,getState:()=>{reads++;return f.state;}});
+  t.mock.method(R,'runJobs',async()=>{});
+  const job=require('../lib/engine/scheduler.cjs').add(f.state,f.roleId,{note:'隔离提醒',userRequested:true,schedule:{type:'once',at:at+1000}},at);
+  try{
+    await f.runtime.tick();assert.equal(reads,1);assert.equal(f.state.messages.length,0);
+    ready=false;at+=1000;await f.runtime.tick();assert.equal(reads,1);assert.equal(job.status,'pending');
+    ready=true;await f.runtime.tick();assert.equal(reads,3);assert.equal(job.status,'completed');
+    assert.equal(f.state.messages.at(-1).content,'隔离提醒');
+    reads=0;await f.runtime.tick();assert.equal(reads,1);assert.equal(f.state.messages.length,1);
+  }finally{await f.runtime.close();}
 });
 
 test('延迟日程微调的计时和模型任务都计忙，恢复期间到期不调用模型',async t=>{

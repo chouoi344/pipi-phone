@@ -2,6 +2,12 @@ services:
   pipi-phone:
     build: .
     restart: unless-stopped
+    init: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "${PIPI_HOST_BIND:-127.0.0.1}:${PIPI_PORT:-18766}:8000"
     volumes:
@@ -11,6 +17,7 @@ services:
       PORT: 8000
       DATA_DIR: /app/data
       NODE_ENV: production
+      PIPI_UPDATE_REPOSITORY: "${PIPI_UPDATE_REPOSITORY:-chouoi344/pipi-phone}"
       REQUIRE_SETUP_TOKEN: "${REQUIRE_SETUP_TOKEN:-0}"
       ALLOWED_HOSTS: "${ALLOWED_HOSTS:-}"
       SOURCE_URL: "${SOURCE_URL:-}"

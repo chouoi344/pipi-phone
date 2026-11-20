@@ -91,3 +91,15 @@ test('044 editable chat and Android resizes-content zero inset keep the bottom u
  const f=fixture();f.insets.bottom=34;f.focus({tagName:'DIV',isContentEditable:true});f.window.visualViewport.height=400;f.window.PipiPhoneFrame.refresh();assert.equal(f.shell.style.values.get('--safe-bottom'),'0px');
  f.insets.bottom=0;f.window.innerHeight=400;f.window.visualViewport.height=400;f.window.PipiPhoneFrame.refresh();assert.equal(f.shell.style.values.get('--safe-bottom'),'0px');
 });
+
+test('keyboard inset remains correct when typing and dismissing while zoomed',()=>{
+ const f=fixture();f.insets.bottom=34;f.focus({tagName:'DIV',isContentEditable:true});
+ Object.assign(f.window.visualViewport,{height:422,scale:2});f.window.PipiPhoneFrame.refresh();
+ assert.equal(f.shell.style.values.get('--safe-bottom'),'34px','pinch zoom alone leaves the inset');
+ f.window.visualViewport.height=220;f.listeners.get('visual:resize')();f.flush();
+ assert.equal(f.shell.style.values.get('--safe-bottom'),'0px','keyboard covers the inset even at non-unit scale');
+ f.blur();f.listeners.get('document:focusout')();f.flush();
+ assert.equal(f.shell.style.values.get('--safe-bottom'),'0px','dismiss animation retains the covered state');
+ f.window.visualViewport.height=422;f.listeners.get('visual:resize')();f.flush();
+ assert.equal(f.shell.style.values.get('--safe-bottom'),'34px','dismissal restores the inset while zoom remains');
+});

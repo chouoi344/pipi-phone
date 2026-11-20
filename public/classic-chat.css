@@ -238,7 +238,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose
   border-radius: inherit;
   background: transparent;
   color: #1b1d1f;
-  font-size: 14.5px;
+  font-size: 17px;
   line-height: 22px;
   font-weight: 400;
   letter-spacing: normal;

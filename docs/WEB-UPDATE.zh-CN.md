@@ -6,7 +6,7 @@
 
 先按[已有实例升级](../INSTALL.zh-CN.md#已有实例升级)完成带更新功能的版本切换，保留原部署目录、Compose 项目名、环境变量和资料卷。下面以 Linux 宿主机、现有目录 /srv/pipi-phone、项目名 pipi-phone、映射端口 18766 为例。把路径、项目名和端口换成现有安装实际使用的值。宿主机更新程序需要 Node.js 24 和可管理该 Compose 项目的 Docker CLI，无需安装 npm 依赖。
 
-切换前先备份。若暂时只需要网页版本提醒，在现有 Compose 服务的环境变量中传入 PIPI_UPDATE_REPOSITORY，值为 chouoi344/pipi-phone。需要网页一键安装时，准备下面的共享目录和更新服务。
+切换前先备份。程序与默认 Compose 已使用官方更新仓库 chouoi344/pipi-phone，可通过 PIPI_UPDATE_REPOSITORY 覆盖。暂无正式 Release 时显示“暂无正式发布版本”，检查失败时单独提示；发现新版且宿主机更新服务在线后才显示“立即更新”。需要网页一键安装时，准备下面的共享目录和更新服务。
 
 将以下配置保存在原部署目录的 .env.updates。用已有 Compose 项目名，才能找到原来的资料卷。PIPI_UPDATE_DIR 是宿主机与小手机容器交换任务状态的目录。PIPI_UPDATE_STATE_DIR 保存宿主机自己的版本、资料卷和恢复记录，权限应只给更新服务管理员。
 

@@ -8,7 +8,9 @@ const os=require('node:os'),path=require('node:path');
 const {randomUUID}=require('node:crypto');
 const {createApp}=require('../scripts/sample-data.cjs');
 const PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBHoAAAAASUVORK5CYII=';
-const AUDIO='data:audio/wav;base64,UklGRg==',PASSWORD='Backend-046-local-test!';
+const WAV=Buffer.from('524946462600000057415645666d74201000000001000100401f0000803e00000200100064617461020000000000','hex');
+const AUDIO='data:audio/wav;base64,'+WAV.toString('base64'),PASSWORD='Backend-046-local-test!';
+function imageBytes(dataUrl){return Buffer.from(dataUrl.split(',')[1],'base64');}
 const ok=r=>{assert.equal(r.status,200,JSON.stringify(r.body));return r.body;};
 const reject=r=>assert.ok(r.status>=400&&r.status<500,JSON.stringify(r));
 const msg=(roleId,content,type='text',extra={})=>({id:randomUUID(),roleId,sender:'user',type,content,status:'sent',createdAt:Date.now(),...extra});
@@ -24,11 +26,18 @@ async function fixture(t,{demoModel=false}={}){
     if(value.csrfToken)csrf=value.csrfToken;
     return {status:response.status,body:value};
   }
-  const f={request,action:(type,payload={})=>request('/api/action',{type,payload}),state:async()=>ok(await request('/api/state')),backup:async()=>ok(await request('/api/backup')),restore:async backup=>ok(await request('/api/restore',{backup,confirm:true})),async restart(){await app.close();await start();ok(await request('/api/login',{password:PASSWORD}));}};
+  async function checkImage(reference,expected){
+    assert.match(reference,/^\/api\/media\/[a-f0-9]{64}\.png$/);
+    const response=await fetch(base+reference,{headers:{Cookie:cookie}});
+    assert.equal(response.status,200);
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()),imageBytes(expected));
+  }
+  const f={request,checkImage,action:(type,payload={})=>request('/api/action',{type,payload}),state:async()=>ok(await request('/api/state')),backup:async()=>ok(await request('/api/backup')),restore:async backup=>ok(await request('/api/restore',{backup,confirm:true})),async restart(){await app.close();await start();ok(await request('/api/login',{password:PASSWORD}));}};
   t.after(async()=>{await app.close();await rm(dir,{recursive:true,force:true});});
   ok(await request('/api/setup',{password:PASSWORD}));
   ok(await request('/api/engine/modules',{id:'waiting',values:{idleSeconds:0,maxWaitSeconds:1}}));
   ok(await request('/api/engine/modules',{id:'segments',values:{intervalMode:'random',minSeconds:0,maxSeconds:0}}));
+  ok(await request('/api/engine/modules',{id:'schedule',values:{autoGenerate:false}}));
   return f;
 }
 async function mock(t){
@@ -135,15 +144,15 @@ test('046 quote: safe image and original author survive rename, delete, recall, 
   const f=await fixture(t),m=await mock(t);await configure(f,m);const b=await f.backup(),[a,z]=b.state.roles;
   const source=msg(a.id,PNG,'image');b.state.messages.push(source);await f.restore(b);
   ok(await chat(f,'/api/chat/send',{roleId:a.id,text:'引用图片',quoteId:source.id,requestId:randomUUID()}));
-  let s=await f.state(),quoted=s.messages.find(x=>x.content==='引用图片');assert.equal(quoted.meta.quote.image,PNG);assert.equal(quoted.meta.quote.senderName,s.profile.name);
-  ok(await f.action('message.forward',{ids:[quoted.id],targetRoleId:z.id,mode:'merged'}));assert.equal((await f.state()).messages.at(-1).meta.entries[0].meta.quote.image,PNG);
+  let s=await f.state(),quoted=s.messages.find(x=>x.content==='引用图片');const photo=quoted.meta.quote.image;await f.checkImage(photo,PNG);assert.equal(quoted.meta.quote.senderName,s.profile.name);
+  ok(await f.action('message.forward',{ids:[quoted.id],targetRoleId:z.id,mode:'merged'}));assert.equal((await f.state()).messages.at(-1).meta.entries[0].meta.quote.image,photo);
   ok(await f.action('profile.save',{name:'改名后'}));ok(await f.action('message.recall',{id:source.id}));
-  quoted=(await f.state()).messages.find(x=>x.id===quoted.id);assert.equal(quoted.meta.quote.messageId,undefined);assert.equal(quoted.meta.quote.unavailable,'recalled');assert.equal(quoted.meta.quote.image,PNG);assert.notEqual(quoted.meta.quote.senderName,'改名后');
+  quoted=(await f.state()).messages.find(x=>x.id===quoted.id);assert.equal(quoted.meta.quote.messageId,undefined);assert.equal(quoted.meta.quote.unavailable,'recalled');assert.equal(quoted.meta.quote.image,photo);assert.notEqual(quoted.meta.quote.senderName,'改名后');
   const saved=await f.backup();await f.restore(saved);assert.deepEqual((await f.state()).messages.find(x=>x.id===quoted.id).meta.quote,quoted.meta.quote);
   for(const mode of ['individual','merged']){
     ok(await f.action('message.forward',{ids:[quoted.id],targetRoleId:z.id,mode}));
     const forwarded=(await f.state()).messages.at(-1),snapshot=mode==='merged'?forwarded.meta.entries[0].meta.quote:forwarded.meta.quote;
-    assert.equal(snapshot.unavailable,'recalled');assert.equal(snapshot.image,PNG);
+    assert.equal(snapshot.unavailable,'recalled');assert.equal(snapshot.image,photo);
   }
   const forwardedBackup=await f.backup();await f.restore(forwardedBackup);assert.equal((await f.state()).messages.at(-1).meta.entries[0].meta.quote.unavailable,'recalled');
   const bad=structuredClone(saved);bad.state.messages.find(x=>x.id===quoted.id).meta.quote.image='https://bad.invalid/x';await unchanged(f,()=>f.request('/api/restore',{backup:bad,confirm:true}));
@@ -176,7 +185,7 @@ test('046 profile: gender and status history preserve partial updates, end, expi
 
 test('046 moments: nine safe photos, literal location, targeted mentions and notifications backed by real events',async t=>{
   const f=await fixture(t),[a,z]=(await f.state()).roles;
-  ok(await f.action('moment.create',{content:'本地相册',images:Array(9).fill(PNG),location:'公园',mentions:[a.id],visibility:[a.id]}));let s=await f.state(),moment=s.moments.at(-1);assert.equal(moment.images.length,9);assert.equal(moment.image,PNG);assert.deepEqual(s.momentNotifications,[]);
+  ok(await f.action('moment.create',{content:'本地相册',images:Array(9).fill(PNG),location:'公园',mentions:[a.id],visibility:[a.id]}));let s=await f.state(),moment=s.moments.at(-1);assert.equal(moment.images.length,9);await f.checkImage(moment.image,PNG);assert.deepEqual(s.momentNotifications,[]);
   for(const payload of [{images:Array(10).fill(PNG)},{images:['https://bad.invalid/a']},{location:'line\nbreak',content:'x'},{mentions:[z.id],visibility:[a.id],content:'x'},{mentions:['missing'],content:'x'}])await unchanged(f,()=>f.action('moment.create',payload));
   ok(await f.action('moment.like',{id:moment.id}));ok(await f.action('moment.comment',{id:moment.id,content:'自己的评论'}));assert.deepEqual((await f.state()).momentNotifications,[]);
   const b=await f.backup(),comment={id:randomUUID(),authorId:a.id,content:'真实存档的角色评论',createdAt:Date.now()};b.state.moments.at(-1).likes.push(a.id);b.state.moments.at(-1).comments.push(comment);await f.restore(b);s=await f.state();assert.deepEqual(s.momentNotifications.map(n=>n.type),['like','comment']);assert.equal(s.momentNotifications[1].content,comment.content);
@@ -187,7 +196,7 @@ test('046 moments: nine safe photos, literal location, targeted mentions and not
 });
 
 test('046 notes: text, photos and todos persist; edits retain IDs and malformed saves reject atomically',async t=>{
-  const f=await fixture(t);ok(await f.action('favorite.save',{content:'采购',images:[PNG],todos:[{text:'番茄',done:false},{text:'胡萝卜',done:true}]}));let note=(await f.state()).favorites.at(-1);assert.equal(note.type,'note');assert.equal(note.meta.images[0],PNG);
+  const f=await fixture(t);ok(await f.action('favorite.save',{content:'采购',images:[PNG],todos:[{text:'番茄',done:false},{text:'胡萝卜',done:true}]}));let note=(await f.state()).favorites.at(-1);assert.equal(note.type,'note');await f.checkImage(note.meta.images[0],PNG);
   const todos=note.meta.todos.map(x=>({...x,done:true}));ok(await f.action('favorite.save',{id:note.id,todos}));note=(await f.state()).favorites.at(-1);assert.equal(note.content,'采购');assert.deepEqual(note.meta.todos,todos);
   for(const payload of [{content:'',images:[],todos:[]},{images:['javascript:bad']},{todos:[{id:'same',text:'a'},{id:'same',text:'b'}]},{todos:[{text:'',done:true}]},{todos:[{text:'a',done:'true'}]}])await unchanged(f,()=>f.action('favorite.save',{id:note.id,...payload}));
   const saved=await f.backup();await f.restart();await f.restore(saved);assert.deepEqual((await f.state()).favorites.at(-1),note);
@@ -218,7 +227,7 @@ test('046 independent voice races: restore is blocked in flight; deletion, recal
   let started,release;
   const server=http.createServer(async(req,res)=>{
     for await(const chunk of req)void chunk;
-    release=()=>{res.writeHead(200,{'Content-Type':req.url.endsWith('/speech')?'audio/mpeg':'application/json'});res.end(req.url.endsWith('/speech')?Buffer.from('LOCAL_AUDIO'):JSON.stringify({text:'LATE_TRANSCRIPT'}));};
+    release=()=>{res.writeHead(200,{'Content-Type':req.url.endsWith('/speech')?'audio/wav':'application/json'});res.end(req.url.endsWith('/speech')?WAV:JSON.stringify({text:'LATE_TRANSCRIPT'}));};
     started();
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -238,11 +247,12 @@ test('046 independent voice races: restore is blocked in flight; deletion, recal
   }
 });
 
-test('046 independent image payload: a nine-photo action above 20 MB saves while chat retains its 20 MB cap',async t=>{
-  const f=await fixture(t),largePng='data:image/png;base64,'+Buffer.concat([Buffer.from(PNG.split(',')[1],'base64'),Buffer.alloc(2*1024*1024)]).toString('base64');
+test('046 independent image payload: a nine-photo action above 32 MB saves while the chat JSON route rejects it',async t=>{
+  const f=await fixture(t),largePng='data:image/png;base64,'+Buffer.concat([imageBytes(PNG),Buffer.alloc(3*1024*1024)]).toString('base64');
   const payload={content:'九张本地测试图片',images:Array(9).fill(largePng),visibility:[]};
-  assert.ok(Buffer.byteLength(JSON.stringify(payload))>20*1024*1024);
+  assert.ok(Buffer.byteLength(JSON.stringify(payload))>32*1024*1024);
   const before=await f.state(),chat=await f.request('/api/chat/send',payload);assert.equal(chat.status,413);assert.deepEqual(await f.state(),before);
-  const result=ok(await f.action('moment.create',payload));assert.equal(result.state.moments.at(-1).images.length,9);assert.equal(result.state.moments.at(-1).images[8],largePng);
-  await f.restart();assert.equal((await f.state()).moments.at(-1).images[8],largePng);
+  const result=ok(await f.action('moment.create',payload)),images=result.state.moments.at(-1).images;
+  assert.equal(images.length,9);await f.checkImage(images[8],largePng);
+  await f.restart();assert.equal((await f.state()).moments.at(-1).images[8],images[8]);await f.checkImage(images[8],largePng);
 });

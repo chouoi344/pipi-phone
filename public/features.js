@@ -32,7 +32,7 @@
   const selected = (a, b) => a === b ? ' selected' : '';
   const requestId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const safeImage = value => (/^data:image\/(png|jpeg|webp|gif);base64,[a-z\d+/=\r\n]+$/i.test(String(value || '')) || /^\/api\/media\/[a-f\d]{32,64}\.(png|jpg|jpeg|webp|gif)$/i.test(String(value || '').trim())) ? String(value).trim() : '';
-  const safeAudio = value => /^data:audio\/(mpeg|mp3|wav|x-wav|ogg|webm|mp4|aac|flac)(;codecs=[a-z\d.,-]+)?;base64,[a-z\d+/=\s]+$/i.test(String(value || '')) ? String(value) : '';
+  const safeAudio = value => /^\/api\/media\/[a-f\d]{32,64}\.(webm|ogg|mp3|m4a|mp4|wav|aac|flac)$/i.test(String(value||''))?String(value):/^data:audio\/(mpeg|mp3|wav|x-wav|ogg|webm|mp4|aac|flac)(;codecs=[a-z\d.,-]+)?;base64,[a-z\d+/=\s]+$/i.test(String(value || '')) ? String(value) : '';
   const page = (title, html, submit, action) => P().openPage(title, html, submit, action);
   const closePage = notify => P().closePage(notify);
   // Navigation is declared by the page API, never patched into a Cancel button.
@@ -77,16 +77,7 @@
     if (P().confirmDialog) return P().confirmDialog(title, description, action, '删除');
     P().openModal(title, `<p class="feature-modal-copy">${esc(description)}</p>`, async () => { await action(); P().closeModal(); }, '确认删除');
   }
-  function fileData(file, maxMB = 5) {
-    return new Promise((resolve, reject) => {
-      if (!file || !/^image\/(png|jpeg|webp|gif)$/.test(file.type)) return reject(new Error('请选择 PNG、JPG、WebP 或 GIF 图片'));
-      if (file.size > maxMB * 1024 * 1024) return reject(new Error(`图片请小于 ${maxMB} MB`));
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = () => reject(new Error('图片读取失败，请重新选择'));
-      reader.readAsDataURL(file);
-    });
-  }
+  async function fileData(file){return P().uploadImage(file);}
 
   // Layout measured from CoderMikeHe/WeChat (MIT), MHConstant.m,
   // MHMomentProfileView.m and MHMomentCommentToolView.m, master 52e0aad5.
@@ -378,8 +369,10 @@
       input.addEventListener('change', () => run(async () => {
         const file = input.files[0];
         if (!file || !isCurrent()) return;
-        const cover = await window.PipiLifeCrop.pick(file, 'cover', {isCurrent, parent:detail, cardGuide:false});
-        if (!cover || !isCurrent() || savingMomentCovers.has(ownerId)) return;
+        const cropped = await window.PipiLifeCrop.pick(file, 'cover', {isCurrent, parent:detail, cardGuide:false});
+        if(!cropped||!isCurrent())return;
+        const cover=await P().uploadImageData(cropped);
+        if (!isCurrent() || savingMomentCovers.has(ownerId)) return;
         savingMomentCovers.add(ownerId);
         change.disabled = true;
         try {
@@ -764,7 +757,7 @@
       const button = form.querySelector('.wallet-pay-confirm');
       button.disabled = true; button.textContent = '发送中…';
       try {
-        await P().act('wallet.transfer', { roleId: recipient.id, amountCents, type: isRedpacket ? 'redpacket' : 'transfer', requestId: id, note, ...(stickerImage ? { stickerImage } : {}) });
+        await P().act('wallet.transfer', { roleId: recipient.id, amountCents, type: isRedpacket ? 'redpacket' : 'transfer', requestId: id, note, ...(stickerImage ? { stickerImage:await P().uploadImageData(stickerImage) } : {}) });
         if (options.fromChat) P().scrollChatToBottom?.(recipient.id);
         if (form.isConnected) {
           closePage(false);
@@ -887,7 +880,7 @@
     on('[data-packet-upload]', 'change', event => run(async () => {
       const fileInput = event.currentTarget, files = [...fileInput.files]; fileInput.value = ''; if (!files.length) return;
       const images=[];
-      for(const file of files)images.push(await P().readImage(file,true));
+      for(const file of files)images.push(await P().uploadImage(file,true));
       await P().act('sticker.add', { images, names:files.map(file=>file.name.replace(/\.[^.]+$/,'').slice(0,100)) });
       if (form.isConnected) { stickerTab = 'favorites'; drawStickers(); }
     }), stickerPanel);

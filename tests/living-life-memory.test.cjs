@@ -158,7 +158,10 @@ test('voice dual-track VOICE_TAGS, strip on text bubbles, 503 history recovery, 
 
   // First call hits 503 + history-item-id recovery + writes disk cache
   const a1=await P.speak(s,'[轻笑]早安',{voice:'v-sweet',dataDir:dir});
-  assert.match(a1,/^data:audio\/mpeg;base64,/);
+  assert.match(a1,/^\/api\/media\/[a-f0-9]{64}\.mp3$/);
+  assert.deepEqual(require('../lib/media-store.cjs').resolveAudioBytes(dir,a1).buffer,MP3);
+  const duration=require('../lib/provider-native.cjs').estimateAudioDurationMs(a1,'早安',{dataDir:dir});
+  assert.ok(duration>=1000&&duration<=600000);
   assert.equal(ttsHits,1);
 
   // Second identical call serves from 7-day disk cache without upstream request

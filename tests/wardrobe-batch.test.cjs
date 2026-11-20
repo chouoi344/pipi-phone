@@ -70,10 +70,16 @@ test('API recognition returns an unsaved draft and confirmation imports once for
   const endpoint='/api/engine/schedule',draft=await request(endpoint,{roleId:first,action:'identifyWardrobe',image:png});
   assert.equal(draft.status,200,JSON.stringify(draft));
   assert.deepEqual(draft.item,{description:'白色衬衫与长裤',category:'外出',seasons:['春','秋']});
-  assert.deepEqual(draft.view.wardrobe,[]);assert.equal(fs.existsSync(path.join(dataDir,'media')),false);assert.equal(calls.length,1);
+  assert.deepEqual(draft.view.wardrobe,[]);assert.equal(calls.length,1);
+  const mediaDir=path.join(dataDir,'media'),draftFiles=fs.readdirSync(mediaDir);
+  assert.equal(draftFiles.length,1);
+  assert.deepEqual(fs.readFileSync(path.join(mediaDir,draftFiles[0])),Buffer.from(png.split(',')[1],'base64'));
   const revision=draft.state.revision;
   const invalid=await request(endpoint,{roleId:first,action:'importWardrobe',items:[outfit(),{...outfit(),category:'错误'}]});
-  assert.equal(invalid.status,400);assert.equal(fs.existsSync(path.join(dataDir,'media')),false);
+  assert.equal(invalid.status,400);assert.deepEqual(fs.readdirSync(mediaDir),draftFiles);
+  const afterInvalid=await request(endpoint+'?roleId='+first);
+  assert.deepEqual(afterInvalid.view.wardrobe,[]);
+  assert.equal((await request('/api/state')).revision,revision);
   const confirmed=await request(endpoint,{roleId:first,action:'importWardrobe',items:[outfit(),outfit(),outfit(anotherPng)]});
   assert.equal(confirmed.status,200,JSON.stringify(confirmed));assert.deepEqual(confirmed.result,{added:2,duplicates:1});assert.equal(confirmed.state.revision,revision+1);
   assert.equal(confirmed.view.wardrobe.length,2);

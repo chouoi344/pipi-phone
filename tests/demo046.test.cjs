@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const {createDemo}=require('../scripts/demo.cjs');
+const {createDemo,PASSWORD}=require('../scripts/demo.cjs');
+const fs=require('node:fs'),path=require('node:path');
 test('demo samples exercise saved voice transcription and native-style quote snapshots through real APIs',async t=>{
   const demo=await createDemo({appPort:0,providerPort:0});t.after(()=>demo.close());
   const control=async(route,body,origin=demo.controlUrl)=>{const response=await fetch(demo.controlUrl+route,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return {status:response.status,body:await response.json()};};
@@ -15,7 +16,11 @@ test('demo samples exercise saved voice transcription and native-style quote sna
   assert.equal((await control('/demo/samples')).body.alreadyPrepared,true);
   assert.equal((await demo.request('/api/state')).body.messages.length,prepared.messages.length);
   const sample=id=>prepared.messages.find(m=>m.id==='demo046-'+id);
-  assert.match(sample('voice-fresh').meta.audio,/^data:audio\/mpeg;base64,/);
+  const audio=sample('voice-fresh').meta.audio;assert.match(audio,/^\/api\/media\/[a-f0-9]{64}\.mp3$/);
+  const login=await fetch(demo.appUrl+'/api/login',{method:'POST',headers:{Origin:demo.appUrl,'Content-Type':'application/json'},body:JSON.stringify({password:PASSWORD})});
+  assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0];
+  const media=await fetch(demo.appUrl+audio,{headers:{Cookie:cookie}});assert.equal(media.status,200);assert.equal(media.headers.get('content-type'),'audio/mpeg');
+  assert.deepEqual(Buffer.from(await media.arrayBuffer()),fs.readFileSync(path.join(__dirname,'../scripts/demo-assets/tone.mp3')));
   assert.equal(sample('voice-fresh').meta.transcript,undefined);
   assert.equal(sample('voice-cached').meta.transcriptSource,'demo');
   assert.equal(sample('reply-demo046-photo').meta.quote.image,sample('photo').content);

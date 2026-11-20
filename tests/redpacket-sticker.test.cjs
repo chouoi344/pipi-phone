@@ -59,21 +59,22 @@ test('isolated HTTP packet keeps its image after favorite deletion, restart, bac
   await start();ok(await request('/api/setup',{password}));const initial=await read(),roleId=initial.roles[0].id;
   ok(await action('sticker.add',{image:PNG}));const payload={roleId,amountCents:1234,type:'redpacket',note:'随红包保存',requestId:randomUUID(),stickerImage:PNG};
   let saved=ok(await action('wallet.transfer',payload)).state;const txId=saved.wallet.transactions.at(-1).id,messageId=saved.messages.find(m=>m.meta?.transactionId===txId).id;
-  assert.equal(saved.wallet.balanceCents,initial.wallet.balanceCents-1234);assert.equal(saved.wallet.transactions.at(-1).stickerImage,PNG);assert.equal(saved.messages.find(m=>m.id===messageId).meta.stickerImage,PNG);
+  const mediaUrl=saved.wallet.transactions.at(-1).stickerImage;assert.match(mediaUrl,/^\/api\/media\/[a-f0-9]{64}\.png$/);const imageResponse=await fetch(base+mediaUrl,{headers:{Cookie:cookie}});assert.equal(imageResponse.status,200);assert.deepEqual(Buffer.from(await imageResponse.arrayBuffer()),Buffer.from(PNG.split(',')[1],'base64'));assert.equal((await fetch(base+mediaUrl)).status,401);
+  assert.equal(saved.wallet.balanceCents,initial.wallet.balanceCents-1234);assert.equal(saved.wallet.transactions.at(-1).stickerImage,mediaUrl);assert.equal(saved.messages.find(m=>m.id===messageId).meta.stickerImage,mediaUrl);
   const repeated=ok(await action('wallet.transfer',payload)).state;assert.equal(repeated.wallet.balanceCents,saved.wallet.balanceCents);assert.equal(repeated.wallet.transactions.length,saved.wallet.transactions.length);
   for(const stickerImage of [GIF,undefined])assert.equal((await action('wallet.transfer',{...payload,stickerImage})).status,409);
-  ok(await action('sticker.delete',{id:saved.stickers[0].id}));saved=await read();assert.equal(saved.stickers.length,0);assert.equal(saved.wallet.transactions.at(-1).stickerImage,PNG);
+  ok(await action('sticker.delete',{id:saved.stickers[0].id}));saved=await read();assert.equal(saved.stickers.length,0);assert.equal(saved.wallet.transactions.at(-1).stickerImage,mediaUrl);
   for(const bad of [{stickerImage:null},{stickerImage:123},{stickerImage:'https://example.invalid/private.png'},{stickerImage:'data:image/png;base64,PHNjcmlwdD4='},{type:'transfer',stickerImage:PNG},{type:'transfer',stickerImage:''},{amountCents:20001}]){
     assert.equal((await action('wallet.transfer',{...payload,requestId:randomUUID(),...bad})).status,400);assert.deepEqual(await read(),saved);
   }
   await app.close();await start();ok(await request('/api/login',{password}));saved=await read();
-  assert.equal(saved.wallet.transactions.find(tx=>tx.id===txId).stickerImage,PNG);assert.equal(saved.messages.find(m=>m.id===messageId).meta.stickerImage,PNG);
+  assert.equal(saved.wallet.transactions.find(tx=>tx.id===txId).stickerImage,mediaUrl);assert.equal(saved.messages.find(m=>m.id===messageId).meta.stickerImage,mediaUrl);
   const backup=ok(await request('/api/backup'));
   for(const change of [b=>delete b.state.wallet.transactions.find(tx=>tx.id===txId).stickerImage,b=>delete b.state.messages.find(m=>m.id===messageId).meta.stickerImage,b=>b.state.wallet.transactions.find(tx=>tx.id===txId).stickerImage=GIF,b=>b.state.messages.find(m=>m.id===messageId).meta.stickerImage='https://example.invalid/image',b=>b.state.wallet.transactions.find(tx=>tx.id===txId).type='transfer']){
     const invalid=structuredClone(backup);change(invalid);assert.equal((await request('/api/restore',{backup:invalid,confirm:true})).status,400);assert.deepEqual(await read(),saved);
   }
   ok(await action('conversation.clear',{roleId}));assert.equal((await read()).messages.some(m=>m.id===messageId),false);
-  ok(await request('/api/restore',{backup,confirm:true}));saved=await read();assert.equal(saved.wallet.transactions.find(tx=>tx.id===txId).stickerImage,PNG);assert.equal(saved.messages.find(m=>m.id===messageId).meta.stickerImage,PNG);
+  ok(await request('/api/restore',{backup,confirm:true}));saved=await read();assert.equal(saved.wallet.transactions.find(tx=>tx.id===txId).stickerImage,mediaUrl);assert.equal(saved.messages.find(m=>m.id===messageId).meta.stickerImage,mediaUrl);
   const legacy=structuredClone(backup);delete legacy.state.wallet.transactions.find(tx=>tx.id===txId).stickerImage;delete legacy.state.messages.find(m=>m.id===messageId).meta.stickerImage;
   ok(await request('/api/restore',{backup:legacy,confirm:true}));assert.equal(Object.hasOwn((await read()).wallet.transactions.find(tx=>tx.id===txId),'stickerImage'),false);
 });

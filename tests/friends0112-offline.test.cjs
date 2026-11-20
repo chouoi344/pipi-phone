@@ -26,7 +26,7 @@ function forms(origin='chats'){
     function openModal(title,html,submit,label){pages.push({title,html,submit,label});}function bindAvatar(){}function closeModal(){}function refresh(){}
     function formValues(form){return form.values;}async function act(type,payload){calls.push({type,payload});if(payload.id)Object.assign(role,payload);else state.roles.push({id:'new',...payload});}
     function toast(message){notices.push(message);}function showView(name,arg){navigations.push({name,arg});}
-    const profileImageAccept='image/png';let imageReader=async file=>file.image;async function readProfileImage(file){return imageReader(file);}
+    const profileImageAccept='image/png';let imageReader=async file=>file.image;async function uploadProfileImage(file){return imageReader(file);}
     ${productFunction('bindProfileImage')}${productFunction('editRole')}${productFunction('checkWechatId')}
     globalThis.ui={editRole,setReader(fn){imageReader=fn;},state};`,scope);
   return {ui:scope.ui,role,calls,pages,navigations,notices,pick,file,value,submit};
@@ -82,7 +82,7 @@ test('settings offer a direct usage route and both duplicate moments management 
 function stickers(routeName='stickers'){
   const calls=[],notices=[],renders=[],file={files:[],disabled:false,isConnected:true,value:'selected'};
   const scope=vm.createContext({calls,notices,renders});vm.runInContext(`const state={stickers:[]};let route={name:'${routeName}'},composeText='unfinished draft',composeImage='draft-image',quoteId='quote';
-    let read=async file=>{if(file.error)throw new Error(file.error);return file.image;};async function readImage(file){return read(file);}
+    let read=async file=>{if(file.error)throw new Error(file.error);return file.image;};async function uploadImage(file){return read(file);}
     let save=async(type,payload)=>{calls.push({type,payload});};async function act(type,payload){await save(type,payload);for(const image of payload.images)if(!state.stickers.some(sticker=>sticker.image===image))state.stickers.push({id:'sticker-'+state.stickers.length,image});}
     function toast(message){notices.push(message);}function refresh(){renders.push('page');}function updateComposer(){renders.push('composer');}
     ${productFunction('uploadStickers')}

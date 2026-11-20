@@ -695,10 +695,9 @@
     if(input)input.onchange=()=>task(async()=>{
       const file=input.files[0],fieldKey=targetField;
       input.value='';if(!file||!fieldKey)return;
-      const raw=await P().readProfileImage(file);
-      const uploaded=await P().api('/api/media/upload',{image:raw});
+      const url=await P().uploadProfileImage(file,{requireUrl:true});
       const current=state().roles.find(r=>r.id===roleId);
-      const next=[...(current[fieldKey]||[]),uploaded.url].slice(0,3);
+      const next=[...(current[fieldKey]||[]),url].slice(0,3);
       await P().act('role.save',{id:roleId,[fieldKey]:next});
       P().refresh();P().toast('参考图已上传');
     });

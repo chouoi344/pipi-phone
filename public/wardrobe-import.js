@@ -140,6 +140,8 @@
       try{
         if(!row.image){row.status='compressing';updateRow(row);Object.assign(row,await compress(row.file));}
         if(!active||!root.isConnected||!rows.includes(row))return;
+        row.image=await P().uploadImageData(row.image);
+        if(!active||!root.isConnected||!rows.includes(row))return;
         row.status='recognizing';updateRow(row);
         const result=await P().api('/api/engine/schedule',{roleId,action:'identifyWardrobe',image:row.image});
         if(!active||!root.isConnected||!rows.includes(row))return;

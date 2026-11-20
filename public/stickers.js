@@ -56,6 +56,7 @@
     for(const s of selected){
       let images;
       try{images=await animationFrames(s.image);}catch(error){P().toast('动图读取失败，可手动填写含义');}
+      if(images)images=await Promise.all(images.map(frame=>P().uploadImageData(frame)));
       const bytes=images?.reduce((sum,frame)=>sum+frame.length,0)||0;
       if(ids.length&&size+bytes>8*1024*1024)await submit();
       ids.push(s.id);if(images)frames[s.id]=images;size+=bytes;

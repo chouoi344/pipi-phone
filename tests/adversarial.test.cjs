@@ -11,6 +11,11 @@ const {createApp}=require('../scripts/sample-data.cjs');
 const PASSWORD='Adversarial-only-Password_2026!';
 const SECRET='TEST_ONLY_NEVER_A_REAL_PROVIDER_KEY_9f2c';
 const PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBHoAAAAASUVORK5CYII=';
+function wavFixture(sample=0){
+  const payload=Buffer.from('524946462600000057415645666d74201000000001000100401f0000803e00000200100064617461020000000000','hex');
+  payload.writeInt16LE(sample,44);
+  return 'data:audio/wav;base64,'+payload.toString('base64');
+}
 
 test('local fonts: correct MIME and conditional caching without caching private state',async t=>{
   const f=await fixture(t);
@@ -48,7 +53,7 @@ test('native profile: avatar pats distinguish self/contact; star and pat setting
 test('stickers: safe images deduplicate, persist across restart/restore and delete without touching favorites',async t=>{
   const f=await fixture(t);const favorites=(await f.state()).favorites;
   ok(await f.action('sticker.add',{image:PNG}));let s=await f.state();const first=s.stickers.at(-1);
-  assert.equal(first.image,PNG);assert.ok(first.id);assert.ok(first.createdAt);
+  await checkMedia(f,first.image,PNG,'png');assert.ok(first.id);assert.ok(first.createdAt);
   ok(await f.action('sticker.add',{image:PNG}));assert.equal((await f.state()).stickers.length,s.stickers.length,'same image must not duplicate');
   await f.restart();ok(await f.request('/api/login',{password:PASSWORD}));assert.deepEqual((await f.state()).stickers,s.stickers);
   const saved=await backup(f);ok(await f.action('sticker.delete',{id:first.id}));assert.deepEqual((await f.state()).favorites,favorites);
@@ -127,6 +132,12 @@ async function fixture(t,{privateProviders=true,setup=true,password=PASSWORD}={}
 }
 function ok(r){assert.equal(r.status>=200&&r.status<300,true,`${r.status}: ${r.text?.slice(0,600)}`);assert.ok(r.json,'JSON response required');return r.json;}
 function rejected(r,context=''){assert.equal(r.status>=400&&r.status<500,true,`${context} ${r.status}: ${r.text?.slice(0,600)}`);assert.ok(r.json?.error,'structured error required');}
+async function checkMedia(f,reference,expected,extension){
+  assert.match(reference,new RegExp('^/api/media/[a-f0-9]{64}\\.'+extension+'$'));
+  const response=await fetch(f.base+reference,{headers:{Cookie:f.cookie}});
+  assert.equal(response.status,200);
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()),Buffer.from(expected.split(',')[1],'base64'));
+}
 const withPersonaRevisions=roles=>roles.map(role=>({...role,personaRevision:role.personaRevision??0}));
 async function settled(f,messageId,status='sent',timeout=5000){
   const deadline=Date.now()+timeout;
@@ -424,7 +435,7 @@ test('native conversation deletion clears only conversation and survives backup 
 
 test('cover images and comment reply targets validate atomically and persist',async t=>{
   const f=await fixture(t);
-  ok(await f.action('profile.save',{cover:PNG}));assert.equal((await f.state()).profile.cover,PNG);
+  ok(await f.action('profile.save',{cover:PNG}));await checkMedia(f,(await f.state()).profile.cover,PNG,'png');
   const profileBefore=(await f.state()).profile;
   for(const cover of ['data:image/png;base64,PHNjcmlwdD4=', 'https://remote.invalid/a.png','data:image/png;base64,@@@']){
     rejected(await f.action('profile.save',{cover}));assert.deepEqual((await f.state()).profile,profileBefore);
@@ -435,17 +446,18 @@ test('cover images and comment reply targets validate atomically and persist',as
   ok(await f.action('moment.create',{content:'OTHER_MOMENT',visibility:[]}));s=await f.state();const other=s.moments.at(-1).id;
   rejected(await f.action('moment.comment',{id:other,content:'CROSS_MOMENT_REPLY',replyTo:comment.id}));
   const corrupt=await backup(f);corrupt.state.moments.find(x=>x.id===other).comments.push({...reply,id:randomUUID()});const before=await f.state();rejected(await f.request('/api/restore',{backup:corrupt,confirm:true}));assert.deepEqual(await f.state(),before);
-  const saved=await backup(f);ok(await f.request('/api/restore',{backup:saved,confirm:true}));assert.equal((await f.state()).profile.cover,PNG);
+  const saved=await backup(f);ok(await f.request('/api/restore',{backup:saved,confirm:true}));assert.equal((await f.state()).profile.cover,profileBefore.cover);await checkMedia(f,profileBefore.cover,PNG,'png');
 });
 
 test('voice failure retains playable source and explicit retry sends transcript exactly once',async t=>{
-  const f=await fixture(t),m=await mock(t),roleId=f.initial.roles[0].id,audio='data:audio/webm;base64,AQID';
+  const f=await fixture(t),m=await mock(t),roleId=f.initial.roles[0].id,audio=wavFixture();
   const payload={roleId,audio,durationMs:1200,requestId:randomUUID()};
   const assistantBefore=(await f.state()).messages.filter(x=>x.sender==='assistant').length;
   const failed=await f.request('/api/chat',payload);ok(failed);assert.equal(failed.json.accepted,true);
-  let s=await settled(f,failed.json.messageId,'error'),voice=s.messages.find(x=>x.meta?.audio===audio);assert.ok(voice);assert.equal(voice.type,'voice');assert.equal(voice.status,'error');assert.equal(voice.meta.durationMs,1200);assert.equal(s.messages.filter(x=>x.sender==='assistant').length,assistantBefore);
+  let s=await settled(f,failed.json.messageId,'error'),voice=s.messages.find(x=>x.id===failed.json.messageId);const reference=voice.meta.audio;
+  await checkMedia(f,reference,audio,'wav');assert.equal(voice.type,'voice');assert.equal(voice.status,'error');assert.equal(voice.meta.durationMs,1200);assert.equal(s.messages.filter(x=>x.sender==='assistant').length,assistantBefore);
   await configure(f,m,'stt');await configure(f,m,'chat');ok(await chat(f,'/api/chat/retry',{messageId:voice.id}));
-  s=await f.state();voice=s.messages.find(x=>x.id===voice.id);assert.equal(voice.meta.audio,audio);assert.equal(voice.meta.transcript,'MOCK_VOICE_TRANSCRIPT');assert.equal(voice.status,'sent');
+  s=await f.state();voice=s.messages.find(x=>x.id===voice.id);assert.equal(voice.meta.audio,reference);assert.equal(voice.meta.transcript,'MOCK_VOICE_TRANSCRIPT');assert.equal(voice.status,'sent');
   assert.equal(m.requests.filter(x=>x.url.endsWith('/audio/transcriptions')).length,1);assert.ok(JSON.stringify(m.requests.find(x=>x.url.endsWith('/chat/completions')).body).includes('MOCK_VOICE_TRANSCRIPT'));
   rejected(await f.request('/api/chat/retry',{messageId:voice.id}));assert.equal(m.requests.filter(x=>x.url.endsWith('/audio/transcriptions')).length,1);
   const before=await f.state();for(const patch of [{durationMs:0},{durationMs:1.2},{durationMs:600001},{audio:'data:audio/webm;base64,@@@@'},{audio:'data:text/html;base64,AQID'},{text:'must not mix'}])rejected(await f.request('/api/chat',{...payload,...patch,requestId:randomUUID()}));assert.deepEqual(await f.state(),before);
@@ -453,12 +465,12 @@ test('voice failure retains playable source and explicit retry sends transcript 
 
 test('voice idempotency includes source audio and ordinary message deletion stays rejected while busy',async t=>{
   const f=await fixture(t),m=await mock(t),roleId=f.initial.roles[0].id;await configure(f,m,'stt');await configure(f,m,'chat');
-  const payload={roleId,audio:'data:audio/webm;base64,AQID',durationMs:1000,requestId:randomUUID()};
+  const payload={roleId,audio:wavFixture(),durationMs:1000,requestId:randomUUID()};
   m.setMode('delay');const pending=await f.request('/api/chat',payload);ok(pending);await m.wait();
-  try{assert.equal((await f.action('message.delete',{id:pending.json.messageId})).status,409);assert.equal((await f.request('/api/chat',{...payload,audio:'data:audio/webm;base64,BAUG'})).status,409);}finally{m.release();}
+  try{assert.equal((await f.action('message.delete',{id:pending.json.messageId})).status,409);assert.equal((await f.request('/api/chat',{...payload,audio:wavFixture(42)})).status,409);}finally{m.release();}
   // Subsequent chat request must not wait behind a second artificial delayed stage.
   m.setMode('normal');await settled(f,pending.json.messageId);ok(await f.request('/api/chat',payload));
-  const s=await f.state();assert.equal(s.messages.filter(x=>x.meta?.audio===payload.audio).length,1);assert.equal(m.requests.filter(x=>x.url.endsWith('/audio/transcriptions')).length,1);
+  const s=await f.state(),voices=s.messages.filter(x=>x.roleId===roleId&&x.type==='voice');assert.equal(voices.length,1);await checkMedia(f,voices[0].meta.audio,payload.audio,'wav');assert.equal(m.requests.filter(x=>x.url.endsWith('/audio/transcriptions')).length,1);
 });
 
 test('quoted messages reject cross-role references and preserve detached snapshots',async t=>{
@@ -478,10 +490,10 @@ test('quoted messages reject cross-role references and preserve detached snapsho
 
 test('favorited voice keeps source across conversation deletion, backup and replay',async t=>{
   const f=await fixture(t),m=await mock(t);await configure(f,m,'stt');await configure(f,m,'chat');const roleId=f.initial.roles[0].id;
-  const payload={roleId,audio:'data:audio/webm;base64,AQID',durationMs:900,requestId:randomUUID()};ok(await chat(f,'/api/chat',payload));
-  let s=await f.state();const voice=s.messages.find(x=>x.meta?.audio===payload.audio);ok(await f.action('message.favorite',{id:voice.id}));
-  ok(await f.action('conversation.delete',{roleId}));s=await f.state();const favorite=s.favorites.find(x=>x.meta?.audio===payload.audio);assert.ok(favorite);assert.ok(!favorite.messageId);assert.equal(favorite.meta.transcript,'MOCK_VOICE_TRANSCRIPT');
+  const payload={roleId,audio:wavFixture(),durationMs:900,requestId:randomUUID()};ok(await chat(f,'/api/chat',payload));
+  let s=await f.state();const voice=s.messages.find(x=>x.roleId===roleId&&x.type==='voice'),reference=voice.meta.audio;ok(await f.action('message.favorite',{id:voice.id}));
+  ok(await f.action('conversation.delete',{roleId}));s=await f.state();const favorite=s.favorites.find(x=>x.meta?.audio===reference);assert.ok(favorite);assert.ok(!favorite.messageId);assert.equal(favorite.meta.transcript,'MOCK_VOICE_TRANSCRIPT');await checkMedia(f,reference,payload.audio,'wav');
   ok(await f.request('/api/chat',payload));assert.equal((await f.state()).messages.some(x=>x.roleId===roleId),false,'replay cannot resurrect deleted conversation');
-  assert.equal((await f.request('/api/chat',{...payload,audio:'data:audio/webm;base64,BAUG'})).status,409);
-  const saved=await backup(f);ok(await f.request('/api/restore',{backup:saved,confirm:true}));assert.equal((await f.state()).favorites.find(x=>x.id===favorite.id).meta.audio,payload.audio);
+  assert.equal((await f.request('/api/chat',{...payload,audio:wavFixture(42)})).status,409);
+  const saved=await backup(f);ok(await f.request('/api/restore',{backup:saved,confirm:true}));assert.equal((await f.state()).favorites.find(x=>x.id===favorite.id).meta.audio,reference);await checkMedia(f,reference,payload.audio,'wav');
 });

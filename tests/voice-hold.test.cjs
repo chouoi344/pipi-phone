@@ -9,7 +9,7 @@ const source = fs.readFileSync(path.join(__dirname, '../public/app.js'), 'utf8')
 const turn = () => new Promise(resolve => setImmediate(resolve));
 const funcs = ['startRecording','stopRecording','finishRecording','releaseMicrophone','releaseRecordingSession','applyDictationTranscript'];
 function fixture({enabled=['voiceUnderstanding','stt'], microphone, recognize=async()=>({text:'到了'})} = {}) {
-  const calls=[], notices=[], tracks=[], timers=new Set();
+  const calls=[],uploads=[], notices=[], tracks=[], timers=new Set();
   let time=1000;
   class Recorder {
     constructor(stream){this.stream=stream;this.mimeType='audio/webm';this.state='inactive';}
@@ -28,12 +28,13 @@ function fixture({enabled=['voiceUnderstanding','stt'], microphone, recognize=as
     Date:{now:()=>time}, Blob,FileReader:Reader,MediaRecorder:Recorder,crypto:require('node:crypto').webcrypto,
     view:{querySelector(){return null;}},document:{hidden:false},syncComposerControls(){},refresh(){},receiveState(){},
     setTimeout(fn){timers.add(fn);return fn;},clearTimeout(fn){timers.delete(fn);},
+    async apiRaw(url,blob){uploads.push({url,blob});return {url:'/api/media/'+'a'.repeat(64)+'.wav'};},
     async api(url,body){calls.push([url,JSON.parse(JSON.stringify(body))]);return url==='/api/voice/transcribe'?recognize():{state:{}};},
     toast:text=>notices.push(text)
   });
   vm.runInContext(
-    "let recordingSession=null,dictationBusy=false,sending=false,composeComposing=false,composeText='已有草稿',composeImage='',quoteId='q1',forceBottomRole='',pendingRender=false;let route={name:'chat',arg:'alice'};const state={messages:[{id:'q1',roleId:'alice'}]};"+
-    source.match(/^  function quotedMessage.*$/m)[0]+'\n'+
+    "let binaryMedia=true;let recordingSession=null,dictationBusy=false,sending=false,composeComposing=false,composeText='已有草稿',composeImage='',quoteId='q1',forceBottomRole='',pendingRender=false;let route={name:'chat',arg:'alice'};const state={messages:[{id:'q1',roleId:'alice'}]};"+
+    source.match(/^  function quotedMessage.*$/m)[0]+'\n'+source.match(/^  async function uploadMedia.*$/m)[0]+'\n'+
     funcs.map(name=>{
       const begin=source.match(new RegExp('^  (?:async )?function '+name+'\\(','m')).index;
       const end=source.indexOf('\n  }',begin);
@@ -45,7 +46,7 @@ function fixture({enabled=['voiceUnderstanding','stt'], microphone, recognize=as
     const ready=scope.testUI.begin({signal:ctl.signal,dismiss(){state.dismissed=true;},capped(){state.capped=true;}});
     return {ready,state,cancel:()=>ctl.abort()};
   },leave:scope.testUI.leave,draft:()=>[...scope.testUI.draft()],session:scope.testUI.session,
-  advance:(ms=900)=>{time+=ms;},cap:()=>{for(const f of [...timers])f();},calls,notices,tracks};
+  advance:(ms=900)=>{time+=ms;},cap:()=>{for(const f of [...timers])f();},calls,uploads,notices,tracks};
 }
 test('hold: voice and send-as-text each need only their own model, preserve quoted draft',async()=>{
   for(const [choice,purpose,expected] of [['voice','voiceUnderstanding',['/api/chat/send']],['text','stt',['/api/voice/transcribe','/api/chat']]]){
@@ -53,7 +54,7 @@ test('hold: voice and send-as-text each need only their own model, preserve quot
     assert.deepEqual(f.calls,[]);f.advance();control.stop(choice);await turn();
     assert.deepEqual(f.calls.map(([url])=>url),expected);
     const msg=f.calls.at(-1)[1];assert.equal(msg.roleId,'alice');assert.equal(msg.quoteId,'q1');
-    if(choice==='voice'){assert.equal(msg.durationMs,900);assert.ok(msg.audio);assert.equal(msg.text,undefined);}
+    if(choice==='voice'){assert.equal(msg.durationMs,900);assert.ok(msg.audio);assert.equal(msg.text,undefined);assert.match(msg.audio,/^\/api\/media\/[a-f0-9]{64}\.wav$/);assert.equal(f.uploads.length,1);assert.ok(f.uploads[0].blob instanceof Blob);}
     else{assert.equal(msg.text,'到了');assert.equal(msg.audio,undefined);}
     assert.deepEqual(f.draft(),['已有草稿','q1']);assert.equal(f.session(),null);
   }

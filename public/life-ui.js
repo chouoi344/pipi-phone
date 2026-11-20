@@ -56,7 +56,7 @@
         <h3>日程与穿搭</h3>
         <input type="checkbox" role="switch" aria-label="开启日程" data-life-field="enabled" ${enabled?'checked':''}>
       </div>
-      ${window.PipiSchedule.renderSleepProfile(value(ui,'schedule','sleepProfile',d.schedule.settings.sleepProfile))}
+      ${d.schedule.settings.sleepProfile===undefined?'':window.PipiSchedule.renderSleepProfile(value(ui,'schedule','sleepProfile',d.schedule.settings.sleepProfile))}
       <div class="life-schedule-overview"><h4>此刻的生活</h4>${currentLife(d.schedule)}</div>
       <button type="button" class="life-now-outfit" data-life-action="viewTimeline" aria-haspopup="dialog">
         <span>查看全天日程</span><i aria-hidden="true"></i>
@@ -620,7 +620,7 @@
         try{
           const isCurrent=()=>document.querySelector('[data-life-root]')?.dataset.lifeRoot===id && ui.category==='basic';
           const cropped=await window.PipiLifeCrop.pick(file,key,{isCurrent});
-          if(cropped && isCurrent())ui.draft['basic.'+key]=cropped;
+          if(cropped && isCurrent()){const url=await P().uploadImageData(cropped);if(isCurrent())ui.draft['basic.'+key]=url;}
         }
         catch(error){P().toast(error.message);}
         finally{

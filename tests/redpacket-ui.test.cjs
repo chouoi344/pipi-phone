@@ -43,7 +43,8 @@ function fixture(type='redpacket'){
   const document={activeElement:null,querySelector:selector=>selector==='#overlay > .page-editor .modal-form'?form:form?.querySelector(selector),querySelectorAll:selector=>form?.querySelectorAll(selector)||[]};env.document=document;
   const P={getState:()=>data,icons:{},esc:value=>String(value??''),avatar:()=>'',toast:message=>notices.push(message),refresh(){},closePage(){form.connected=false;},goBack(){},
     openPage(_title,html,submit){form=new Element('form',{},env);form.innerHTML='<div class="modal-header"></div>'+html;form.addEventListener('submit',async event=>{event.preventDefault();await submit(form);});},
-    readImage:async file=>{reads.push(file.name);if(file.error)throw new Error(file.error);return file.image;},
+    uploadImageData:async image=>image,
+    uploadImage:async file=>{reads.push(file.name);if(file.error)throw new Error(file.error);return file.image;},
     act:async(type,payload)=>{calls.push({type,payload});if(actError)throw new Error(actError);if(type==='sticker.add')for(const image of payload.images)data.stickers.push({id:'new-'+data.stickers.length,image});},openChildDialog:()=>true,closeChildDialog(){}};
   const context=vm.createContext({window:{Pipi:P},document,crypto:{randomUUID:()=> 'isolated-ui-request'},Event:UIEvent,FormData:class{constructor(form){this.form=form;}get(key){return this.form.elements[key]?.value??null;}},setTimeout,clearTimeout,setInterval,clearInterval,AbortController});
   vm.runInContext(source,context);context.window.PipiFeatures.transfer(type,'friend');

@@ -33,9 +33,12 @@ test('衣柜稳定编辑、去重、不截断；历史快照与选择独立',()=
   assert.equal(D.removeItem(items,'w0').length,80);assert.equal(snapshot.outdoor.id,'w0');
   const selected=D.selectWardrobeOutfits(items,{tempMin:12,tempMax:20},new Set(['w0']),day,()=>0);assert.equal(selected.outdoor.id,'w1');
 });
-test('衣服图片拒绝外部路径、GIF和假图片，不落原始dataURI',()=>{
+test('衣服图片拒绝外部路径、GIF和假图片，不落原始dataURI',t=>{
   for(const image of ['C:\\private.png','https://example.org/image.png','data:image/gif;base64,R0lGODlh','data:image/png;base64,YWJj'])assert.throws(()=>D.normalizeImage(image,{dataDir:'unused'}));
-  assert.equal(D.normalizeImage('/api/media/'+'a'.repeat(64)+'.png'),'/api/media/'+'a'.repeat(64)+'.png');
+  const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),Media=require('../lib/media-store.cjs');
+  const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'pipi-wardrobe-image-'));t.after(()=>fs.rmSync(dataDir,{recursive:true,force:true}));
+  const image=Media.saveImage(dataDir,'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ1kAAAAASUVORK5CYII=');
+  assert.equal(D.normalizeImage(image,{dataDir}),image);assert.throws(()=>D.normalizeImage('/api/media/'+'a'.repeat(64)+'.png',{dataDir}),/无法读取/);
 });
 test('衣柜优先使用指定图片转述模型，返回待确认草稿且不改聊天模型',async()=>{
   const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),M=require('../lib/engine/models.cjs');

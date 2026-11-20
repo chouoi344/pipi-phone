@@ -4,7 +4,7 @@ const {sampleState}=require('../scripts/sample-data.cjs');
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const S=require('../lib/state.cjs'),AI=require('../lib/providers.cjs'),P=require('../lib/engine/pipeline.cjs'),R=require('../lib/engine/registry.cjs'),Runtime=require('../lib/engine/runtime.cjs');
 const {createApp}=require('../scripts/sample-data.cjs');
-const audio='data:audio/wav;base64,UklGRg==',understanding={text:'好吧',contentEmotion:'接受',voiceEmotion:'委屈'};
+const audio='data:audio/wav;base64,'+require('node:fs').readFileSync(path.join(__dirname,'../lib/engine/assets/model-test.wav')).toString('base64'),understanding={text:'好吧',contentEmotion:'接受',voiceEmotion:'委屈'};
 function voice(s){return S.message(s,s.roles[0],'user','','voice',{meta:{audio,durationMs:500},status:'sent'});}
 const backup=s=>({format:'pipi-phone',version:1,state:S.backupState(s)});
 test('voice metadata survives backup, individual/merged forwarding and model context',()=>{

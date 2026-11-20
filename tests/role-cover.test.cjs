@@ -13,21 +13,22 @@ test('friend cover is isolated, survives restart and backup, and rejects invalid
     const value=await res.json();if(res.headers.get('set-cookie'))cookie=res.headers.get('set-cookie').split(';')[0];if(value.csrfToken)csrf=value.csrfToken;
     return {status:res.status,value};
   }
+  async function assertImage(url){assert.match(url,/^\/api\/media\/[a-f0-9]{64}\.png$/);const response=await fetch(base+url,{headers:{Cookie:cookie}});assert.equal(response.status,200);assert.deepEqual(Buffer.from(await response.arrayBuffer()),Buffer.from(PNG.split(',')[1],'base64'));assert.equal((await fetch(base+url)).status,401);}
   t.after(async()=>{await app.close();assert.ok(path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(dir).startsWith('pipi-role-cover-'));fs.rmSync(dir,{recursive:true,force:true});});
   await start();assert.equal((await request('/api/setup',{password})).status,200);
   const before=(await request('/api/state')).value,friend=before.roles[0];
   assert.equal((await request('/api/action',{type:'role.save',payload:{id:friend.id,cover:PNG}})).status,200);
   assert.equal((await request('/api/action',{type:'role.save',payload:{id:friend.id,remark:'保留封面'}})).status,200);
   let saved=(await request('/api/state')).value;
-  assert.equal(saved.roles[0].cover,PNG);assert.equal(saved.profile.cover,before.profile.cover);assert.deepEqual(saved.roles[1],before.roles[1]);assert.equal(saved.roles[0].prompt,friend.prompt);
+  await assertImage(saved.roles[0].cover);assert.equal(saved.profile.cover,before.profile.cover);assert.deepEqual(saved.roles[1],before.roles[1]);assert.equal(saved.roles[0].prompt,friend.prompt);
   for(const cover of ['https://example.invalid/private.png','data:image/png;base64,PHNjcmlwdD4=']){
     assert.equal((await request('/api/action',{type:'role.save',payload:{id:friend.id,cover}})).status,400);
     assert.deepEqual((await request('/api/state')).value,saved);
   }
   await app.close();await start();assert.equal((await request('/api/login',{password})).status,200);
-  assert.equal((await request('/api/state')).value.roles[0].cover,PNG);
+  await assertImage((await request('/api/state')).value.roles[0].cover);
   const backup=(await request('/api/backup')).value;
   assert.equal((await request('/api/action',{type:'role.save',payload:{id:friend.id,cover:''}})).status,200);
   assert.equal((await request('/api/restore',{backup,confirm:true})).status,200);
-  assert.equal((await request('/api/state')).value.roles[0].cover,PNG);
+  await assertImage((await request('/api/state')).value.roles[0].cover);
 });

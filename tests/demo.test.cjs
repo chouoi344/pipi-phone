@@ -24,6 +24,14 @@ test('local demo uses real app HTTP, isolated persistence and protocol failures'
   const completed=async(patch={},timeout=5000)=>{const accepted=ok(await chat(patch));assert.equal(accepted.accepted,true);return reply(state,accepted,timeout);};
   const receipt='data:image/png;base64,'+(await readFile(path.join(__dirname,'../scripts/demo-assets/receipt.png'))).toString('base64');
   const audio='data:audio/mpeg;base64,'+(await readFile(path.join(__dirname,'../scripts/demo-assets/tone.mp3'))).toString('base64');
+  const login=await fetch(demo.appUrl+'/api/login',{method:'POST',headers:{Origin:demo.appUrl,'Content-Type':'application/json'},body:JSON.stringify({password:PASSWORD})});
+  assert.equal(login.status,200);const mediaCookie=login.headers.get('set-cookie').split(';')[0];
+  async function assertMedia(ref,original,mime){
+    assert.match(ref,/^\/api\/media\/[a-f0-9]{64}\.(png|mp3)$/);
+    const response=await fetch(demo.appUrl+ref,{headers:{Cookie:mediaCookie}});
+    assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),mime);
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()),Buffer.from(original.slice(original.indexOf(',')+1),'base64'));
+  }
   await t.test('preconfigured four capabilities and controls stay separate from real data',async()=>{
     await assert.rejects(createDemo({resumeDir:path.join(__dirname,'..')}),/只能恢复/);assert.match(demo.dataDir,/pipi-local-demo-/);assert.equal(initial.profile.name,'本地模型演示');
     const ai=initial.settings.ai,source=ai.sources.find(item=>item.id==='local-demo');assert.equal(source.keySet,true);assert.equal(source.key,undefined);assert.equal(source.baseUrl,demo.controlUrl+'/v1');for(const purpose of ['chat','caption','stt','tts'])assert.ok(ai.models.some(model=>model.id===ai.assign[purpose]));
@@ -37,7 +45,7 @@ test('local demo uses real app HTTP, isolated persistence and protocol failures'
   });
   await t.test('chat success is saved and idempotent; mixed image reaches vision provider',async()=>{
     const payload={text:'可持久保存的演示消息',requestId:randomUUID()},before=demo.provider.requests.length;let result=await completed(payload);assert.match(result.messages.at(-1).content,/^\[本地演示响应\]/);assert.equal(result.messages.at(-2).status,'sent');assert.equal((await state()).messages.at(-1).id,result.messages.at(-1).id);assert.deepEqual(ok(await chat(payload)).state.messages,result.messages);assert.equal(demo.provider.requests.length,before+1);
-    result=await completed({text:'请看这张演示图片',image:receipt});assert.equal(demo.provider.requests.at(-1).hasImage,true);assert.match(result.messages.at(-1).content,/不识别图片内容/);assert.equal(result.messages.at(-2).meta.image,receipt);
+    result=await completed({text:'请看这张演示图片',image:receipt});assert.equal(demo.provider.requests.at(-1).hasImage,true);assert.match(result.messages.at(-1).content,/不识别图片内容/);await assertMedia(result.messages.at(-2).meta.image,receipt,'image/png');
   });
   await t.test('receipt draft is parsed without writing; explicit save persists actual ledger',async()=>{
     const before=(await state()).ledger.length,result=ok(await demo.request('/api/ledger/recognize',{image:receipt}));assert.equal(result.drafts[0].amountCents,1250);assert.match(result.drafts[0].note,/固定演示草稿/);assert.equal((await state()).ledger.length,before);ok(await demo.request('/api/action',{type:'ledger.save',payload:result.drafts[0]}));assert.equal((await state()).ledger.at(-1).amountCents,1250);
@@ -48,7 +56,7 @@ test('local demo uses real app HTTP, isolated persistence and protocol failures'
     const listener={...speech,id:'local-demo-listener',model:'local-demo-listener'};
     ai.models.push(listener);ai.assign.voiceUnderstanding=listener.id;
     ok(await demo.request('/api/engine/models',{ai}));
-    const transcript=ok(await demo.request('/api/voice/transcribe',{audio}));assert.match(transcript.text,/本地演示转写/);assert.equal(demo.provider.requests.at(-1).multipart,true);const sent=await completed({text:'',audio,durationMs:450}),voice=sent.messages.at(-2);assert.equal(voice.type,'voice');assert.equal(voice.meta.audio,audio);assert.match(voice.meta.transcript,/本地演示转写/);const message=sent.messages.at(-1),spoken=ok(await demo.request('/api/voice/speak',{messageId:message.id}));assert.equal(spoken.audio,audio);assert.equal((await state()).messages.find(item=>item.id===message.id).meta.audio,audio);assert.ok(demo.provider.requests.at(-1).inputChars>0);
+    const transcript=ok(await demo.request('/api/voice/transcribe',{audio}));assert.match(transcript.text,/本地演示转写/);assert.equal(demo.provider.requests.at(-1).multipart,true);const sent=await completed({text:'',audio,durationMs:450}),voice=sent.messages.at(-2);assert.equal(voice.type,'voice');await assertMedia(voice.meta.audio,audio,'audio/mpeg');assert.equal(voice.meta.durationMs,450);assert.match(voice.meta.transcript,/本地演示转写/);const message=sent.messages.at(-1),spoken=ok(await demo.request('/api/voice/speak',{messageId:message.id}));await assertMedia(spoken.audio,audio,'audio/mpeg');assert.equal((await state()).messages.find(item=>item.id===message.id).meta.audio,spoken.audio);assert.ok(demo.provider.requests.at(-1).inputChars>0);
     const logs=ok(await demo.request('/api/engine/usage?range=all')).logs.items;
     for(const [purpose,name] of [['stt',speech.model],['voiceUnderstanding',listener.model],['tts',ai.models.find(model=>model.id===ai.assign.tts).model]]){
       assert.ok(logs.some(row=>row.purpose===purpose&&row.model===name&&row.success),purpose);

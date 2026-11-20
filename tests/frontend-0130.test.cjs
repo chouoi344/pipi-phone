@@ -38,7 +38,7 @@ test('F5: session drafts restore only existing friends and survive a disconnecte
  f.persistChatDrafts();f.state=null;f.persistChatDrafts();assert.ok(saved.get('pipi.chat-drafts'));f.state={};f.drafts.clear();f.composeText='';f.quoteId='';f.restoreChatDrafts();assert.equal(f.composeText,'当前草稿');assert.equal(f.quoteId,'q1');assert.equal(f.drafts.get('b').text,'另一个好友');
 });
 
-function sendFixture(api){const f=context(section(app,'  async function sendMessage(','  async function retryMessage('),{composeComposing:false,recordingSession:null,composeText:'失败文字',composeImage:'',composeStickerId:'',quoteId:'',composerSelection:{start:0,end:0},panel:'',route:{name:'chat',arg:'a'},roleById:()=>({id:'a'}),quotedMessage:()=>null,failedSends:new Map(),drafts:new Map(),composerHistories:new Map(),chatScrolls:new Map(),window:{PipiEngine:{resetActivity(){}}},updateComposer(){},api,receiveState(){},toast(){},refresh(){},persistChatDrafts(){},rememberComposerEdit(){},syncComposerDraft(){},view:{querySelector:()=>null},document:{activeElement:null}});return f;}
+function sendFixture(api){const f=context(section(app,'  async function sendMessage(','  async function retryMessage('),{composeComposing:false,recordingSession:null,composeText:'失败文字',composeImage:'',composeStickerId:'',quoteId:'',composerSelection:{start:0,end:0},panel:'',route:{name:'chat',arg:'a'},roleById:()=>({id:'a'}),quotedMessage:()=>null,failedSends:new Map(),drafts:new Map(),composerHistories:new Map(),chatScrolls:new Map(),window:{PipiEngine:{resetActivity(){}}},updateComposer(){},api,receiveState(){},toast(){},refresh(){},persistChatDrafts(){},rememberComposerEdit(){},syncComposerDraft(){},view:{querySelector:()=>null},document:{activeElement:null},uploadImageData:async image=>image});return f;}
 
 test('F6: a lost response restores before newer input and retry reuses its request ID',async()=>{
  const calls=[];let reject;const f=sendFixture((route,body)=>{calls.push(body);return calls.length===1?new Promise((_,r)=>reject=r):Promise.resolve({state:{}});});
@@ -61,7 +61,7 @@ test('F8: deleted, recalled and other-conversation quotes are rejected',()=>{
 
 test('F13: duplicate pictures consume no additional sticker slots',async()=>{
  let sent=0,message='';const state={stickers:Array.from({length:199},(_,i)=>({id:'s'+i,image:'img'+i}))};const file={files:[{name:'old.png',data:'img1'},{name:'new.png',data:'new'}],disabled:false,value:'chosen'};
- const f=context(section(app,'  async function uploadStickers','  function paintSpeech'),{state,route:{name:'other'},readImage:async file=>file.data,act:async(_,payload)=>{sent++;assert.equal(payload.images.length,2);state.stickers.push({id:'new',image:'new'});},toast:text=>message=text,refresh(){},updateComposer(){}});
+ const f=context(section(app,'  async function uploadStickers','  function paintSpeech'),{state,route:{name:'other'},uploadImage:async file=>file.data,act:async(_,payload)=>{sent++;assert.equal(payload.images.length,2);state.stickers.push({id:'new',image:'new'});},toast:text=>message=text,refresh(){},updateComposer(){}});
  await f.uploadStickers(file);assert.equal(sent,1);assert.match(message,/已添加 1 个表情，1 个重复/);file.files=[{name:'new2.png',data:'new2'}];await f.uploadStickers(file);assert.equal(sent,1);assert.match(message,/还能添加 0 张/);
 });
 

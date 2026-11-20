@@ -6,7 +6,7 @@ const {
 } =require('node:util'),{
   DatabaseSync
 } =require('node:sqlite');
-const S=require('./lib/state.cjs'),AI=require('./lib/providers.cjs');
+const S=require('./lib/state.cjs'),AI=require('./lib/providers.cjs'),Media=require('./lib/media-store.cjs');
 const Models=require('./lib/engine/models.cjs'),Registry=require('./lib/engine/registry.cjs'),Jobs=require('./lib/engine/scheduler.cjs'),Time=require('./lib/engine/time.cjs'),Runtime=require('./lib/engine/runtime.cjs');
 const Stickers=require('./lib/engine/stickers.cjs');
 const {createUpdateService}=require('./lib/updates.cjs');
@@ -61,6 +61,7 @@ function createApp(options={}){
       r.phone??='';
     }
     const defaults=S.defaults(state);
+    Object.defineProperty(defaults,Symbol.for('pipi.mediaDir'),{value:dataDir});
     if(options.lifePreview)Object.defineProperty(defaults,Symbol.for('pipi.lifePreview'),{value:true});
     return defaults;
   };
@@ -105,7 +106,8 @@ function createApp(options={}){
   function mutate(fn){
     const result=transaction(()=>{
       const json=storedJson(),state=S.limitBaseline(parse(json),Buffer.byteLength(json));
-      const value=fn(state);
+      const previous=Media.mediaSnapshot(state),value=fn(state);
+      Media.externalize(dataDir,state,{previous});
       checkProviderUrls(state);
       S.limit(state);
       state.revision++;
@@ -306,7 +308,7 @@ function createApp(options={}){
       return json(res,200,{
         setupRequired:!getMeta('password'),authenticated:!!auth,...(auth?{
           csrfToken:auth.csrf
-        }:{}),version:VERSION,sourceUrl,rolePanel:true,softwareUpdates:true
+        }:{}),version:VERSION,sourceUrl,rolePanel:true,softwareUpdates:true,binaryMedia:true
       });
     }
     if(req.method==='POST'&&(p==='/api/setup'||p==='/api/login')){
@@ -400,11 +402,28 @@ function createApp(options={}){
       return json(res,200,{jobs:Jobs.list(s,roleId,{includeHistory:u.searchParams.get('includeHistory')==='1'})});
     }
     if(req.method==='GET'&&p==='/api/engine/jobs/overview')return json(res,200,{friends:Jobs.overview(read())});
-    if(req.method==='GET'&&p.startsWith('/api/media/')){
-      const file=require('./lib/media-store.cjs').readImageFile(dataDir,p.slice('/api/media/'.length));
-      if(!file)S.fail('图片不存在',404,'NOT_FOUND');
-      res.writeHead(200,{'Content-Type':file.mime,'Content-Length':file.size,'Cache-Control':'private, max-age=604800, immutable','X-Content-Type-Options':'nosniff'});
-      return res.end(file.buffer);
+    if(['GET','HEAD'].includes(req.method)&&p.startsWith('/api/media/')){
+      const file=Media.describeMediaFile(dataDir,p.slice('/api/media/'.length));
+      if(!file)S.fail('媒体文件不存在',404,'NOT_FOUND');
+      const headers={'Content-Type':file.mime,'Cache-Control':'private, max-age=604800, immutable','X-Content-Type-Options':'nosniff','ETag':file.etag,'Accept-Ranges':'bytes'};
+      if(req.headers['if-none-match']===file.etag){res.writeHead(304,headers);res.end();return;}
+      let start=0,end=file.size-1,status=200;
+      const range=req.headers.range;
+      if(range&&(!req.headers['if-range']||req.headers['if-range']===file.etag)){
+        const match=range.match(/^bytes=(\d*)-(\d*)$/);
+        if(match&&(match[1]||match[2])){
+          if(match[1]){start=Number(match[1]);if(match[2])end=Math.min(end,Number(match[2]));}
+          else start=Math.max(0,file.size-Number(match[2]));
+        }
+        if(!match||!match[1]&&!match[2]||!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start>end||start>=file.size||!match[1]&&Number(match[2])===0){
+          res.writeHead(416,{...headers,'Content-Range':`bytes */${file.size}`,'Content-Length':0});res.end();return;
+        }
+        status=206;headers['Content-Range']=`bytes ${start}-${end}/${file.size}`;
+      }
+      res.writeHead(status,{...headers,'Content-Length':end-start+1});
+      if(req.method==='HEAD'){res.end();return;}
+      const stream=fs.createReadStream(file.path,{start,end});
+      res.on('close',()=>stream.destroy());stream.on('error',()=>res.destroy());stream.pipe(res);return;
     }
     if(req.method==='GET'&&p==='/api/engine/memory/state'){
       const s=read(),roleId=S.role(s,S.text(u.searchParams.get('roleId'),100)).id;
@@ -469,7 +488,12 @@ function createApp(options={}){
       return json(res,200,{result:resImport.value,state:S.publicState(resImport.state)});
     }
     if(req.method!=='POST')S.fail('接口不存在',404,'NOT_FOUND');
-    const b=await body(req,p==='/api/restore'?MAX_BACKUP_BYTES:(p==='/api/action'?64:20)*1024*1024);
+    if(p==='/api/media/upload'&&!String(req.headers['content-type']||'').toLowerCase().startsWith('application/json')){
+      rate('api:'+auth.hash,180,60000);
+      return json(res,200,{url:await Media.receiveUpload(dataDir,req)});
+    }
+    const b=await body(req,p==='/api/restore'?MAX_BACKUP_BYTES:(p==='/api/action'?64:32)*1024*1024);
+    if(p!=='/api/restore')Media.externalize(dataDir,b,{image:(value,field)=>S.image(value,false,field==='avatar'?'头像':field==='cover'?'朋友圈背景图':'')});
     rate('api:'+auth.hash,180,60000);
     switch(p){
       case '/api/backup':{
@@ -489,7 +513,7 @@ function createApp(options={}){
       case '/api/media/upload':{
         const validated=S.image(b.image,false);
         if(!validated)S.fail('图片不能为空');
-        const url=require('./lib/media-store.cjs').saveImage(dataDir,validated);
+        const url=validated;
         return json(res,200,{url});
       }
       case '/api/action':{
@@ -812,7 +836,7 @@ function createApp(options={}){
       });
       case '/api/ledger/recognize':rate('ai:'+auth.hash,40);
       return json(res,200,{
-        drafts:await AI.recognize(read(),S.image(b.image,false),{onUsage:runtime.onUsage})
+        drafts:await AI.recognize(read(),S.image(b.image,false),{onUsage:runtime.onUsage,dataDir})
       });
       case '/api/voice/transcribe':{
         rate('ai:'+auth.hash,40);
@@ -822,14 +846,14 @@ function createApp(options={}){
         const s=read();
         if(b.messageId===undefined){
           if(b.roleId!==undefined)S.chatAllowed(S.role(s,S.text(b.roleId,100)));
-          return json(res,200,{text:await AI.transcribe(s,S.audio(b.audio),{onUsage:runtime.onUsage}),...(options.demoModel?{demo:true}:{})});
+          return json(res,200,{text:await AI.transcribe(s,S.audio(b.audio),{onUsage:runtime.onUsage,dataDir}),...(options.demoModel?{demo:true}:{})});
         }
         if(b.audio!==undefined)S.fail('消息转文字不能另传音频');
         const m=S.find(s.messages,S.text(b.messageId,100),'语音消息');
         S.chatAllowed(S.role(s,m.roleId));
         if(m.type!=='voice'||!m.meta?.audio)S.fail('只有语音消息可以转文字');
         if(m.meta.transcript?.trim())return json(res,200,{text:m.meta.transcript,state:S.publicState(s),...(m.meta.transcriptSource==='demo'?{demo:true}:{})});
-        const understanding=await AI.understandVoice(s,m.meta.audio,{onUsage:runtime.onUsage});
+        const understanding=await AI.understandVoice(s,m.meta.audio,{onUsage:runtime.onUsage,dataDir});
         const transcript=understanding.text.trim();
         if(!transcript)S.fail('语音未识别出文字，请重试',502,'PROVIDER_RESPONSE');
         const result=mutate(latest=>{
@@ -878,6 +902,9 @@ function createApp(options={}){
         const MemoryStore=require('./lib/engine/memory-store.cjs');
         const living=MemoryStore.validateBackup(b.backup.livingMemory,restored);
         if(b.backup.media!==undefined)require('./lib/media-store.cjs').restoreImages(dataDir,restored,b.backup.media);
+        Media.externalize(dataDir,restored);
+        Object.defineProperty(restored,Symbol.for('pipi.mediaDir'),{value:dataDir});
+        S.limit(restored);
         const detach=living?MemoryStore.attachBackup(db,dataDir):null;
         try{
           transaction(()=>{

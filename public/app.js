@@ -88,7 +88,7 @@
   let rolePanelAvailable=false;
   const restoredPage=history.state?.pipi&&typeof history.state.route?.name==='string'?history.state:null;
   let state = null, csrf = '', authEpoch = 0, route = restoredPage?{...restoredPage.route}:{name:initialView,arg:null}, authSetup = false, modalOpen = false, searchTerm = '', searchOpen = false;
-  let sourceUrl = '';
+  let sourceUrl = '',binaryMedia=false;
   let composeText = '', composeImage = '', composeStickerId = '', quoteId = '', panel = '', sending = false, sendingRoleId = '', outgoing = null, avatarDraft = '', toastTimer, pendingRender = false, modalReturnFocus = null;
   let recordingSession=null,dictationBusy=false,composeComposing=false,searchComposing=false,deferredComposerUpdate=false;
   const routes = new Map();
@@ -104,6 +104,7 @@
   let composerPointerSettling=false,composerPointerFrame=0,pointerComposerUpdatePending=false,pointerViewRefreshPending=false;
   let focusMessageId = '', forceBottomRole='', composerSelection = {start:0,end:0};
   let composerScroll={input:0,emoji:0};
+  let chatImageSequence=0;
   let morePage=0, emojiPage=0, chatSearch='',chatSearchFilter='all',chatSearchDate='';
   let emojiTab='all',emojiSearch='',emojiExpandedHeight=0;
   let composerPanelFrom=null;
@@ -125,8 +126,8 @@
   const afterOverlayBack=()=>overlayBackPending?new Promise(resolve=>overlayBackWaiters.push(resolve)):Promise.resolve();
   const featureNames = new Set(['moments','moment-album','ledger','wallet','farm','favorites','services']);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const safeImage = value => typeof value === 'string' && ((/^data:image\/(?:png|jpeg|webp|gif);base64,[a-zA-Z0-9+/=\s]+$/.test(value) && value.length < 12500000) || /^\/api\/media\/[a-f0-9]{32,64}\.(?:png|jpg|jpeg|webp|gif)$/i.test(value.trim()));
-  const safeAudio = value => typeof value === 'string' && /^data:audio\/(?:mpeg|mp3|wav|x-wav|ogg|webm|mp4|aac|flac)(?:;codecs=[a-zA-Z0-9.,-]+)?;base64,[a-zA-Z0-9+/=\s]+$/.test(value);
+  const safeImage = value => typeof value === 'string' && ((/^data:image\/(?:png|jpeg|webp|gif);base64,[a-zA-Z0-9+/=\s]+$/.test(value) && value.length < 28*1024*1024) || /^\/api\/media\/[a-f0-9]{32,64}\.(?:png|jpg|jpeg|webp|gif)$/i.test(value.trim()));
+  const safeAudio = value => typeof value === 'string' && (/^\/api\/media\/[a-f0-9]{32,64}\.(?:webm|ogg|mp3|m4a|mp4|wav|aac|flac)$/i.test(value)||/^data:audio\/(?:mpeg|mp3|wav|x-wav|ogg|webm|mp4|aac|flac)(?:;codecs=[a-zA-Z0-9.,-]+)?;base64,[a-zA-Z0-9+/=\s]+$/.test(value));
   function emojiSprite(item,inline=false){const x=Number(item.x),y=Number(item.y);if(!Number.isFinite(x)||!Number.isFinite(y))return esc(item.token);return `<span class="wechat-emoji ${inline?'inline-emoji':''}" style="background-position:${x}px ${y}px;${item.row===3&&item.col===4?`transform:scale(${inline?.95:1.05})`:''}" aria-label="${esc(item.label||item.token)}" role="img"></span>`;}
   let emojiSource,emojiLookup;
   function compiledEmoji(){
@@ -265,6 +266,12 @@
     }
     return result;
   }
+  function readBlobData(blob){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('媒体读取失败，请重新选择'));reader.readAsDataURL(blob);});}
+  async function uploadMedia(blob,{requireUrl=false}={}){if(binaryMedia)return (await apiRaw('/api/media/upload',blob)).url;const source=await readBlobData(blob);return requireUrl?(await api('/api/media/upload',{image:source})).url:source;}
+  function imageBlob(source){const comma=source.indexOf(','),data=atob(source.slice(comma+1)),bytes=new Uint8Array(data.length);for(let i=0;i<data.length;i++)bytes[i]=data.charCodeAt(i);return new Blob([bytes],{type:source.slice(5,source.indexOf(';'))});}
+  async function uploadImageData(source,{requireUrl=false}={}){return source.startsWith('data:')&&(binaryMedia||requireUrl)?uploadMedia(imageBlob(source),{requireUrl}):source;}
+  async function uploadImage(file,convertSticker=false){return uploadMedia(await readImage(file,convertSticker,true));}
+  async function uploadProfileImage(file,options){return uploadMedia(await readProfileImage(file,true),options);}
   async function act(type, payload = {}) { const result = await api('/api/action',{type,payload}); if (result.state) setState(result.state); if(type==='sticker.add'){const images=payload.images||[payload.image];window.PipiStickers?.analyze(state.stickers.filter(s=>images.includes(s.image))).catch(error=>toast(error.message));}return result; }
   function trackModalHistory(nested=false){if((nested||!history.state?.overlay)&&!overlayBackPending)history.pushState({pipi:true,route:{...route},stack:[...navStack],overlay:true,overlayDepth:nested?(history.state?.overlayDepth||1)+1:1},'');}
   // A native dialog within a page owns one history entry, just like other
@@ -803,7 +810,7 @@
     openPage('个人头像',`<div class="profile-avatar-preview">${safeImage(state.profile?.avatar)?`<img src="${esc(state.profile.avatar)}" alt="我的头像">`:avatar(state.profile,100)}</div><button type="button" class="secondary-btn block-btn" data-avatar-choose>选择头像</button><button type="button" class="secondary-btn block-btn" data-avatar-remove ${safeImage(state.profile?.avatar)?'':'disabled'}>移除头像</button><input type="file" accept="${profileImageAccept}" data-avatar-file hidden>`,null);
     const form=overlay.querySelector('form'),file=form.querySelector('[data-avatar-file]');
     form.querySelector('[data-avatar-choose]').onclick=()=>file.click();
-    file.onchange=async()=>{if(!file.files[0])return;try{const avatar=await readProfileImage(file.files[0]);if(!form.isConnected)return;await act('profile.save',{avatar});if(form.isConnected){closeModal();refresh();}}catch(err){toast('头像：'+err.message);}finally{file.value='';}};
+    file.onchange=async()=>{if(!file.files[0])return;try{const avatar=await uploadProfileImage(file.files[0]);if(!form.isConnected)return;await act('profile.save',{avatar});if(form.isConnected){closeModal();refresh();}}catch(err){toast('头像：'+err.message);}finally{file.value='';}};
     form.querySelector('[data-avatar-remove]').onclick=()=>confirmDialog('移除头像？','移除后显示默认头像。',async isCurrent=>{await act('profile.save',{avatar:''});if(isCurrent()){closeModal(false);await afterOverlayBack();refresh();}},'移除');
   }
   function editProfileField(key){const labels={name:'名字',wechatId:'微信号',region:'地区',bio:'个性签名',patText:'拍一拍'},p=state.profile||{};openModal(labels[key],field(labels[key],key,p[key]||'','',key==='bio'?'textarea':'text',key==='patText'?'填写“拍了拍自己的”后面的内容。留空可恢复默认。':''),async form=>{const raw=formValues(form)[key],value=key==='wechatId'&&raw===p[key]?raw:raw.trim();if(key==='name'&&!value)throw new Error('名字不能为空');if(key==='wechatId')checkWechatId(value,p.wechatId);await act('profile.save',{[key]:value});if(form.isConnected){closeModal();refresh();}});if(key==='patText')overlay.querySelector('[name=patText]').maxLength=100;}
@@ -1253,7 +1260,7 @@
     }
     paint();
     overlay.querySelector('#pick-chat-background').onclick=()=>file.click();overlay.querySelector('#clear-chat-background').onclick=()=>{draft='';file.value='';paint();};
-    file.onchange=async()=>{if(!file.files?.[0])return;try{const image=await readImage(file.files[0]);if(file.isConnected){draft=image;paint();}}catch(err){toast(err.message);}};
+    file.onchange=async()=>{if(!file.files?.[0])return;try{const image=await uploadImage(file.files[0]);if(file.isConnected){draft=image;paint();}}catch(err){toast(err.message);}};
   }
   async function patChat(roleId,target,messageId) {
     const key=roleId+':'+target;if(patRequests.has(key))return;patRequests.add(key);
@@ -1410,7 +1417,7 @@
     view.querySelectorAll('[data-sticker]').forEach(el=>el.onclick=()=>{const sticker=state.stickers?.find(s=>s.id===el.dataset.sticker);if(sticker&&safeImage(sticker.image)){sendSticker(sticker);}});
     const stickerFile=view.querySelector('#sticker-file');if(stickerFile)stickerFile.onchange=()=>uploadStickers(stickerFile);
     const drag=view.querySelector('.emoji-drag-handle');if(drag){let startY=0,height=0;const resize=delta=>{const max=Math.max(220,document.querySelector('.phone-shell').clientHeight-180);emojiExpandedHeight=Math.max(220,Math.min(max,height+delta));const anchor=captureChatLayout();view.querySelector('.emoji-board').style.height=emojiExpandedHeight+'px';restoreChatLayout(anchor);};drag.onpointerdown=e=>{startY=e.clientY;height=view.querySelector('.emoji-board').clientHeight;drag.setPointerCapture(e.pointerId);};drag.onpointermove=e=>{if(drag.hasPointerCapture(e.pointerId))resize(startY-e.clientY);};drag.onkeydown=e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown'){e.preventDefault();height=view.querySelector('.emoji-board').clientHeight;resize(e.key==='ArrowUp'?30:-30);}};}
-    const file=view.querySelector('#chat-image-file'); if(file)file.onchange=async()=>{if(!file.files?.[0])return;const roleId=route.arg;try{const data=await readImage(file.files[0]);if(!file.isConnected||route.name!=='chat'||route.arg!==roleId)return;composeImage=data;composeStickerId='';panel='';updateComposer();if(!composeText.trim())sendMessage();}catch(err){toast(err.message);}};
+    const file=view.querySelector('#chat-image-file'); if(file)file.onchange=async()=>{if(!file.files?.[0])return;const roleId=route.arg,origin=route,sequence=++chatImageSequence;try{const data=await uploadImage(file.files[0]);if(sequence!==chatImageSequence||route!==origin||route.name!=='chat'||route.arg!==roleId)return;composeImage=data;composeStickerId='';panel='';updateComposer();if(!composeText.trim())sendMessage();}catch(err){toast(err.message);}};
     const record=view.querySelector('[data-record]');
     if(record)window.PipiVoiceHold.bind({button:record,host:view.closest('.phone-shell'),
       begin:controls=>startRecording('hold',controls),onError:error=>toast(error.message)});
@@ -1428,7 +1435,8 @@
     composeText='';composeImage='';composeStickerId='';quoteId='';composerSelection={start:0,end:0};drafts.delete(r.id);composerHistories.delete(r.id);
     panel=restoreEmoji?'emoji':'';forceBottomRole=r.id;chatScrolls.delete(r.id);updateComposer();
     try {
-      const result=await api('/api/chat',{roleId:r.id,text,image:image||undefined,stickerId:draft.stickerId||undefined,quoteId:quote?.id,requestId});if(failedSends.get(r.id)?.requestId===requestId)failedSends.delete(r.id);receiveState(result.state);if(result.notice)toast(result.notice);
+      const uploadedImage=image?await uploadImageData(image):'';
+      const result=await api('/api/chat',{roleId:r.id,text,image:uploadedImage||undefined,stickerId:draft.stickerId||undefined,quoteId:quote?.id,requestId});if(failedSends.get(r.id)?.requestId===requestId)failedSends.delete(r.id);receiveState(result.state);if(result.notice)toast(result.notice);
     } catch(err) {
       toast(err.message);
       if(!err.state){failedSends.set(r.id,{text,image,stickerId:draft.stickerId,quote:quote?.id||'',requestId});restoreFailedDraft(r.id,draft);}
@@ -1451,7 +1459,7 @@
     if(composeComposing||recordingSession)return;
     const r=roleById(route.arg);if(!r)return;
     window.PipiEngine?.resetActivity(r.id);forceBottomRole=r.id;chatScrolls.delete(r.id);
-    try{const result=await api('/api/chat',{roleId:r.id,text:'',image:sticker.image,stickerId:sticker.id,requestId:crypto.randomUUID()});receiveState(result.state);}catch(err){toast(err.message);}
+    try{const image=await uploadImageData(sticker.image);const result=await api('/api/chat',{roleId:r.id,text:'',image,stickerId:sticker.id,requestId:crypto.randomUUID()});receiveState(result.state);}catch(err){toast(err.message);}
   }
   async function retryMessage(messageId) {
     if(sending)return; sending=true;sendingRoleId=state.messages?.find(m=>m.id===messageId)?.roleId||'';refresh();
@@ -1571,13 +1579,14 @@
     stage.onpointerup=event=>{pointers.delete(event.pointerId);if(pointers.size===1){const remaining=[...pointers.values()][0];startX=remaining.x;startY=remaining.y;startPanX=x;startPanY=y;}if(!pointers.size&&!pinched&&scale===1&&Math.abs(event.clientX-startX)>45&&Math.abs(event.clientY-startY)<70)move(event.clientX>startX?-1:1);};
     stage.onpointercancel=()=>pointers.clear();paint();box.querySelector('.lightbox-close').focus({preventScroll:true});
   }
-  async function readImage(file,convertSticker=false) {
+  async function readImage(file,convertSticker=false,asBlob=false) {
     if(!file)throw new Error('请选择一张图片');
     const native=['image/png','image/jpeg','image/webp','image/gif'].includes(file.type);
     if(!native&&!(convertSticker&&['image/bmp','image/x-ms-bmp','image/avif'].includes(file.type)))throw new Error(convertSticker?'支持 PNG、JPG、WebP、GIF、BMP 和 AVIF 图片':'支持 PNG、JPEG、WebP 和 GIF 图片，不支持 SVG');
-    if(file.size>(convertSticker?20:5)*1024*1024)throw new Error('图片不能超过 '+(convertSticker?'20':'5')+' MB');
+    const inputLimit=convertSticker||binaryMedia?20:5;
+    if(file.size>inputLimit*1024*1024)throw new Error('图片不能超过 '+inputLimit+' MB');
     let result=file,animated=file.type==='image/gif';
-    if(convertSticker&&['image/png','image/webp','image/avif'].includes(file.type)){
+    if(['image/png','image/webp','image/avif'].includes(file.type)){
       const bytes=await file.arrayBuffer(),data=new DataView(bytes),tag=at=>String.fromCharCode(...new Uint8Array(bytes,at,4));
       if(file.type==='image/avif'){
         if(data.byteLength>=8&&tag(4)==='ftyp')for(let at=8;at+4<=Math.min(data.byteLength,data.getUint32(0));at+=4)if(tag(at)==='avis')animated=true;
@@ -1589,6 +1598,8 @@
         }
       }
     }
+    const animationLimit=binaryMedia?10:5;
+    if(animated&&file.size>animationLimit*1024*1024)throw new Error('动图不能超过 '+animationLimit+' MB');
     if(convertSticker&&!animated){
       let bitmap;
       try{bitmap=await createImageBitmap(file);}catch{throw new Error('无法读取 '+file.name+'，请换用 PNG、JPG、WebP 或 GIF');}
@@ -1602,13 +1613,16 @@
       }finally{bitmap.close();}
     }
     if(animated&&!native)throw new Error('动态 AVIF 暂不支持，请换用 GIF 或动态 WebP');
-    if(result.size>5*1024*1024)throw new Error(animated?'动图不能超过 5 MB':file.name+' 压缩后仍超过 5 MB，请缩小图片后上传');
-    return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>safeImage(reader.result)?resolve(reader.result):reject(new Error('图片格式无法读取'));reader.onerror=()=>reject(new Error('图片读取失败'));reader.readAsDataURL(result);});
+    const outputLimit=binaryMedia?(animated?10:20):5;
+    if(result.size>outputLimit*1024*1024)throw new Error((animated?'动图':'图片')+'不能超过 '+outputLimit+' MB');
+    if(asBlob)return result;
+    const source=await readBlobData(result);if(!safeImage(source))throw new Error('图片格式无法读取');return source;
   }
   const profileImageAccept='image/png,image/jpeg,image/webp,image/gif,image/bmp,image/avif,.bmp,.avif';
-  async function readProfileImage(file){
+  async function readProfileImage(file,asBlob=false){
     if(!file)throw new Error('请选择一张图片');
-    if(file.size>5*1024*1024)throw new Error('图片不能超过 5 MB');
+    const limit=binaryMedia?20:5;
+    if(file.size>limit*1024*1024)throw new Error('图片不能超过 '+limit+' MB');
     const header=new Uint8Array(await file.slice(0,32).arrayBuffer());
     const tag=(start,end)=>String.fromCharCode(...header.subarray(start,end));
     let mime;
@@ -1620,12 +1634,12 @@
     else if(tag(4,8)==='ftyp'&&(/^(avif|avis)$/.test(tag(8,12))||file.type==='image/avif'))mime='image/avif';
     else throw new Error('无法识别这张图片，请选择 PNG、JPG、WebP、GIF、BMP 或 AVIF');
     const typed=new File([file],file.name,{type:mime});
-    if(mime==='image/avif'||mime==='image/bmp')return readImage(typed,true);
+    if(mime==='image/avif'||mime==='image/bmp')return readImage(typed,true,asBlob);
     if(mime!=='image/jpeg'||new DataView(await file.slice(-2).arrayBuffer()).getUint16(0)===0xffd9){
-      const source=await readImage(typed),preview=new Image();
+      const blob=await readImage(typed,false,true),source=await readBlobData(blob),preview=new Image();
       preview.src=source;
       try{await preview.decode();}catch{throw new Error('无法读取这张 '+mime.slice(6).toUpperCase()+' 图片，请重新选图');}
-      return source;
+      return asBlob?blob:source;
     }
 
     // A browser may preview a JPEG with extra bytes after its end marker.
@@ -1638,7 +1652,7 @@
       canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);
       const converted=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.94));
       if(!converted)throw new Error('图片转换失败，请重新选图');
-      return await readImage(converted);
+      return await readImage(converted,false,asBlob);
     }finally{bitmap.close();}
   }
   async function uploadStickers(file){
@@ -1647,10 +1661,10 @@
     file.disabled=true;
     try{
       const files=[...file.files],images=[];
-      for(const item of files)images.push(await readImage(item,true));
+      for(const item of files)images.push(await uploadImage(item,true));
       // Pictures already in the library are skipped by the server and do not use up the 200 places.
       const fresh=new Set(images.filter(image=>!(state.stickers||[]).some(s=>s.image===image))).size;
-      if(fresh>remaining){toast(`表情库最多 200 张，还能添加 ${remaining} 张，这次选了 ${fresh} 张新表情`);return;}
+      if(fresh>remaining&&!(state.stickers||[]).some(sticker=>sticker.image.startsWith('data:'))){toast(`表情库最多 200 张，还能添加 ${remaining} 张，这次选了 ${fresh} 张新表情`);return;}
       await act('sticker.add',{images,names:files.map(item=>item.name.replace(/\.[^.]+$/,'').slice(0,100))});
       const added=(state.stickers||[]).filter(s=>!before.has(s.id)).length;
       if(route===origin){if(route.name==='stickers')refresh();else if(route.name==='chat')updateComposer();}
@@ -1759,7 +1773,7 @@
     try{
       const wav=await window.PipiAudio.recordingWav(blob);
       if(session.cancelled||recordingSession!==session)return;
-      const audio=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('无法读取录音'));reader.readAsDataURL(wav);});
+      const audio=await uploadMedia(wav);
       if(session.cancelled||recordingSession!==session)return;
       const body={roleId:session.roleId,requestId:crypto.randomUUID(),quoteId:quotedMessage(session.quoteId,session.roleId)?.id};
       if(session.mode==='voice'){Object.assign(body,{audio,durationMs});}
@@ -1860,7 +1874,7 @@
       if(!file.files.length)return;
       file.disabled=pick.disabled=submit.disabled=true;
       try{
-        const image=await readProfileImage(file.files[0]);
+        const image=await uploadProfileImage(file.files[0]);
         if(file.isConnected){render(image);form.querySelector('.modal-error').textContent='';}
       }catch(err){if(file.isConnected)toast(`${label}：${err.message}`);}
       finally{
@@ -2023,10 +2037,10 @@
     };
   }
   async function boot() {
-    try{const status=await api('/api/status');sourceUrl=status.sourceUrl;rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
+    try{const status=await api('/api/status');sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
     catch(err){renderAuth(false,`暂时无法连接这部小手机。${err.message}`);}
   }
-  window.Pipi={getState:()=>state,api,apiRaw,act,receiveState,updateTyping,syncChatProgress,readImage,readProfileImage,showView,goBack,openWhenReady,openChatMessage:(roleId,messageId)=>{focusMessageId=messageId;showView('chat',roleId);},preserveChatLayout:callback=>{const snapshot=captureChatLayout();callback();restoreChatLayout(snapshot);},scrollChatToBottom:(roleId)=>{forceBottomRole=roleId;chatScrolls.delete(roleId);if(route.name==='chat'&&route.arg===roleId)scrollChat();},openModal,closeModal,openPage,openNestedPage,openChildDialog,closeChildDialog,closePage:closeModal,openPhoto:lightbox,actionSheet,confirmDialog,toast,esc,avatar,icons,refresh,setState,registerRoute:(name,renderer)=>routes.set(name,renderer)};
+  window.Pipi={getState:()=>state,api,apiRaw,act,receiveState,updateTyping,syncChatProgress,readImage,readProfileImage,uploadMedia,uploadImage,uploadImageData,uploadProfileImage,showView,goBack,openWhenReady,openChatMessage:(roleId,messageId)=>{focusMessageId=messageId;showView('chat',roleId);},preserveChatLayout:callback=>{const snapshot=captureChatLayout();callback();restoreChatLayout(snapshot);},scrollChatToBottom:(roleId)=>{forceBottomRole=roleId;chatScrolls.delete(roleId);if(route.name==='chat'&&route.arg===roleId)scrollChat();},openModal,closeModal,openPage,openNestedPage,openChildDialog,closeChildDialog,closePage:closeModal,openPhoto:lightbox,actionSheet,confirmDialog,toast,esc,avatar,icons,refresh,setState,registerRoute:(name,renderer)=>routes.set(name,renderer)};
   document.addEventListener('keydown', event => {
     if (event.isComposing || composeComposing) return;
     if (event.key === 'Tab' && modalOpen) {

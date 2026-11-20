@@ -4,7 +4,7 @@ const {sampleState}=require('../scripts/sample-data.cjs');
 const {test}=require('node:test'),assert=require('node:assert/strict'),{randomUUID}=require('node:crypto');
 const {createDemo}=require('../scripts/demo.cjs'),S=require('../lib/state.cjs');
 const PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBHoAAAAASUVORK5CYII=';
-const AUDIO='data:audio/webm;base64,AQID';
+const AUDIO='data:audio/wav;base64,'+Buffer.from('524946462600000057415645666d74201000000001000100401f0000803e00000200100064617461020000000000','hex').toString('base64');
 function ok(response){assert.equal(response.status,200,JSON.stringify(response.body));return response.body;}
 function rejected(response){assert.ok(response.status>=400&&response.status<500,JSON.stringify(response));assert.ok(response.body.error);}
 async function fixture(t){
@@ -13,7 +13,15 @@ async function fixture(t){
   const request=(route,body)=>demo.request(route,body);
   ok(await request('/api/engine/modules',{id:'waiting',values:{idleSeconds:0,maxWaitSeconds:1}}));
   ok(await request('/api/engine/modules',{id:'segments',values:{enabled:false}}));
-  return {request,action:(type,payload)=>request('/api/action',{type,payload}),state:async()=>ok(await request('/api/state')),backup:async()=>ok(await request('/api/backup')),get providerRequests(){return demo.provider.requests.length;},get controlUrl(){return demo.controlUrl;},async restart(){const options={appPort:Number(new URL(demo.appUrl).port),providerPort:Number(new URL(demo.controlUrl).port),resumeDir:demo.dataDir};await demo.close();demo=await createDemo(options);}};
+  async function checkMedia(ref,original){
+    assert.match(ref,/^\/api\/media\/[a-f0-9]{64}\.(png|wav)$/);
+    const login=await fetch(demo.appUrl+'/api/login',{method:'POST',headers:{Origin:demo.appUrl,'Content-Type':'application/json'},body:JSON.stringify({password:demo.password})});
+    assert.equal(login.status,200);await login.json();
+    const media=await fetch(demo.appUrl+ref,{headers:{Cookie:login.headers.get('set-cookie').split(';')[0]}});
+    assert.equal(media.status,200);
+    assert.deepEqual(Buffer.from(await media.arrayBuffer()),Buffer.from(original.split(',')[1],'base64'));
+  }
+  return {request,checkMedia,action:(type,payload)=>request('/api/action',{type,payload}),state:async()=>ok(await request('/api/state')),backup:async()=>ok(await request('/api/backup')),get providerRequests(){return demo.provider.requests.length;},get controlUrl(){return demo.controlUrl;},async restart(){const options={appPort:Number(new URL(demo.appUrl).port),providerPort:Number(new URL(demo.controlUrl).port),resumeDir:demo.dataDir};await demo.close();demo=await createDemo(options);}};
 }
 async function seed(f){
   const backup=await f.backup(),s=backup.state,[source,target]=s.roles,now=Date.now();
@@ -33,7 +41,8 @@ async function seed(f){
     }
     assert.equal(replied,true,'financial event finishes its automatic reply before the forwarding/deletion scenario starts');
   }
-  return {source:source.id,target:target.id,base,text,image,other,system,voice,error,demo};
+  const persisted=(await f.state()).messages,loaded=item=>persisted.find(message=>message.id===item.id);
+  return {source:source.id,target:target.id,base:loaded(base),text:loaded(text),image:loaded(image),other:loaded(other),system:loaded(system),voice:loaded(voice),error:loaded(error),demo:loaded(demo)};
 }
 
 test('native045 batch deletion detaches retained favorite and quote snapshots without deleting them',async t=>{
@@ -41,7 +50,7 @@ test('native045 batch deletion detaches retained favorite and quote snapshots wi
   ok(await f.action('message.favorite',{id:x.base.id}));ok(await f.action('message.favorite',{id:x.image.id}));const before=await f.state();
   const saved=ok(await f.action('message.deleteMany',{roleId:x.source,ids:[x.base.id,x.image.id]})).state;
   assert.equal(saved.messages.some(m=>[x.base.id,x.image.id].includes(m.id)),false);assert.deepEqual(saved.messages.find(m=>m.id===x.other.id),before.messages.find(m=>m.id===x.other.id));
-  assert.equal(saved.favorites.length,2);for(const item of saved.favorites)assert.equal(item.messageId,undefined);assert.equal(saved.favorites[0].content,x.base.content);assert.equal(saved.favorites[1].content,PNG);
+  assert.equal(saved.favorites.length,2);for(const item of saved.favorites)assert.equal(item.messageId,undefined);assert.equal(saved.favorites[0].content,x.base.content);assert.equal(saved.favorites[1].content,x.image.content);await f.checkMedia(x.image.content,PNG);
   const quote=saved.messages.find(m=>m.id===x.text.id).meta.quote;assert.equal(quote.messageId,undefined);assert.equal(quote.unavailable,'deleted');assert.equal(quote.content,x.base.content);assert.deepEqual(saved.wallet,before.wallet);
   rejected(await f.action('message.deleteMany',{roleId:x.source,ids:[x.base.id]}));assert.deepEqual(await f.state(),saved);
 });
@@ -62,7 +71,7 @@ test('native045 forward preserves media and source quote authors in source order
   const result=ok(await f.action('message.forward',{ids:[x.image.id,x.text.id],targetRoleId:x.target})).state,forwarded=result.messages.slice(-2);
   assert.deepEqual(forwarded.map(m=>m.content),[x.text.content,x.image.content]);for(const item of forwarded){assert.equal(item.sender,'user');assert.equal(item.roleId,x.target);assert.equal(item.status,'sent');assert.equal(before.messages.some(m=>m.id===item.id),false);}
   assert.deepEqual(result.messages.slice(0,before.messages.length),before.messages);assert.deepEqual(result.favorites,before.favorites);assert.deepEqual(result.wallet,before.wallet);assert.equal(f.providerRequests,calls);assert.equal(result.roles.find(r=>r.id===x.target).hidden,false);
-  assert.equal(forwarded[0].meta.image,PNG);assert.equal(forwarded[0].meta.audio,AUDIO);assert.equal(forwarded[0].meta.durationMs,1000);assert.equal(forwarded[0].meta.transcript,'原文的媒体说明');
+  assert.equal(forwarded[0].meta.image,x.text.meta.image);assert.equal(forwarded[0].meta.audio,x.text.meta.audio);await f.checkMedia(forwarded[0].meta.image,PNG);await f.checkMedia(forwarded[0].meta.audio,AUDIO);assert.equal(forwarded[0].meta.durationMs,1000);assert.equal(forwarded[0].meta.transcript,'原文的媒体说明');
   assert.deepEqual(forwarded[0].meta.quote,{sender:'assistant',type:'text',content:x.base.content,senderName:sourceName});assert.equal(forwarded[0].meta.amountCents,undefined);assert.equal(forwarded[0].meta.transactionId,undefined);
   ok(await f.action('role.save',{id:x.source,name:'来源角色已改名'}));
   const again=ok(await f.action('message.forward',{ids:[forwarded[0].id],targetRoleId:x.source})).state.messages.at(-1);assert.equal(again.meta.quote.senderName,sourceName);assert.equal(again.meta.quote.messageId,undefined);
@@ -83,7 +92,7 @@ test('native046 individual voice forwarding copies playable media without a mode
   const f=await fixture(t),x=await seed(f),before=await f.state(),calls=f.providerRequests;
   const result=ok(await f.action('message.forward',{ids:[x.voice.id],targetRoleId:x.target})).state,forwarded=result.messages.at(-1);
   assert.equal(forwarded.type,'voice');assert.equal(forwarded.roleId,x.target);assert.notEqual(forwarded.id,x.voice.id);
-  assert.deepEqual(forwarded.meta,x.voice.meta);assert.deepEqual(result.wallet,before.wallet);assert.equal(f.providerRequests,calls);
+  assert.deepEqual(forwarded.meta,x.voice.meta);await f.checkMedia(forwarded.meta.audio,AUDIO);assert.deepEqual(result.wallet,before.wallet);assert.equal(f.providerRequests,calls);
   const backup=await f.backup();ok(await f.request('/api/restore',{backup,confirm:true}));assert.deepEqual((await f.state()).messages.at(-1),forwarded);
 });
 
@@ -98,10 +107,10 @@ test('native045 favorite batch deletion is atomic and retains original chat reco
 
 test('native045 chat backgrounds retain partial edits, clear explicitly and survive restore/restart',async t=>{
   const f=await fixture(t),id=(await f.state()).roles[0].id;assert.equal((await f.state()).roles[0].chatBackground,'');
-  ok(await f.action('role.save',{id,chatBackground:PNG}));ok(await f.action('role.save',{id,remark:'背景仍保留'}));assert.equal((await f.state()).roles[0].chatBackground,PNG);
+  ok(await f.action('role.save',{id,chatBackground:PNG}));ok(await f.action('role.save',{id,remark:'背景仍保留'}));const reference=(await f.state()).roles[0].chatBackground;await f.checkMedia(reference,PNG);
   const before=await f.state();for(const chatBackground of [null,{},123,'https://example.invalid/picture.png','data:image/svg+xml;base64,PHN2Zy8+','data:image/png;base64,AQID']){rejected(await f.action('role.save',{id,chatBackground}));assert.deepEqual(await f.state(),before);}
   const backup=await f.backup();ok(await f.action('role.save',{id,chatBackground:''}));assert.equal((await f.state()).roles[0].chatBackground,'');
-  ok(await f.request('/api/restore',{backup,confirm:true}));await f.restart();assert.equal((await f.state()).roles[0].chatBackground,PNG);
+  ok(await f.request('/api/restore',{backup,confirm:true}));await f.restart();assert.equal((await f.state()).roles[0].chatBackground,reference);await f.checkMedia(reference,PNG);
   const bad=structuredClone(backup);bad.state.roles[0].chatBackground='https://example.invalid/';const current=await f.state();rejected(await f.request('/api/restore',{backup:bad,confirm:true}));assert.deepEqual(await f.state(),current);
   const legacy=structuredClone(backup);for(const role of legacy.state.roles)delete role.chatBackground;ok(await f.request('/api/restore',{backup:legacy,confirm:true}));assert.equal((await f.state()).roles[0].chatBackground,'');
   const local=sampleState();assert.equal(S.publicState(local).roles[0].chatBackground,'');assert.equal(local.roles[0].chatBackground,undefined);

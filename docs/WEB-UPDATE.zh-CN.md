@@ -4,17 +4,29 @@
 
 ## 第一次启用
 
-先按[已有实例升级](../INSTALL.zh-CN.md#已有实例升级)完成带更新功能的版本切换，保留原部署目录、Compose 项目名、环境变量和资料卷。下面以 Linux 宿主机、现有目录 /srv/pipi-phone、项目名 pipi-phone、映射端口 18766 为例。把路径、项目名和端口换成现有安装实际使用的值。宿主机更新程序需要 Node.js 24 和可管理该 Compose 项目的 Docker CLI，无需安装 npm 依赖。
+先按[已有实例升级](../INSTALL.zh-CN.md#已有实例升级)完成带更新功能的版本切换，保留原部署目录、Compose 项目名、环境变量和资料卷。下面以 Linux 宿主机、现有目录 /opt/pipi-phone、项目名 pipi-phone、映射端口 18766 为例。把路径、项目名和端口换成现有安装实际使用的值。宿主机更新程序需要 Node.js 24 和可管理该 Compose 项目的 Docker CLI，无需安装 npm 依赖。
 
 切换前先备份。程序与默认 Compose 已使用官方更新仓库 chouoi344/pipi-phone，可通过 PIPI_UPDATE_REPOSITORY 覆盖。暂无正式 Release 时显示“暂无正式发布版本”，检查失败时单独提示；发现新版且宿主机更新服务在线后才显示“立即更新”。需要网页一键安装时，准备下面的共享目录和更新服务。
+
+先在原部署目录核对当前项目名、端口和资料卷；这些命令只读取运行状态。默认目录 `/opt/pipi-phone` 的 Compose 项目名是 `pipi-phone`。使用过 `-p`、`--project-name` 或 `COMPOSE_PROJECT_NAME` 时，以容器标签中的项目名为准。
+
+```sh
+cd /opt/pipi-phone
+node --version
+docker compose version
+docker compose ps
+docker compose ps --quiet pipi-phone | xargs docker inspect --format '项目={{index .Config.Labels "com.docker.compose.project"}} 资料={{range .Mounts}}{{if eq .Destination "/app/data"}}{{.Type}}:{{.Name}}{{end}}{{end}} 端口={{json .NetworkSettings.Ports}}'
+```
+
+Node 版本应为 24 或更新版本，资料应为 `volume:资料卷名`。没有显示当前容器、资料为 `bind` 或项目名不一致时，先按已有部署方式核对，不继续切换。网页更新服务只支持命名数据卷，不能直接替换目录挂载。
 
 将以下配置保存在原部署目录的 .env.updates。用已有 Compose 项目名，才能找到原来的资料卷。PIPI_UPDATE_DIR 是宿主机与小手机容器交换任务状态的目录。PIPI_UPDATE_STATE_DIR 保存宿主机自己的版本、资料卷和恢复记录，权限应只给更新服务管理员。
 
 ```dotenv
 PIPI_UPDATE_REPOSITORY=chouoi344/pipi-phone
-PIPI_UPDATE_DIR=/srv/pipi-phone/.pipi-update-channel
-PIPI_UPDATE_STATE_DIR=/srv/pipi-phone/.pipi-updater
-PIPI_UPDATE_COMPOSE_FILE=/srv/pipi-phone/compose.yaml
+PIPI_UPDATE_DIR=/opt/pipi-phone/.pipi-update-channel
+PIPI_UPDATE_STATE_DIR=/opt/pipi-phone/.pipi-updater
+PIPI_UPDATE_COMPOSE_FILE=/opt/pipi-phone/compose.yaml
 PIPI_UPDATE_COMPOSE_PROJECT=pipi-phone
 PIPI_UPDATE_HEALTH_ORIGIN=http://127.0.0.1:18766
 ```
@@ -22,18 +34,21 @@ PIPI_UPDATE_HEALTH_ORIGIN=http://127.0.0.1:18766
 创建供容器中 Node 用户访问的共享目录，从原部署目录执行一次启动。官方镜像中的 Node 用户默认 UID/GID 为 1000。
 
 ```sh
-cd /srv/pipi-phone
+cd /opt/pipi-phone
 sudo install -d -m 0770 -o 1000 -g 1000 .pipi-update-channel
+chmod 600 .env.updates
 set -a
 . ./.env.updates
 set +a
 docker compose --project-name "$PIPI_UPDATE_COMPOSE_PROJECT" -f compose.yaml -f compose.updates.yaml up -d --build
 ```
 
+这次启动使用现有程序源码，只接通更新通道；原 `.env` 会由 Compose 继续读取。先打开原地址确认聊天和资料仍在，再启动下面的更新服务。网页程序只读写这个共享目录；Docker 管理权限留在宿主机更新服务，网页容器不挂载 Docker socket。
+
 在宿主机执行更新服务。可先在终端启动验证，确认网页中可用后，再用系统服务保持运行。
 
 ```sh
-node --env-file=/srv/pipi-phone/.env.updates /srv/pipi-phone/scripts/compose-updater.cjs
+node --env-file=/opt/pipi-phone/.env.updates /opt/pipi-phone/scripts/compose-updater.cjs
 ```
 
 使用 systemd 的部署可以把下面的内容保存为 /etc/systemd/system/pipi-phone-updater.service。若已有 systemd 单元，先核对文件名与实际目录。执行该单元的账户必须拥有 Docker 管理权限。下面的例子使用系统服务账户环境和该服务器上的 Node 路径。与自己的 Node 路径不一致时，先用 command -v node 核实。
@@ -46,9 +61,9 @@ Requires=docker.service
 
 [Service]
 Type=simple
-WorkingDirectory=/srv/pipi-phone
-EnvironmentFile=/srv/pipi-phone/.env.updates
-ExecStart=/usr/bin/node /srv/pipi-phone/scripts/compose-updater.cjs
+WorkingDirectory=/opt/pipi-phone
+EnvironmentFile=/opt/pipi-phone/.env.updates
+ExecStart=/usr/bin/node /opt/pipi-phone/scripts/compose-updater.cjs
 Restart=on-failure
 RestartSec=5
 

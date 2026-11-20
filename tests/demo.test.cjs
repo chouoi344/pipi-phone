@@ -90,15 +90,26 @@ test('local demo uses real app HTTP, isolated persistence and protocol failures'
   await t.test('HTTP error, invalid JSON, empty result and disconnect never fabricate assistant success',async()=>{
     for(const [scenario,error]of [['http',/503/],['json',/JSON/],['empty',/没有返回文本内容/],['disconnect',/连接|中断|网络/]]){await mode(scenario);const before=assistantCount(await state()),result=await completed({text:'异常场景 '+scenario}),failed=result.messages.at(-1);assert.equal(failed.status,'error');assert.match(failed.error,error);assert.equal(assistantCount(result),before);}
   });
-  await t.test('configured request timeout occurs for every attempt and failed message can recover',async()=>{
+  await t.test('configured request timeout occurs for every attempt and failed message can recover',async timeoutTest=>{
     const {ai}=ok(await demo.request('/api/engine/config'));
     const chatModel=ai.models.find(model=>model.id===ai.assign.chat);
     assert.equal(chatModel.timeoutSeconds,45);
     chatModel.timeoutSeconds=1;ok(await demo.request('/api/engine/models',{ai}));
     await mode('timeout');
-    const before=retryDelays.length,start=Date.now();
+    const attempts=[];
+    const observeAttempt=(request,response)=>{
+      if(request.url!=='/v1/chat/completions'||demo.provider.mode!=='timeout')return;
+      const started=performance.now(),attempt={};
+      attempts.push(attempt);
+      response.once('close',()=>{attempt.elapsedMs=performance.now()-started;});
+    };
+    demo.provider.server.on('request',observeAttempt);
+    timeoutTest.after(()=>demo.provider.server.off('request',observeAttempt));
+    const before=retryDelays.length;
     const result=await completed({text:'真实超时演示'},10000),failed=result.messages.at(-1);
-    assert.ok(Date.now()-start>=4900);
+    await until(async()=>attempts,items=>items.length>=5&&items.every(item=>item.elapsedMs!==undefined));
+    assert.equal(attempts.length,5);
+    for(const {elapsedMs} of attempts)assert.ok(elapsedMs>=900,`Request closed after ${elapsedMs} ms`);
     assert.deepEqual(retryDelays.slice(before),[1000,2000,4000,8000]);
     assert.equal(failed.status,'error');assert.match(failed.error,/超时/);
     await mode('success');

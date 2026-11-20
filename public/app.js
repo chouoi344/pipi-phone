@@ -17,7 +17,7 @@
   // Reference artwork/fonts are not copied; this app reuses the GPL icon set below.
   // Masks are rendering derivatives: the upstream React SVG root fill is resolved
   // to black while original licensed SVG bytes remain intact in /icons.
-  const iconVersion = '0.13.2';
+  const iconVersion = '0.13.3';
   const assetIcon = (name, color = false, cls = '') => color
     ? `<img class="icon asset-icon ${cls}" src="/vendor/fake-world/icons/${name}.svg?v=${iconVersion}" alt="" aria-hidden="true">`
     : `<span class="icon mask-icon ${cls}" style="--icon-url:url('/vendor/fake-world/masks/${name}.svg?v=${iconVersion}')" aria-hidden="true"></span>`;
@@ -601,6 +601,10 @@
       const content=view.querySelector('.moments-content');
       if(content)history.replaceState({...history.state,route:{...route,momentsPosition:capturePagePosition(content)}},'');
     }
+    if(route.name==='farm'&&!fromBack){
+      const content=view.querySelector('.content');
+      if(content)history.replaceState({...history.state,route:{...route,farmPosition:capturePagePosition(content)}},'');
+    }
     const nextArg=['chat','role','memories','role-memories','role-schedule','role-references','chat-info','role-config','contact-settings','contact-more','contact-permissions','chat-search'].includes(name)?(arg?.roleId||arg?.id||arg):arg;
     if(route.name!==name||route.arg!==nextArg){
       newChatMessageIds.clear();stopSpeech();
@@ -621,8 +625,10 @@
     if(!fromBack)history.pushState({pipi:true,route:{...route},stack:[...navStack]},'');
     searchOpen = false; searchTerm = name==='contacts'&&fromBack?contactsReturn?.term||'':'';if(name==='contacts'&&!fromBack&&contactsReturn?.term)contactsReturn=null;
     const momentsPosition=name==='moments'&&fromBack?history.state?.route?.momentsPosition:null;
-    refresh({resetScroll:Boolean(momentsPosition)});
+    const farmPosition=name==='farm'&&fromBack?history.state?.route?.farmPosition:null;
+    refresh({resetScroll:Boolean(momentsPosition||farmPosition)});
     if(momentsPosition)restorePagePosition(view.querySelector('.moments-content'),momentsPosition);
+    if(farmPosition)restorePagePosition(view.querySelector('.content'),farmPosition);
     playTransition?.();
     if(name==='skins')refreshSkinActivation();
     if(name==='chat'){syncVisibleChatRead();syncChatProgress();}
@@ -1412,8 +1418,8 @@
       case 'clear-quote': quoteId=''; updateComposer(); break;
       case 'clear-image': composeImage='';composeImageMeta=null;composeStickerId=''; updateComposer(); break;
       case 'upload-chat-image': chooseComposerFiles('#chat-image-file', useChatImage); break;
-      case 'chat-transfer': showView('wallet',{roleId:r?.id,mode:'transfer'}); break;
-      case 'chat-redpacket': showView('wallet',{roleId:r?.id,mode:'redpacket'}); break;
+      case 'chat-transfer': window.PipiFeatures.transfer('transfer',r?.id,{fromChat:true}); break;
+      case 'chat-redpacket': window.PipiFeatures.transfer('redpacket',r?.id,{fromChat:true}); break;
       case 'chat-pat': if(r)await patChat(r.id,'contact');break;
       case 'logout': confirmDialog('退出登录？','数据会保留在服务器，输入密码即可重新登录。',async()=>{await api('/api/logout',{}); csrf=''; state=null;drafts.clear();composerHistories.clear();failedSends.clear();composeText='';composeImage='';composeImageMeta=null;composeStickerId='';quoteId='';sessionStorage.removeItem(chatDraftKey);renderAuth(false);},'退出登录'); break;
       case 'download-backup': downloadBackup(); break;

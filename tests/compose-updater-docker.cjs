@@ -13,9 +13,9 @@ async function availablePort(){const server=net.createServer();await new Promise
 async function main(){
   if(process.platform!=='linux')throw new Error('Run this opt-in smoke on a Linux Docker host.');
   const dir=await fs.mkdtemp(path.join(os.tmpdir(),'pipi-updater-docker-')),shared=path.join(dir,'shared');
-  const composeFile=path.join(dir,'compose.json'),featureFile=path.join(root,'compose.updates.yaml');
+  const composeFile=path.join(dir,'compose.yaml'),featureFile=path.join(root,'compose.updates.yaml');
   const port=await availablePort(),origin='http://127.0.0.1:'+port;
-  const env={...process.env,PIPI_UPDATE_DIR:shared,PIPI_UPDATE_REPOSITORY:'example/isolated-smoke'};
+  const env={...process.env,PIPI_HOST_BIND:'127.0.0.1',PIPI_PORT:String(port),PIPI_UPDATE_DIR:shared,PIPI_UPDATE_REPOSITORY:'example/isolated-smoke'};
   async function docker(args){return (await execute('docker',args,{env,timeout:600000,maxBuffer:8*1024*1024})).stdout.trim();}
   const compose=(...args)=>['compose','--project-name',project,'--project-directory',dir,'-f',composeFile,'-f',featureFile,...args];
   let cookie='',csrf='',worker,stage='build isolated images';
@@ -43,7 +43,12 @@ async function main(){
     // The host updater needs the loopback-published port. Docker ignores port
     // mappings on containers attached only to an internal bridge network.
     stage='start original container on the project bridge';
-    await fs.writeFile(composeFile,JSON.stringify({services:{'pipi-phone':{image:images.old,restart:'no',ports:[`127.0.0.1:${port}:8000`],volumes:['pipi-data:/app/data'],environment:{HOST:'0.0.0.0',PORT:'8000',DATA_DIR:'/app/data',NODE_ENV:'production'},read_only:true,tmpfs:['/tmp']}},volumes:{'pipi-data':{}}}));
+    // Start from the shipped configuration, retaining its real security,
+    // environment and named-volume settings. Only select the isolated fixture
+    // image and disable automatic restart for the deliberately broken version.
+    const shippedCompose=await fs.readFile(path.join(root,'compose.yaml'),'utf8');
+    assert.match(shippedCompose,/    build: \./);assert.match(shippedCompose,/    restart: unless-stopped/);
+    await fs.writeFile(composeFile,shippedCompose.replace('    build: .','    image: '+images.old).replace('    restart: unless-stopped','    restart: "no"'));
     await docker(compose('up','-d','--no-build','pipi-phone'));
     const initial=await currentContainer();
     assert.equal(initial.NetworkSettings.Ports['8000/tcp']?.[0]?.HostPort,String(port),'Docker must publish the application port on the host');

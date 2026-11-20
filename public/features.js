@@ -756,7 +756,7 @@
     }
     const id = requestId(), isRedpacket = type === 'redpacket';
     let sending = false, stickerImage = '';
-    const onClose = options.fromChat ? () => P().goBack() : options.chooseRecipient ? () => walletTransfer(type, undefined, { ...options, chooseRecipient: false }) : options.returnTo;
+    const onClose = options.chooseRecipient ? () => walletTransfer(type, undefined, { ...options, chooseRecipient: false }) : options.returnTo;
     const amount = `<span class="pay-amount-text" aria-live="polite"></span><i class="pay-caret" aria-hidden="true"></i><input type="hidden" name="amount" aria-label="${isRedpacket ? '红包金额' : '转账金额'}">`;
     const key = (value, label = value, cls = '') => `<button type="button" class="pay-key ${cls}" data-pay-key="${value}" aria-label="${label}">${value === 'back' ? '<svg viewBox="0 0 28 20" width="28" height="20" aria-hidden="true"><path d="M9.300 1h15.700a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9.300a2 2 0 0 1-1.500-.700L1 10l6.800-8.300A2 2 0 0 1 9.300 1Z" fill="#1a1a1a"/><path d="m13.500 6.500 7 7m0-7-7 7" stroke="#fff" stroke-width="1.800" stroke-linecap="round"/></svg>' : value}</button>`;
     const keypad = `<div class="pay-keypad" role="group" aria-label="数字键盘">${key('1')}${key('2')}${key('3')}${key('back', '删除')}${key('4')}${key('5')}${key('6')}${isRedpacket ? '<button type="button" class="pay-key pay-key-action" data-pay-key="done">确定</button>' : '<button type="submit" class="pay-key pay-key-action wallet-pay-confirm" disabled>转账</button>'}${key('7')}${key('8')}${key('9')}${key('0', '0', 'pay-key-zero')}${key('.', '小数点')}</div>`;
@@ -780,10 +780,9 @@
         if (options.fromChat) P().scrollChatToBottom?.(recipient.id);
         if (form.isConnected) {
           closePage(false);
-          if (options.fromChat) P().goBack();
-          else options.returnTo?.();
+          options.returnTo?.();
         }
-        if (!options.fromChat) P().refresh();
+        P().refresh();
 
       } finally {
         sending = false;

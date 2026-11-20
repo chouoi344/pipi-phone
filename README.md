@@ -103,21 +103,6 @@ Windows 也可以双击 `start.cmd`。打开 [http://127.0.0.1:18766/](http://12
 </details>
 
 <details>
-<summary>皮肤提供者在哪里生成激活码？</summary>
-
-在保存了签发密钥的电脑上运行下面的命令。
-
-```sh
-node scripts/waterdrop-issuer.cjs
-```
-
-打开 [http://127.0.0.1:51337/](http://127.0.0.1:51337/)，粘贴用户的安装编号，点击「生成激活码」并复制发给用户。Windows 可以运行 `scripts/start-waterdrop-issuer.ps1`。
-
-签发密钥保存在发码人的用户目录 `~/.pipi-phone-issuer/waterdrop-v1.pem`，需单独备份。小手机服务器使用仓库内的验证公钥即可验证激活码。
-
-</details>
-
-<details>
 <summary>哪些功能需要保持服务器运行？</summary>
 
 聊天、定时提醒、日程和主动消息由部署服务器处理，使用时需要保持服务运行。当前提醒显示在网页内，暂未提供系统推送。群聊、扫一扫和音视频通话入口尚未开放，红包和转账用于虚拟互动。

@@ -6,7 +6,7 @@
   const overlay = document.getElementById('overlay');
   const frame = document.querySelector('.phone-shell');
   const settingsRoutes = new Set([
-    'storage', 'engine-home', 'providers', 'engine-functions', 'engine-module', 'engine-usage',
+    'storage', 'account-security', 'engine-home', 'providers', 'engine-functions', 'engine-module', 'engine-usage',
     'role-config', 'life-workbench', 'role-stickers', 'role-reminders', 'role-references',
     'role-schedule', 'memories', 'role-personas', 'role-persona-detail', 'stickers'
   ]);

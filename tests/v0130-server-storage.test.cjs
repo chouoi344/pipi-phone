@@ -19,13 +19,30 @@ function stateWithRoles(){
   return s;
 }
 async function fixture(t,options={}){
+  const {nativeHTTP=false,...appOptions}=options;
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'pipi-v0130-storage-'));
-  const app=createApp({dataDir,host:'127.0.0.1',port:0,providerUrlAllowlist:[],...options});
+  const app=createApp({dataDir,host:'127.0.0.1',port:0,providerUrlAllowlist:[],...appOptions});
   t.after(async()=>{await app.close();fs.rmSync(dataDir,{recursive:true,force:true});});
   await app.listen();
   const base='http://127.0.0.1:'+app.server.address().port;
   let cookie='',csrf='';
   async function request(route,body,{anonymous=false,headers={}}={}){
+    if(nativeHTTP){
+      const payload=body===undefined?undefined:Buffer.from(JSON.stringify(body));
+      return new Promise((resolve,reject)=>{
+        const sent={...(anonymous?{}:{Cookie:cookie}),...(payload?{Origin:base,'X-CSRF-Token':csrf,'Content-Type':'application/json','Content-Length':payload.length}:{}),...headers};
+        const req=http.request(base+route,{method:payload?'POST':'GET',headers:sent},res=>{
+          const chunks=[];res.on('data',chunk=>chunks.push(chunk));res.once('error',reject);
+          res.once('end',()=>{
+            const value=JSON.parse(Buffer.concat(chunks));
+            if(res.headers['set-cookie'])cookie=res.headers['set-cookie'][0].split(';')[0];
+            if(value.csrfToken)csrf=value.csrfToken;
+            resolve({status:res.statusCode,value});
+          });
+        });
+        req.once('error',reject);req.end(payload);
+      });
+    }
     const response=await fetch(base+route,{method:body===undefined?'GET':'POST',headers:{Connection:'close',...(anonymous?{}:{Cookie:cookie}),...(body===undefined?{}:{Origin:base,'Content-Type':'application/json','X-CSRF-Token':csrf}),...headers},...(body===undefined?{}:{body:JSON.stringify(body)})});
     const value=await response.json();
     if(response.headers.has('set-cookie'))cookie=response.headers.get('set-cookie').split(';')[0];
@@ -44,7 +61,7 @@ function captureErrors(t){
 }
 
 test('L1: over-limit message counts allow shrink and error updates but reject further growth in Chinese',()=>{
-  const s=S.initial();s.messages=Array.from({length:20001},()=>({status:'pending'}));
+  const s=S.initial();s.messages=Array.from({length:50001},()=>({status:'pending'}));
   S.limitBaseline(s,Buffer.byteLength(JSON.stringify(s)));
   s.messages[0].status='error';s.messages[0].error='请求失败';
   assert.doesNotThrow(()=>S.limit(s));
@@ -139,15 +156,15 @@ test('S1/S6/S10: since responses skip unchanged documents, changed revisions ret
 });
 
 test('S1/L1: server mutations can update and shrink an existing document above its message-count limit',async t=>{
-  const f=await fixture(t,{initialState:()=>{
+  const f=await fixture(t,{nativeHTTP:true,initialState:()=>{
     const s=stateWithRoles();
-    s.messages=Array.from({length:20002},(_,i)=>({id:'old-'+i,roleId:s.roles[0].id,sender:'user',type:'text',status:'sent',content:'旧消息',createdAt:i+1}));
+    s.messages=Array.from({length:50002},(_,i)=>({id:'old-'+i,roleId:s.roles[0].id,sender:'user',type:'text',status:'sent',content:'旧消息',createdAt:i+1}));
     return s;
   }});
   const saved=await f.request('/api/action',{type:'profile.save',payload:{name:'仍能修改'}});
-  assert.equal(saved.status,200);assert.equal(saved.value.state.messages.length,20002);
+  assert.equal(saved.status,200);assert.equal(saved.value.state.messages.length,50002);
   const deleted=await f.request('/api/action',{type:'message.delete',payload:{id:'old-0'}});
-  assert.equal(deleted.status,200);assert.equal(deleted.value.state.messages.length,20001);
+  assert.equal(deleted.status,200);assert.equal(deleted.value.state.messages.length,50001);
 });
 
 test('S7: an impossible moments invitation fails immediately before a background model request can be accepted',async t=>{
@@ -238,17 +255,25 @@ test('P1/P2: invalid API headers fail clearly; bill recognition normalizes valid
   const previous=process.env.ALLOW_PRIVATE_PROVIDERS;process.env.ALLOW_PRIVATE_PROVIDERS='1';
   t.after(()=>{if(previous===undefined)delete process.env.ALLOW_PRIVATE_PROVIDERS;else process.env.ALLOW_PRIVATE_PROVIDERS=previous;});
   const valid={amountCents:'1234',type:'expense',category:null,merchant:null,date:'2026-11-20',note:null};
-  let calls=0;
-  const server=http.createServer((req,res)=>{calls++;req.resume();res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{content:JSON.stringify([null,7,'bad',valid,{...valid,amountCents:'bad'},{...valid,type:'unknown'},{...valid,amountCents:50,note:'第二条'}])}}]}));});
+  let calls=0,posted;
+  const server=http.createServer(async (req,res)=>{
+    calls++;
+    const chunks=[];for await(const chunk of req)chunks.push(chunk);
+    posted=JSON.parse(Buffer.concat(chunks));
+    const rows=[null,7,'bad',valid,{...valid,amountCents:'bad'},{...valid,type:'unknown'},
+      {...valid,amountCents:50,note:'第二条',category:'健身'},{...valid,amountCents:70,category:'编造的新分类'}];
+    res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{content:JSON.stringify(rows)}}]}));
+  });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(()=>new Promise(resolve=>{server.closeAllConnections();server.close(resolve);}));
   const base='http://127.0.0.1:'+server.address().port;
   for(const key of ['bad\nkey','密钥'])await assert.rejects(P.request({baseUrl:base,key},'/test'),error=>error.status===422&&error.message==='API Key 含有非法字符，请重新粘贴');
   await assert.rejects(P.request({baseUrl:base,key:'ISOLATED'},'/test',{headers:{'X-Extra':'bad\nheader'}}),error=>error.status===422);
   assert.equal(calls,0);
-  const state={settings:{timezone:'UTC',preset:{},providers:{vision:{mode:'custom',baseUrl:base,model:'isolated',key:'ISOLATED',timeoutSeconds:2}}}};
+  const state={ledger:[{category:'健身'}],settings:{timezone:'UTC',preset:{},providers:{vision:{mode:'custom',baseUrl:base,model:'isolated',key:'ISOLATED',timeoutSeconds:2}}}};
   const result=await P.recognize(state,png);
-  assert.deepEqual(result,[{amountCents:1234,type:'expense',category:'',merchant:'',date:'2026-11-20',note:''},{amountCents:50,type:'expense',category:'',merchant:'',date:'2026-11-20',note:'第二条'}]);
+  assert.deepEqual(result,[{amountCents:1234,type:'expense',category:'其他',merchant:'',date:'2026-11-20',note:''},{amountCents:50,type:'expense',category:'健身',merchant:'',date:'2026-11-20',note:'第二条'},{amountCents:70,type:'expense',category:'其他',merchant:'',date:'2026-11-20',note:''}]);
+  assert.match(posted.messages[0].content,/识别账单.*餐饮.*其他.*健身/);
   assert.equal(calls,1);
 });
 

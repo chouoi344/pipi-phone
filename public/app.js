@@ -88,7 +88,7 @@
   let rolePanelAvailable=false;
   const restoredPage=history.state?.pipi&&typeof history.state.route?.name==='string'?history.state:null;
   let state = null, csrf = '', authEpoch = 0, route = restoredPage?{...restoredPage.route}:{name:initialView,arg:null}, authSetup = false, modalOpen = false, searchTerm = '', searchOpen = false;
-  let sourceUrl = '',binaryMedia=false,imageVariants=false,storageMaintenance=false,streamingBackup=false;
+  let sourceUrl = '',binaryMedia=false,imageVariants=false,storageMaintenance=false,streamingBackup=false,accountSecurity=false,setupTokenRequired=false,momentExclusions=false;
   let composeText = '', composeImage = '', composeImageMeta=null, composeStickerId = '', quoteId = '', panel = '', sending = false, sendingRoleId = '', outgoing = null, avatarDraft = '', toastTimer, pendingRender = false, modalReturnFocus = null;
   let recordingSession=null,dictationBusy=false,composeComposing=false,searchComposing=false,deferredComposerUpdate=false;
   const routes = new Map();
@@ -186,7 +186,7 @@
     toastEl.classList.add('visible');
     toastTimer = setTimeout(() => toastEl.classList.remove('visible'), subtle ? 1800 : 3200);
   }
-  function setState(next) { if (next && typeof next === 'object') {if(state&&next.revision<state.revision)return;const foreign=state&&next.revision>state.revision+1;globalThis.window?.WaterdropChat?.observeState(state,next,view);trackNewChatMessages(state,next);state = next;globalThis.window?.PipiStickers?.syncDetail();globalThis.window?.PipiExpiry?.sync();syncVisibleChatRead();globalThis.window?.PipiEngine?.start();if(foreign)scheduleRender();} }
+  function setState(next) { if (next && typeof next === 'object') {if(state&&next.revision<state.revision)return;const foreign=state&&next.revision>state.revision+1;globalThis.window?.WaterdropChat?.observeState(state,next,view);trackNewChatMessages(state,next);state = next;globalThis.window?.PipiMessageLimit?.check(state);globalThis.window?.PipiStickers?.syncDetail();globalThis.window?.PipiExpiry?.sync();syncVisibleChatRead();globalThis.window?.PipiEngine?.start();if(foreign)scheduleRender();} }
   function receiveState(next) {
     if(!state||next.revision<=state.revision)return;
     setState(next);pendingRender=true;flushRender(true);
@@ -247,7 +247,7 @@
     if (result.csrfToken) csrf = result.csrfToken;
     if (!response.ok) {
       if (result.state) setState(result.state);
-      if (response.status === 401 && !['/api/login','/api/setup'].includes(path)) { csrf = ''; state = null; window.PipiEngine?.stop(); closeModal(false); renderAuth(false); }
+      if (response.status === 401 && !['/api/login','/api/setup'].includes(path) && !(path==='/api/account/password'&&result.code==='INVALID_PASSWORD')) { csrf = ''; state = null; window.PipiEngine?.stop(); closeModal(false); renderAuth(false); }
       const error = new Error(result.error || `请求失败（${response.status}）`); error.status = response.status; error.state = result.state;
       error.code = result.code;
       if (result.code === 'PROVIDER_KEY_CHANGED') error.keyRevisions = result.keyRevisions;
@@ -492,6 +492,8 @@
   function showView(name, arg, fromBack=false) {
     if(modalSaveInProgress)return;
     if(name==='sticker-store')name='stickers';
+    if(name==='account-security'&&!accountSecurity)name='settings';
+    if(name==='account-security'&&route.name!=='account-security')window.PipiAccount.enter();
     if(name==='storage'&&!storageMaintenance)name='settings';
     if(name==='storage'&&route.name!=='storage')window.PipiStorage.enter();
     if(state&&roleRoutes.has(name)&&!roleById(arg?.roleId||arg?.id||arg)){if(fromBack&&navStack.length){history.back();return;}const list=name==='chat'?'chats':'contacts';if(fromBack)history.replaceState({pipi:true,route:{name:list,arg:null},stack:[]},'');name=list;arg=undefined;navStack.length=0;}
@@ -602,6 +604,7 @@
   async function restoreBrowserPage(){
     if(roleRoutes.has(route.name)&&!roleById(route.arg)){route={name:route.name==='chat'?'chats':'contacts',arg:null};navStack.length=0;history.replaceState({pipi:true,route:{...route},stack:[]},'');}
     restoreChatDrafts();
+    if(route.name==='account-security'){if(accountSecurity)window.PipiAccount.enter();else route={name:'settings',arg:null};}
     if(route.name==='storage'){if(storageMaintenance)window.PipiStorage.enter();else route={name:'settings',arg:null};}
     const saved=sessionStorage.getItem(browserPositionKey);
     sessionStorage.removeItem(browserPositionKey);
@@ -644,7 +647,7 @@
     if(enginePage!==null&&enginePage!==undefined){view.innerHTML=enginePage;bindMain();window.PipiEngine.bind(name,route.arg);return;}
     if (featureNames.has(name)) {
       const titles = {moments:'朋友圈','moment-album':'相册',ledger:'记账本',wallet:'钱包',farm:'小农场',favorites:'收藏',services:'服务'};
-      view.innerHTML = header(titles[name],{back:true,right:name==='moments'&&(!route.arg?.roleId||route.arg?.roleId==='me')?iconButton('camera','compose-moment','发表朋友圈'):name==='wallet'?'<button class="nav-text" data-action="wallet-bills">账单</button>':''}) + `<div class="content page-content feature-content ${name==='moments'?'moments-content':''}">${window.PipiFeatures?.render(name,route.arg) || '<div class="empty">这个页面暂未开放</div>'}</div>`;
+      view.innerHTML = header(titles[name],{back:true,right:name==='moments'&&(!route.arg?.roleId||route.arg?.roleId==='me')?iconButton('camera','compose-moment','发表朋友圈')+iconButton('more','moments-settings','朋友圈管理'):name==='moments'?iconButton('more','moments-settings','朋友圈管理'):name==='wallet'?'<button class="nav-text" data-action="wallet-bills">账单</button>':''}) + `<div class="content page-content feature-content ${name==='moments'?'moments-content':''}">${window.PipiFeatures?.render(name,route.arg) || '<div class="empty">这个页面暂未开放</div>'}</div>`;
       window.PipiFeatures?.bind(name,route.arg); bindMain(); return;
     }
     if (routes.has(name)) { view.innerHTML=routes.get(name)(route.arg); bindMain(); return; }
@@ -776,9 +779,10 @@
   }
   function renderSettings() {
     const group=(title,rows)=>`<p class="section-title settings-group-title">${title}</p><section class="section">${rows}</section>`;
-    return header('设置',{back:true})+`<div class="content page-content settings-content">${group('账号',plainCell('个人资料','edit-profile'))}${group('小手机',plainCell('小手机','engine-home',state.settings?.ai?.assign?.chat?'已选择模型':'未选择模型')+plainCell('用量与日志','engine-usage'))}${group('通用',plainCell('朋友权限','friend-permissions')+plainCell('聊天记录管理','backup')+(storageMaintenance?plainCell('存储空间','storage'):''))}${group('关于',plainCell('关于屁屁机','about'))}<section class="section"><button class="cell centered-cell" data-action="logout">退出登录</button></section></div>`;
+    return header('设置',{back:true})+`<div class="content page-content settings-content">${group('账号',plainCell('个人资料','edit-profile')+(accountSecurity?plainCell('账号与安全','account-security'):''))}${group('小手机',plainCell('小手机','engine-home',state.settings?.ai?.assign?.chat?'已选择模型':'未选择模型')+plainCell('用量与日志','engine-usage'))}${group('通用',plainCell('朋友权限','friend-permissions')+plainCell('聊天记录管理','backup')+(storageMaintenance?plainCell('存储空间','storage'):''))}${group('关于',plainCell('关于屁屁机','about'))}<section class="section"><button class="cell centered-cell" data-action="logout">退出登录</button></section></div>`;
   }
   routes.set('storage',()=>header('存储空间',{back:true})+window.PipiStorage.render());
+  routes.set('account-security',()=>header('账号与安全',{back:true})+window.PipiAccount.render());
   routes.set('friend-permissions',()=>header('朋友权限',{back:true})+`<div class="content page-content"><section class="section">${plainCell('通讯录黑名单','blacklist')}</section></div>`);
   routes.set('friend-profile',()=>{const r=roleById(route.arg);if(!r)return header('朋友资料',{back:true})+'<div class="empty">联系人不存在</div>';return header('朋友资料',{back:true})+`<div class="content page-content"><section class="section">${plainCell('备注',"contact-remark",r.remark||'')}${plainCell('标签','contact-remark',(r.tags||[]).join('、'))}${plainCell('电话','contact-remark',r.phone||'')}${plainCell('描述','contact-remark',r.description||'')}</section><p class="section-title">朋友权限</p><section class="section">${plainCell('朋友权限','contact-permissions',r.permissions?.onlyChat?'仅聊天':'聊天、朋友圈、微信运动等')}</section></div>`;});
   function renderContactMore(){const r=roleById(route.arg)||{};return header('更多信息',{back:true})+`<div class="content page-content"><section class="section contact-more-info">${[['地区',r.region],['个性签名',r.bio],['来源','由你添加']].map(([label,value])=>`<div class="info-line"><span>${label}</span><p>${esc(value||'未填写')}</p></div>`).join('')}</section></div>`;}
@@ -1120,6 +1124,7 @@
     view.querySelectorAll('[data-global-message]').forEach(el=>el.onclick=()=>{focusMessageId=el.dataset.globalMessage;showView('chat',el.dataset.searchRole);});
     view.querySelectorAll('[data-remove-sticker]').forEach(el=>el.onclick=()=>confirmDialog('移除这个表情？','移除后可重新添加，聊天记录中的图片不受影响。',()=>act('sticker.delete',{id:el.dataset.removeSticker}),'移除'));
     if(route.name==='storage')window.PipiStorage.bind();
+    if(route.name==='account-security')window.PipiAccount.bind();
     if(route.name==='stickers'){window.PipiStickers.bind(view);const file=view.querySelector('#sticker-file');if(file)file.onchange=()=>uploadStickers(file);}
   }
   let openingRequest = 0;
@@ -1153,6 +1158,7 @@
       case 'cancel-status':statusDraft=null;showView('me');break;
       case 'end-status':confirmDialog('结束状态？','结束后将不再展示当前状态。',async isCurrent=>{await act('status.end');if(isCurrent())showView('me');},'结束状态');break;
       case 'storage': showView('storage');break;
+      case 'account-security': showView('account-security');break;
       case 'back': goBack(); break;
       case 'search': searchOpen=!searchOpen; searchTerm=''; refresh(); view.querySelector('#list-search')?.focus(); break;
       case 'global-search':globalSearchTerm='';showView('global-search');view.querySelector('#list-search').focus();break;
@@ -1175,8 +1181,8 @@
       case 'toggle-pin': if(r){await act('conversation.pin',{roleId:r.id,pinned:!r.pinned});refresh();}break;
       case 'toggle-mute': if(r){await act('conversation.mute',{roleId:r.id,muted:!r.muted});refresh();}break;
       case 'toggle-star':if(r){await act('role.save',{id:r.id,starred:!r.starred});refresh();}break;
-      case 'clear-conversation': if(r)confirmDialog('清空聊天记录？',`将删除与 ${roleName(r)} 的全部消息，保留联系人和共同记忆。`,()=>act('conversation.clear',{roleId:r.id}),'清空');break;
-      case 'delete-role': if(r)confirmDialog('删除这位联系人？','将删除聊天记录、共同记忆、转账和红包明细、TA 的朋友圈和点赞评论、农场记录及提醒。你发出且未被领取的款项会退回零钱，收藏保留快照。',async isCurrent=>{await act('role.delete',{id:r.id});if(isCurrent())showView('contacts');},'删除');break;
+      case 'clear-conversation': if(r)confirmDialog('清空聊天记录？',`将删除与 ${roleName(r)} 的全部消息，保留联系人和共同记忆。未领取的红包和转账会自动退回，款项记录保留在零钱明细里。`,()=>act('conversation.clear',{roleId:r.id}),'清空');break;
+      case 'delete-role': if(r)confirmDialog('删除这位联系人？','将删除聊天记录、共同记忆、TA 的朋友圈和点赞评论、农场记录及提醒。转账和红包记录保留在零钱明细里，未领取的款项会自动退回，收藏保留快照。',async isCurrent=>{await act('role.delete',{id:r.id});if(isCurrent())showView('contacts');},'删除');break;
       case 'chat-search': chatSearch='';chatSearchFilter='all';chatSearchDate='';showView('chat-search',r?.id);view.querySelector('#chat-search')?.focus();break;
       case 'compose-moment': window.PipiFeatures?.openMomentCamera?.(); break;
       case 'add-role': editRole(); break;
@@ -1223,7 +1229,7 @@
       case 'chat-transfer': showView('wallet',{roleId:r?.id,mode:'transfer'}); break;
       case 'chat-redpacket': showView('wallet',{roleId:r?.id,mode:'redpacket'}); break;
       case 'chat-pat': if(r)await patChat(r.id,'contact');break;
-      case 'logout': confirmDialog('退出登录？','数据会保留在服务器，输入密码即可重新登录。',async()=>{await api('/api/logout',{}); csrf=''; state=null;drafts.clear();composerHistories.clear();failedSends.clear();composeText='';composeImage='';composeImageMeta=null;composeStickerId='';quoteId='';sessionStorage.removeItem(chatDraftKey);window.PipiEngine?.stop();window.PipiStorage?.reset(); renderAuth(false);},'退出登录'); break;
+      case 'logout': confirmDialog('退出登录？','数据会保留在服务器，输入密码即可重新登录。',async()=>{await api('/api/logout',{}); csrf=''; state=null;drafts.clear();composerHistories.clear();failedSends.clear();composeText='';composeImage='';composeImageMeta=null;composeStickerId='';quoteId='';sessionStorage.removeItem(chatDraftKey);window.PipiEngine?.stop();window.PipiStorage?.reset();window.PipiAccount?.reset(); renderAuth(false);},'退出登录'); break;
       case 'download-backup': downloadBackup(); break;
       case 'restore-backup': pickBackup(); break;
     }
@@ -1257,7 +1263,7 @@
       el.addEventListener('pointercancel',()=>clearTimeout(timer)); el.addEventListener('pointerleave',()=>clearTimeout(timer));
     });
     view.querySelectorAll('[data-conv]').forEach(el=>el.onclick=async()=>{
-      const r=roleById(el.dataset.role);if(el.dataset.conv==='delete'){confirmDialog('删除该聊天？','聊天记录将被删除，联系人仍保留在通讯录中。',()=>act('conversation.delete',{roleId:r.id}),'删除');return;}try { await act(`conversation.${el.dataset.conv}`,{roleId:r.id,...(el.dataset.conv==='pin'?{pinned:!r.pinned}:{}),...(el.dataset.conv==='hide'?{hidden:true}:{})}); refresh(); } catch(err){toast(err.message);}
+      const r=roleById(el.dataset.role);if(el.dataset.conv==='delete'){confirmDialog('删除该聊天？','聊天记录将被删除，联系人仍保留在通讯录中。未领取的红包和转账会自动退回，款项记录保留在零钱明细里。',()=>act('conversation.delete',{roleId:r.id}),'删除');return;}try { await act(`conversation.${el.dataset.conv}`,{roleId:r.id,...(el.dataset.conv==='pin'?{pinned:!r.pinned}:{}),...(el.dataset.conv==='hide'?{hidden:true}:{})}); refresh(); } catch(err){toast(err.message);}
     });
   }
   function renderMessageSelection(){
@@ -1980,11 +1986,11 @@
   function editRole(id) {
     const r=roleById(id)||{};
     const cover=safeImage(r.cover)?r.cover:'';
-    const html=avatarForm(r)+field('名字','name',r.name,'给这位朋友起个名字')+field('备注','remark',r.remark,'备注只显示在你的通讯录里')+field('微信号','wechatId',r.wechatId,'为角色设置一个标识')+field('个性签名','bio',r.bio,'TA 的一句话介绍','textarea')+field('拍一拍','patText',r.patText||'','填写拍了拍后面的内容')+'<span class="rp-pat-preview" id="role-pat-preview"></span>'+`<div class="form-field role-cover-picker"><span class="field-label">朋友圈背景图</span><button type="button" id="pick-role-cover" aria-label="上传朋友圈背景图">${cover?`<img src="${esc(cover)}" alt="朋友圈背景图预览">`:'<span>点击上传朋友圈背景图</span>'}</button><input type="hidden" name="cover" value="${esc(cover)}"><input type="file" id="role-cover-file" accept="${profileImageAccept}" hidden></div>`;
+    const html=avatarForm(r)+(id?'':'<label class="form-field check-row" style="flex-direction:row;justify-content:space-between"><span class="field-label" style="margin:0">自动发朋友圈</span><input type="checkbox" name="momentsAutoEnabled"></label>')+field('名字','name',r.name,'给这位朋友起个名字')+field('备注','remark',r.remark,'备注只显示在你的通讯录里')+field('微信号','wechatId',r.wechatId,'为角色设置一个标识')+field('个性签名','bio',r.bio,'TA 的一句话介绍','textarea')+field('拍一拍','patText',r.patText||'','填写拍了拍后面的内容')+'<span class="rp-pat-preview" id="role-pat-preview"></span>'+`<div class="form-field role-cover-picker"><span class="field-label">朋友圈背景图</span><button type="button" id="pick-role-cover" aria-label="上传朋友圈背景图">${cover?`<img src="${esc(cover)}" alt="朋友圈背景图预览">`:'<span>点击上传朋友圈背景图</span>'}</button><input type="hidden" name="cover" value="${esc(cover)}"><input type="file" id="role-cover-file" accept="${profileImageAccept}" hidden></div>`;
     openModal(id?'编辑角色资料':'添加新的朋友',html,async form=>{
       const values=formValues(form);if(!values.name.trim())throw new Error('请填写角色名字');
       checkWechatId(values.wechatId,r.wechatId);
-      await act('role.save',{...(id?{id}:{}),...values,avatar:avatarDraft});if(!form.isConnected){toast('角色资料已保存');return;}closeModal();
+      await act('role.save',{...(id?{id}:{}),...values,...(!id?{momentsAutoEnabled:form.elements.momentsAutoEnabled.checked}:{}),avatar:avatarDraft});if(!form.isConnected){toast('角色资料已保存');return;}closeModal();
       if(!id&&route.name!=='new-friends')showView('new-friends');else refresh();toast('角色资料已保存');
     },id?'保存':'添加朋友');bindAvatar(r);
     const pat=overlay.querySelector('[name=patText]'),patPreview=overlay.querySelector('#role-pat-preview'),roleNameInput=overlay.querySelector('[name=name]');pat.maxLength=100;const previewPat=()=>{patPreview.textContent='我拍了拍“'+(overlay.querySelector('[name=remark]').value||roleNameInput.value||'朋友')+'”'+(pat.value?'的'+pat.value:'');};pat.oninput=previewPat;roleNameInput.oninput=previewPat;overlay.querySelector('[name=remark]').oninput=previewPat;previewPat();
@@ -2051,8 +2057,8 @@
       {label:'编辑角色资料',icon:icons.edit,run:()=>editRole(r.id)},
       {label:r.pinned?'取消置顶聊天':'置顶聊天',icon:icons.pin,run:async()=>{await act('conversation.pin',{roleId:r.id,pinned:!r.pinned});refresh();}},
       {label:r.hidden?'重新显示此聊天':'不显示此聊天',run:async()=>{await act('conversation.hide',{roleId:r.id,hidden:!r.hidden});refresh();}},
-      {label:'清空聊天记录',icon:icons.trash,danger:true,run:()=>confirmDialog('清空聊天记录？',`将删除与 ${roleName(r)} 的全部消息，保留角色资料与共同记忆。`,()=>act('conversation.clear',{roleId:r.id}),'清空记录')},
-      {label:'删除联系人',danger:true,run:()=>confirmDialog('删除这位联系人？',`将删除与 ${roleName(r)} 的聊天记录、共同记忆、转账和红包明细、TA 的朋友圈和点赞评论、农场记录及提醒。你发出且未被领取的款项会退回零钱，收藏保留快照。`,async isCurrent=>{await act('role.delete',{id:r.id});if(isCurrent())showView('contacts');},'删除联系人')}
+      {label:'清空聊天记录',icon:icons.trash,danger:true,run:()=>confirmDialog('清空聊天记录？',`将删除与 ${roleName(r)} 的全部消息，保留角色资料与共同记忆。未领取的红包和转账会自动退回，款项记录保留在零钱明细里。`,()=>act('conversation.clear',{roleId:r.id}),'清空记录')},
+      {label:'删除联系人',danger:true,run:()=>confirmDialog('删除这位联系人？',`将删除与 ${roleName(r)} 的聊天记录、共同记忆、TA 的朋友圈和点赞评论、农场记录及提醒。转账和红包记录保留在零钱明细里，未领取的款项会自动退回，收藏保留快照。`,async isCurrent=>{await act('role.delete',{id:r.id});if(isCurrent())showView('contacts');},'删除联系人')}
     ]);
   }
   function downloadBackup() {
@@ -2098,10 +2104,10 @@
   }
   function renderAuth(setup, connectionError = '') {
     stopSpeech();authSetup=setup;authEpoch++;state=null;window.PipiEngine?.stop();view.dataset.route='auth';
-    view.innerHTML=`<div class="auth-content"><div class="auth-logo">${icons.chat}</div><h1>屁屁机</h1>${setup?'':'<p class="auth-subtitle">熟悉的人和日常，都在这里等你。</p>'}${connectionError?`<div class="inline-note">${esc(connectionError)}</div><button class="primary-btn weui-btn weui-btn_primary" id="retry-boot">重新连接</button>`:`<form id="auth-form">${setup?field('你的名字','displayName','','怎么称呼你'):''}${field(setup?'设置访问密码':'访问密码','password','',setup?'至少 8 个字符':'','password')}${setup?field('再次输入密码','confirmPassword','','再输入一次','password')+field('首次设置令牌（仅远程部署需要）','setupToken','','本机访问可留空','password'):''}<div class="auth-error" role="alert"></div><button type="submit" class="primary-btn weui-btn weui-btn_primary">${setup?'开启我的小手机':'进入小手机'}</button></form>`}<div class="auth-bottom">${setup?'一个账号 · 一部独立小手机<br>请保存好密码，当前版本不提供邮箱找回':'你的数据保存在当前服务器<br>密码仅用于访问这部小手机'}<br>开源 · 非售卖 · 无内置模型密钥</div></div>`;
+    view.innerHTML=`<div class="auth-content"><div class="auth-logo">${icons.chat}</div><h1>屁屁机</h1>${setup?'':'<p class="auth-subtitle">熟悉的人和日常，都在这里等你。</p>'}${connectionError?`<div class="inline-note">${esc(connectionError)}</div><button class="primary-btn weui-btn weui-btn_primary" id="retry-boot">重新连接</button>`:`<form id="auth-form">${setup?field('你的名字','displayName','','怎么称呼你'):''}${field(setup?'设置访问密码':'访问密码','password','',setup?'至少 8 个字符':'','password')}${setup?field('再次输入密码','confirmPassword','','再输入一次','password')+field(setupTokenRequired?'首次设置令牌':'首次设置令牌（仅远程部署需要）','setupToken','',setupTokenRequired?'请输入服务器控制台提供的设置令牌':'本机访问可留空','password'):''}<div class="auth-error" role="alert"></div><button type="submit" class="primary-btn weui-btn weui-btn_primary">${setup?'开启我的小手机':'进入小手机'}</button></form>`}<div class="auth-bottom">${setup?'一个账号 · 一部独立小手机<br>请保存好密码，当前版本不提供邮箱找回':'你的数据保存在当前服务器<br>密码仅用于访问这部小手机'}<br>开源 · 非售卖 · 无内置模型密钥</div></div>`;
     view.querySelector('#retry-boot')?.addEventListener('click',boot);
     const form=view.querySelector('#auth-form');if(!form)return;
-    form.querySelector('[name=password]').autocomplete=setup?'new-password':'current-password';
+    form.querySelector('[name=password]').autocomplete=setup?'new-password':'current-password';if(setup&&setupTokenRequired)form.querySelector('[name=setupToken]').required=true;
     form.onsubmit=async event=>{
       event.preventDefault();const values=formValues(form),button=form.querySelector('[type=submit]'),error=form.querySelector('.auth-error');if(button.disabled)return;
       if(!values.password||(setup&&values.password.length<8)){error.textContent=setup?'请设置至少 8 个字符的密码':'请输入访问密码';return;}
@@ -2113,11 +2119,11 @@
     };
   }
   async function boot() {
-    try{const status=await api('/api/status');sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;imageVariants=binaryMedia&&status.imageVariants===true;storageMaintenance=status.storageMaintenance===true;streamingBackup=status.streamingBackup===true;rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
+    try{const status=await api('/api/status');sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;imageVariants=binaryMedia&&status.imageVariants===true;storageMaintenance=status.storageMaintenance===true;streamingBackup=status.streamingBackup===true;accountSecurity=status.accountSecurity===true;setupTokenRequired=status.setupTokenRequired===true;momentExclusions=status.momentExclusions===true;window.PipiMessageLimit?.configure(status.messageLimit);rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
     catch(err){renderAuth(false,`暂时无法连接这部小手机。${err.message}`);}
   }
   window.PipiExpiry={sync:syncExpiredMedia};
-  window.Pipi={getState:()=>state,api,apiRaw,act,receiveState,updateTyping,syncChatProgress,readImage,readProfileImage,uploadMedia,uploadImage,uploadImageData,uploadProfileImage,showView,goBack,openWhenReady,openChatMessage:(roleId,messageId)=>{focusMessageId=messageId;showView('chat',roleId);},preserveChatLayout:callback=>{const snapshot=captureChatLayout();callback();restoreChatLayout(snapshot);},scrollChatToBottom:(roleId)=>{forceBottomRole=roleId;chatScrolls.delete(roleId);if(route.name==='chat'&&route.arg===roleId)scrollChat();},openModal,closeModal,openPage,openNestedPage,openChildDialog,closeChildDialog,closePage:closeModal,openPhoto:lightbox,actionSheet,confirmDialog,toast,esc,avatar,icons,refresh,setState,registerRoute:(name,renderer)=>routes.set(name,renderer)};
+  window.Pipi={getState:()=>state,supportsMomentExclusions:()=>momentExclusions,api,apiRaw,act,receiveState,updateTyping,syncChatProgress,readImage,readProfileImage,uploadMedia,uploadImage,uploadImageData,uploadProfileImage,showView,goBack,openWhenReady,openChatMessage:(roleId,messageId)=>{focusMessageId=messageId;showView('chat',roleId);},preserveChatLayout:callback=>{const snapshot=captureChatLayout();callback();restoreChatLayout(snapshot);},scrollChatToBottom:(roleId)=>{forceBottomRole=roleId;chatScrolls.delete(roleId);if(route.name==='chat'&&route.arg===roleId)scrollChat();},openModal,closeModal,openPage,openNestedPage,openChildDialog,closeChildDialog,closePage:closeModal,openPhoto:lightbox,actionSheet,confirmDialog,toast,esc,avatar,icons,refresh,setState,registerRoute:(name,renderer)=>routes.set(name,renderer)};
   document.addEventListener('error',event=>{const image=event.target;if(image.tagName!=='IMG'||!/^\/api\/media\//.test(image.getAttribute('src')||''))return;image.classList.add('unavailable-media');image.dataset.availableAlt??=image.alt;image.alt='图片不可用';},true);
   document.addEventListener('load',event=>{const image=event.target;if(image.tagName!=='IMG'||!image.classList.contains('unavailable-media'))return;image.classList.remove('unavailable-media');image.alt=image.dataset.availableAlt;delete image.dataset.availableAlt;},true);
   document.addEventListener('keydown', event => {

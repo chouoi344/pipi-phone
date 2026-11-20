@@ -45,13 +45,16 @@ test('friend basics leave persona, model and story bindings unchanged while savi
 test('new friend creation returns to the populated new-friends page and still rejects a blank name',async()=>{
   const f=forms();f.ui.editRole();const page=f.pages[0];
   await assert.rejects(page.submit({isConnected:true,values:{name:'  ',cover:''}}),/请填写角色名字/);assert.equal(f.calls.length,0);
-  await page.submit({isConnected:true,values:{name:'New friend',remark:'New note',wechatId:'new',bio:'New bio',cover:PNG}});
+  await page.submit({isConnected:true,elements:{momentsAutoEnabled:{checked:false}},values:{name:'New friend',remark:'New note',wechatId:'new',bio:'New bio',cover:PNG}});
   assert.equal(f.navigations[0].name,'new-friends');assert.equal(f.ui.state.roles.at(-1).name,'New friend');assert.equal(f.ui.state.roles.at(-1).cover,PNG);
 });
 test('adding from new-friends keeps the existing page history entry',async()=>{
   const f=forms('new-friends');f.ui.editRole();
-  await f.pages[0].submit({isConnected:true,values:{name:'New friend',cover:''}});
+  await f.pages[0].submit({isConnected:true,elements:{momentsAutoEnabled:{checked:false}},values:{name:'New friend',cover:''}});
   assert.deepEqual(f.navigations,[]);assert.equal(f.ui.state.roles.at(-1).name,'New friend');
+});
+test('new friend auto moments is off by default and submits the actual checkbox boolean',async()=>{
+  for(const checked of [false,true]){const f=forms();f.ui.editRole();assert.match(f.pages[0].html,/<input type="checkbox" name="momentsAutoEnabled">/);await f.pages[0].submit({isConnected:true,elements:{momentsAutoEnabled:{checked}},values:{name:'Auto moments friend',momentsAutoEnabled:'on',cover:''}});assert.equal(f.calls[0].payload.momentsAutoEnabled,checked);}
 });
 test('cover reading finishes before save becomes available and a failed read keeps the old cover',async()=>{
   const f=forms();f.ui.editRole('alice');let finish;
@@ -72,7 +75,7 @@ test('new-friends list shows actual saved details and a decorative header mark',
   assert.match(html,/data-action="add-role">创建新朋友/);assert.doesNotMatch(html,/请求|申请|昨天|今天|2026/);
 });
 test('settings offer a direct usage route and both duplicate moments management entries are absent',async()=>{
-  const navigations=[],scope=vm.createContext({navigations,storageMaintenance:false});vm.runInContext(`const state={settings:{}},routes=new Map(),route={};const window={PipiUsage:{open:async()=>showView('engine-usage')}};
+  const navigations=[],scope=vm.createContext({navigations,storageMaintenance:false,accountSecurity:false});vm.runInContext(`const state={settings:{}},routes=new Map(),route={};const window={PipiUsage:{open:async()=>showView('engine-usage')}};
     function header(){return '';}function plainCell(title,action){return '<button data-action="'+action+'">'+title+'</button>';}function roleById(){}function showView(name){navigations.push(name);}
     ${productFunction('renderSettings')}${productFunction('handleAction')}globalThis.ui={renderSettings,handleAction};`,scope);
   const html=scope.ui.renderSettings();assert.match(html,/data-action="engine-usage">用量/);assert.doesNotMatch(html,/朋友圈管理|moments-settings/);

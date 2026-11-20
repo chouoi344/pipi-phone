@@ -364,7 +364,7 @@
     const dateLabel=card.createdAt>0&&Number.isFinite(date.getTime())?dateFormat.format(date):'日期未记录';
     return `<details class="life-memory-card" data-life-memory-id="${id}" ${opened?'open':''}>
       <summary><span class="life-memory-text">
-        <span class="life-memory-meta"><span>${esc(dateLabel)}</span>${card.memoryType!=='GENERAL'?'<span>'+esc(MEM_TYPE_LABELS[card.memoryType]||'共同记忆')+'</span>':''}${card.locked?'<span>已锁定</span>':''}</span>
+        <span class="life-memory-meta"><span>${esc(dateLabel)}</span>${card.memoryType!=='GENERAL'?'<span>'+esc(MEM_TYPE_LABELS[card.memoryType]||'共同记忆')+'</span>':''}${card.locked?'<span>已锁定</span>':''}${card.status!=='active'&&card.lastMentionedAt>0?'<span>最近聊到过</span>':''}</span>
         <span class="lm-card-body">${esc(card.content)}</span>
       </span></summary>
       <div class="life-memory-actions">
@@ -381,11 +381,11 @@
     const displayed=response.months.slice(0,3);
     const selected=response.months.find(item=>item.month===response.month);
     if(selected&&!displayed.includes(selected))displayed[2]=selected;
-    displayed.sort((a,b)=>a.month.localeCompare(b.month));
-    const years=new Set(response.months.filter(item=>item.month!=='unknown').map(item=>item.month.slice(0,4)));
+    displayed.sort((a,b)=>a.month==='recent'?-1:b.month==='recent'?1:a.month.localeCompare(b.month));
+    const years=new Set(response.months.filter(item=>!['unknown','recent'].includes(item.month)).map(item=>item.month.slice(0,4)));
     return `<div class="life-memory-months" aria-label="查看月份">${displayed.map(item=>
       `<button type="button" data-lm-month="${esc(item.month)}" aria-pressed="${response.month===item.month}">
-        <span>${esc(memoryMonthLabel(item.month,years.size>1))}</span><small>${memoryNumber.format(item.count)} 条</small>
+        <span>${esc(item.label||memoryMonthLabel(item.month,years.size>1))}</span><small>${memoryNumber.format(item.count)} 条</small>
       </button>`).join('')}</div>`;
   }
 
@@ -440,7 +440,7 @@
       let cardsHtml;
       if(!cached)cardsHtml=note('正在读取记忆…');
       else if(cached.error)cardsHtml=`<div class="lm-feedback" role="alert"><p>${esc(cached.error)}</p><button type="button" id="lm-retry">重新读取</button></div>`;
-      else cardsHtml=cards.length?cards.map(c=>`<article class="lm-card"><div class="lm-card-top"><span class="lm-tag">${esc(MEM_TYPE_LABELS[c.memoryType]||'共同记忆')}</span><button type="button" class="lm-lock-btn ${c.locked?'locked':''}" aria-pressed="${!!c.locked}" data-lm-lock="${esc(c.id)}">${c.locked?'已锁定':'锁定'}</button></div><div class="lm-card-body">${esc(c.content)}</div><div class="lm-card-meta"><span>${c.accessCount?`唤起 ${c.accessCount} 次`:''}</span><span class="tools">${c.status==='active'?'':'<button type="button" data-lm-restore="'+esc(c.id)+'">恢复记忆</button>'}<button type="button" data-lm-edit="${esc(c.id)}">编辑</button><button type="button" class="danger" data-lm-delete="${esc(c.id)}">删除</button></span></div></article>`).join(''):`<div class="lm-empty"><p>${ui.memQuery?'没有找到相关记忆':ui.memStatus==='archived'?'暂无已归档的记忆':'还没有共同记忆'}</p><span>${ui.memQuery?'换个关键词试试':'可从右上角添加，或从“导入与备份”导入。'}</span></div>`;
+      else cardsHtml=cards.length?cards.map(c=>`<article class="lm-card"><div class="lm-card-top"><span class="lm-tag">${esc(MEM_TYPE_LABELS[c.memoryType]||'共同记忆')}</span><button type="button" class="lm-lock-btn ${c.locked?'locked':''}" aria-pressed="${!!c.locked}" data-lm-lock="${esc(c.id)}">${c.locked?'已锁定':'锁定'}</button></div><div class="lm-card-body">${esc(c.content)}</div><div class="lm-card-meta"><span>${c.status!=='active'&&c.lastMentionedAt>0?'最近聊到过':c.accessCount?`唤起 ${c.accessCount} 次`:''}</span><span class="tools">${c.status==='active'?'':'<button type="button" data-lm-restore="'+esc(c.id)+'">恢复记忆</button>'}<button type="button" data-lm-edit="${esc(c.id)}">编辑</button><button type="button" class="danger" data-lm-delete="${esc(c.id)}">删除</button></span></div></article>`).join(''):`<div class="lm-empty"><p>${ui.memQuery?'没有找到相关记忆':ui.memStatus==='archived'?'暂无已归档的记忆':'还没有共同记忆'}</p><span>${ui.memQuery?'换个关键词试试':'可从右上角添加，或从“导入与备份”导入。'}</span></div>`;
       body=`<form id="lm-search-form" class="lm-toolbar"><input type="search" id="lm-search-input" value="${esc(ui.memQuery)}" placeholder="搜索记忆" aria-label="搜索记忆" enterkeyhint="search"><button type="submit">搜索</button></form><div class="lm-controls"><div class="lm-filters" aria-label="记忆状态">${[['active','有效'],['archived','已归档']].map(([id,label])=>`<button type="button" data-mem-status="${id}" aria-pressed="${ui.memStatus===id}">${label}</button>`).join('')}</div><div class="lm-actions">${button('提炼记忆','lm-extract',false,`data-role-id="${esc(roleId)}"`)}${button('整理去重','lm-consolidate',false,`data-role-id="${esc(roleId)}"`)}</div></div>${cardsHtml}`;
     }else if(ui.memTab==='recall'){
       const result=ui.memRecallResults.get(roleId),results=result?.cards;
@@ -770,8 +770,8 @@
       });
       const moreMonths=root.querySelector('[data-lm-all-months]');
       if(moreMonths)moreMonths.onclick=()=>{
-        P().actionSheet('选择月份',life.response.months.map(({month,count})=>({
-          label:memoryMonthLabel(month)+' · '+memoryNumber.format(count)+' 条',run:()=>chooseMonth(month)
+        P().actionSheet('选择月份',life.response.months.map(({month,count,label})=>({
+          label:(label||memoryMonthLabel(month))+' · '+memoryNumber.format(count)+' 条',run:()=>chooseMonth(month)
         })));
         document.querySelector('#overlay .sheet-actions').classList.add('life-memory-month-picker');
       };

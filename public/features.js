@@ -88,11 +88,9 @@
     if (viewer === 'me') {
       if (item.authorId === 'me') return true;
       const permissions = person(item.authorId).permissions || {};
-      return !permissions.blocked && !permissions.onlyChat && !permissions.hideTheirMoments;
+      return !permissions.blocked && !permissions.onlyChat && !permissions.hideTheirMoments && window.PipiMomentVisibility.allows(item.visibility, 'me');
     }
-    const permissions = person(viewer).permissions || {};
-    if (permissions.blocked || permissions.onlyChat) return false;
-    return item.authorId === viewer || item.authorId === 'me' && !permissions.hideMyMoments && (item.visibility === 'all' || item.visibility.includes(viewer));
+    return window.PipiMomentVisibility.forRole(item, person(viewer));
   }
   function renderMomentAlbum() {
     if (ui.albumTab === 'status') {
@@ -157,7 +155,9 @@
   function renderMomentCard(item) {
     const likes = item.likes || [], comments = item.comments || [], liked = likes.includes('me');
     const long = String(item.content || '').length > 180;
-    const privacy = item.authorId === 'me' && Array.isArray(item.visibility) ? `<span class="moment-privacy" aria-label="${item.visibility.length ? '部分角色可见' : '私密'}" title="${item.visibility.length ? '部分角色可见' : '私密'}">${item.visibility.length ? nativeIcon('people-outlined') : '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 7V4.5a3 3 0 0 1 6 0V7M4 7h8v7H4z" stroke="currentColor" stroke-width="1.2"/></svg>'}</span>` : '';
+    const scope = item.visibility, privacyMode = Array.isArray(scope) ? (scope.length ? 'some' : 'self') : scope?.exclude ? 'exclude' : '';
+    const privacyLabel = {some:'部分角色可见',self:'私密',exclude:'不给谁看'}[privacyMode];
+    const privacy = item.authorId === 'me' && privacyLabel ? `<span class="moment-privacy" aria-label="${privacyLabel}" title="${privacyLabel}">${privacyMode === 'some' ? nativeIcon('people-outlined') : momentPrivacyIcon(privacyMode)}</span>` : '';
     const photos = momentImages(item);
     return `<article class="moment-card" data-moment-id="${esc(item.id)}">${avatar(item.authorId, 44)}<div class="moment-main"><strong class="moment-author">${esc(label(item.authorId))}</strong><p class="moment-content${long ? ' is-collapsed' : ''}">${esc(item.content)}</p>${long ? '<button class="moment-expand" aria-expanded="false">全文</button>' : ''}${photos.length ? `<div class="moment-photo-grid${photos.length === 1 ? ' single-photo' : ''}${photos.length === 4 ? ' four-photos' : ''}">${photos.map((image, index) => `<button class="moment-photo-btn" data-photo="${esc(item.id)}" data-photo-index="${index}" aria-label="查看朋友圈第${index + 1}张图片"><img class="moment-photo" src="${esc(image)}" alt="朋友圈配图${index + 1}" loading="lazy"></button>`).join('')}</div>` : ''}${item.location ? `<p class="moment-location-label">${esc(item.location)}</p>` : ''}${item.authorId === 'me' && item.mentions?.length ? `<p class="moment-mentions-label">提醒了 ${item.mentions.map(id => esc(label(id))).join('、')}</p>` : ''}<div class="moment-meta"><span class="moment-time">${esc(momentTime(item.createdAt))}${privacy}</span>${item.authorId === 'me' ? `<button class="moment-delete" data-delete-moment="${esc(item.id)}" aria-label="删除动态">删除</button>` : ''}<details class="moment-actions"><summary aria-label="赞或评论">${nativeIcon('more-filled')}</summary><div class="moment-action-menu"><button data-like="${esc(item.id)}" aria-pressed="${liked}" aria-label="${liked ? '取消赞' : '赞'}">${nativeIcon('like-outlined')}<span>${liked ? '取消' : '赞'}</span></button><button data-comment="${esc(item.id)}" aria-label="评论">${nativeIcon('comment-outlined')}<span>评论</span></button></div></details></div>${likes.length || comments.length ? `<div class="moment-reactions">${likes.length ? `<div class="moment-likes">${nativeIcon('like-outlined')}<span>${likes.map(id => esc(label(id))).join('、')}</span></div>` : ''}${comments.length ? `<div class="moment-comments">${comments.map(comment => `<button class="moment-comment" data-comment="${esc(item.id)}" data-reply-to="${esc(comment.id)}" data-comment-author="${esc(comment.authorId)}" aria-label="回复${esc(label(comment.authorId))}"><strong>${esc(label(comment.authorId))}</strong>${comment.replyToAuthorId ? `回复<strong>${esc(label(comment.replyToAuthorId))}</strong>` : ''}：${esc(comment.content)}</button>`).join('')}</div>` : ''}</div>` : ''}</div></article>`;
   }
@@ -199,9 +199,8 @@
     if (privacy.mode === 'self') return [];
     const ids = privacy[privacy.mode].filter(id => friends.some(friend => friend.id === id));
     if (!ids.length) throw new Error(privacy.mode === 'some' ? '请选择至少一位可见的朋友' : '请选择不给谁看的朋友');
-    const visible = privacy.mode === 'some' ? ids : friends.filter(friend => !ids.includes(friend.id)).map(friend => friend.id);
-    if (visible.length > 200) throw new Error('本次可见朋友超过 200 人，请用“部分可见”选择');
-    return visible;
+    if (ids.length > 200) throw new Error('一次最多选择 200 位朋友');
+    return privacy.mode === 'some' ? ids : {exclude:ids};
   }
   function momentSelectionPage(title, html, submit, cancel = false) {
     P().openNestedPage(title, `<div class="moment-selection">${html}</div>`, submit, '完成');
@@ -289,8 +288,10 @@
       const visibility = momentVisibility(privacy);
       const available = momentFriends().map(friend => friend.id);
       mentions = mentions.filter(id => available.includes(id));
-      if (mentions.some(id => visibility !== 'all' && !visibility.includes(id))) throw new Error('提醒的朋友需要在可见范围内');
-      await mutation('moment.create', { content, images, visibility, location: String(data.get('location') || '').trim(), mentions });
+      const {allows} = window.PipiMomentVisibility;
+      if (mentions.some(id => !allows(visibility, id))) throw new Error('提醒的朋友需要在可见范围内');
+      const storedScope = visibility.exclude && P().supportsMomentExclusions?.() === false ? momentFriends().filter(friend => allows(visibility, friend.id)).map(friend => friend.id) : visibility;
+      await mutation('moment.create', { content, images, visibility:storedScope, location: String(data.get('location') || '').trim(), mentions });
       if (form.isConnected) closePage();
     }, privatePost ? '私密发表' : '发表');
     const form = document.querySelector('#overlay > .page-editor .modal-form');
@@ -316,7 +317,7 @@
     on('#moment-visibility', 'click', () => pickMomentPrivacy(privacy, next => {
       privacy = next;
       const visibility = momentVisibility(privacy), previous = mentions.length;
-      mentions = mentions.filter(id => visibility === 'all' || visibility.includes(id));
+      mentions = mentions.filter(id => window.PipiMomentVisibility.allows(visibility, id));
       const option = momentPrivacyOptions.find(([mode]) => mode === privacy.mode);
       form.querySelector('#moment-visibility').innerHTML = `${momentPrivacyIcon(privacy.mode)}<span>谁可以看</span><small>${option[1]}</small>${icon('chevron')}`;
       if (privatePost) {
@@ -327,7 +328,7 @@
       if (mentions.length < previous) P().toast('已移除不在可见范围内的提醒朋友');
     }), form);
     on('#moment-mention', 'click', () => {
-      const visibility = momentVisibility(privacy), friends = momentFriends().filter(friend => visibility === 'all' || visibility.includes(friend.id));
+      const visibility = momentVisibility(privacy), friends = momentFriends().filter(friend => window.PipiMomentVisibility.allows(visibility, friend.id));
       pickMomentFriends('提醒谁看', friends, mentions, ids => { mentions = ids; updateMentions(); });
     }, form);
   }
@@ -688,14 +689,21 @@
     const balance=document.querySelector('#overlay > .page-editor .wallet-balance');
     watchWallet(balance,()=>state().wallet?.balanceCents,()=>{balance.innerHTML=`<span>¥</span>${money(state().wallet?.balanceCents)}`;});
   }
+  const walletRoleLabel = item => item.roleDeleted ? `已删除的好友（${item.roleName}）` : label(item.roleId);
+  const walletReturnTime = item => item.returnedAt ?? item.updatedAt ?? item.createdAt;
   function walletBillRows() {
-    const transactions = [...(state().wallet?.transactions || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const transactions = (state().wallet?.transactions || []).flatMap(item => {
+      const original = {item, at:item.createdAt};
+      return item.status === 'returned' && item.direction === 'out' ? [{item, at:walletReturnTime(item), refund:true},original] : [original];
+    }).sort((a, b) => new Date(b.at) - new Date(a.at));
     let previous = '';
-    return transactions.length ? transactions.map(item => {
-      const date = new Date(item.createdAt), month = Number.isNaN(date.getTime()) ? '未知日期' : `${date.getFullYear()}年${date.getMonth() + 1}月`;
+    return transactions.length ? transactions.map(({item,at,refund}) => {
+      const date = new Date(at), month = Number.isNaN(date.getTime()) ? '未知日期' : `${date.getFullYear()}年${date.getMonth() + 1}月`;
       const heading = month !== previous ? `<div class="wallet-bill-month">${esc(month)}</div>` : ''; previous = month;
       const status = item.status || 'received', statusText = status === 'returned' ? '已退还' : status === 'pending' ? (item.direction === 'in' ? '待领取' : '待对方领取') : item.type === 'redpacket' ? '已领取' : item.direction === 'in' ? '已收款' : '已被接收';
-      return `${heading}<button type="button" class="wallet-transaction" data-wallet-transaction="${esc(item.id)}" data-payment-status="${esc(status)}"><span class="wallet-transaction-icon ${item.type === 'redpacket' ? 'redpacket' : ''}">${nativeIcon(item.type === 'redpacket' ? 'pay-reward-outlined' : 'transfer2-outlined')}</span><div><strong>${item.type === 'redpacket' ? '红包' : '转账'}${item.direction === 'in' ? ' - 来自' : ' - 给'}${esc(label(item.roleId))}</strong><small>${esc(dateText(item.createdAt))}<span class="wallet-bill-status">${statusText}</span></small></div><strong class="${item.direction==='in'&&status==='received'?'income':''}"${status!=='received'?' style="color:var(--muted)"':''}>${item.direction === 'in' ? '+' : '−'}${money(item.amountCents)}</strong></button>`;
+      const title = refund ? '退款 - 来自 ' : (item.type === 'redpacket' ? '红包' : '转账')+(item.direction === 'in' ? ' - 来自' : ' - 给');
+      const amount = (refund ? '+¥' : item.direction === 'in' ? '+' : '−')+money(item.amountCents);
+      return `${heading}<button type="button" class="wallet-transaction" data-wallet-transaction="${esc(item.id)}" data-payment-status="${refund?'refund':esc(status)}"><span class="wallet-transaction-icon ${!refund&&item.type === 'redpacket' ? 'redpacket' : ''}">${nativeIcon(!refund&&item.type === 'redpacket' ? 'pay-reward-outlined' : 'transfer2-outlined')}</span><div><strong>${title}${esc(walletRoleLabel(item))}</strong><small>${esc(dateText(at))}<span class="wallet-bill-status">${refund?'已退回零钱':statusText}</span></small></div><strong class="${refund||item.direction==='in'&&status==='received'?'income':''}"${!refund&&status!=='received'?' style="color:var(--muted)"':''}>${amount}</strong></button>`;
     }).join('') : empty('', '暂无零钱明细', '');
   }
   function walletBills(back) {
@@ -715,7 +723,7 @@
       const sender = incoming ? item.roleId : 'me';
       const summary = redpacket
         ? `<div class="payment-detail-cover" aria-hidden="true"></div><div class="wallet-detail-person">${avatar(sender, 22)}<span>${esc(label(sender))}的红包</span></div><p class="wallet-detail-note">${esc(item.note || '恭喜发财，大吉大利')}</p>${item.stickerImage ? `<img class="redpacket-detail-sticker" src="${esc(item.stickerImage)}" alt="红包表情">` : ''}<p class="payment-detail-value"><span class="wallet-detail-amount">${amount}</span><span class="payment-detail-unit">元</span></p><p class="wallet-detail-status">${status}</p>`
-        : `<div class="payment-detail-symbol" aria-hidden="true">${icon('transfer')}</div><p class="wallet-detail-status">${status}</p><p class="payment-detail-value"><span class="payment-detail-currency">¥</span><span class="wallet-detail-amount${amount.length > 9 ? ' wallet-large-amount' : ''}">${amount}</span></p>${item.note ? `<p class="wallet-detail-note">${esc(item.note)}</p>` : ''}<p class="payment-detail-recipient">${incoming ? '来自' : '转账给'}${esc(label(item.roleId))}</p>`;
+        : `<div class="payment-detail-symbol" aria-hidden="true">${icon('transfer')}</div><p class="wallet-detail-status">${status}</p><p class="payment-detail-value"><span class="payment-detail-currency">¥</span><span class="wallet-detail-amount${amount.length > 9 ? ' wallet-large-amount' : ''}">${amount}</span></p>${item.note ? `<p class="wallet-detail-note">${esc(item.note)}</p>` : ''}<p class="payment-detail-recipient">${incoming ? '来自' : '转账给'}${esc(walletRoleLabel(item))}</p>`;
       const actions=incoming&&paymentStatus==='pending'?'<div class="payment-handle-actions"><button type="button" class="primary-btn weui-btn weui-btn_primary" data-payment-handle="receive">领取</button><button type="button" class="secondary-btn" data-payment-handle="return">退还</button></div>':'';
       detailPage(redpacket ? '红包详情' : '转账详情', `<div class="wallet-transaction-detail payment-message-detail ${redpacket ? 'is-redpacket-detail' : 'is-transfer-detail'}" data-payment-status="${esc(paymentStatus)}"><div class="payment-detail-summary">${summary}</div>${actions}<div class="payment-detail-record"><span>${incoming ? '收到时间' : '发送时间'}</span><time>${esc(new Date(item.createdAt).toLocaleString('zh-CN'))}</time></div><button type="button" class="payment-detail-bill" id="payment-detail-bill">查看零钱明细${icon('chevron')}</button><p class="feature-bottom-note">虚拟互动记录，不涉及真实支付</p></div>`, back);
       on('#payment-detail-bill', 'click', () => walletTransaction(id, () => walletTransaction(id, back, options)));
@@ -724,7 +732,8 @@
       return;
     }
     const row = (title, value) => `<div class="wallet-detail-row"><span>${title}</span><strong>${esc(value)}</strong></div>`;
-    detailPage(redpacket ? '红包详情' : '转账详情', `<div class="wallet-transaction-detail${redpacket ? ' is-redpacket-detail' : ' is-transfer-detail'}" data-payment-status="${esc(paymentStatus)}"><div class="wallet-detail-summary"><div class="wallet-detail-person">${avatar(item.roleId, 42)}<span>${esc(label(item.roleId))}</span></div><p class="wallet-detail-kind">${redpacket ? '红包' : '转账'}${incoming ? '收入' : '支出'}</p><p class="wallet-detail-amount${money(item.amountCents).length > 9 ? ' wallet-large-amount' : ''}">${incoming ? '+' : '−'}${money(item.amountCents)}</p><p class="wallet-detail-status">${statusLabel}</p>${item.note ? `<p class="wallet-detail-note">${esc(item.note)}</p>` : ''}${item.stickerImage ? `<img class="redpacket-detail-sticker" src="${esc(item.stickerImage)}" alt="红包表情">` : ''}</div><div class="wallet-detail-fields">${row(incoming ? '付款方' : '收款方', label(item.roleId))}${row('交易时间', new Date(item.createdAt).toLocaleString('zh-CN'))}${item.updatedAt ? row(paymentStatus === 'returned' ? '退还时间' : '领取时间', new Date(item.updatedAt).toLocaleString('zh-CN')) : ''}${row('支付方式', '虚拟零钱')}${row('交易单号', item.id)}</div><p class="feature-bottom-note">虚拟互动记录，不涉及真实支付</p></div>`, back);
+    const name = walletRoleLabel(item), settledAt = paymentStatus === 'returned' ? walletReturnTime(item) : item.updatedAt;
+    detailPage(redpacket ? '红包详情' : '转账详情', `<div class="wallet-transaction-detail${redpacket ? ' is-redpacket-detail' : ' is-transfer-detail'}" data-payment-status="${esc(paymentStatus)}"><div class="wallet-detail-summary"><div class="wallet-detail-person">${avatar(item.roleId, 42)}<span>${esc(name)}</span></div><p class="wallet-detail-kind">${redpacket ? '红包' : '转账'}${incoming ? '收入' : '支出'}</p><p class="wallet-detail-amount${money(item.amountCents).length > 9 ? ' wallet-large-amount' : ''}">${incoming ? '+' : '−'}${money(item.amountCents)}</p><p class="wallet-detail-status">${statusLabel}</p>${item.note ? `<p class="wallet-detail-note">${esc(item.note)}</p>` : ''}${item.stickerImage ? `<img class="redpacket-detail-sticker" src="${esc(item.stickerImage)}" alt="红包表情">` : ''}</div><div class="wallet-detail-fields">${row(incoming ? '付款方' : '收款方', name)}${row('交易时间', new Date(item.createdAt).toLocaleString('zh-CN'))}${settledAt!==undefined ? row(paymentStatus === 'returned' ? '退还时间' : '领取时间', new Date(settledAt).toLocaleString('zh-CN')) : ''}${row('支付方式', '虚拟零钱')}${row('交易单号', item.id)}</div><p class="feature-bottom-note">虚拟互动记录，不涉及真实支付</p></div>`, back);
     watchPayment(id,back,options);
   }
   function walletTransfer(type, initialRoleId, options = {}) {

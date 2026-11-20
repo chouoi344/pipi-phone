@@ -149,7 +149,7 @@ test('summary coverage rejects another friend and tolerates deleted covered mess
   const s=sampleState(),role=s.roles[0],other=s.messages[0];s.engine.summaries[role.id]={text:'记录',coveredUntil:1,coveredMessageId:other.id,updatedAt:2};let input=wrap(s);input.state.engine.summaries[role.id].coveredMessageId='already-deleted';let restored=S.validateBackup(input,s);assert.equal(restored.engine.summaries[role.id].coveredMessageId,undefined);
   input=wrap(s);input.state.engine.summaries[s.roles[1].id]={text:'跨角色',coveredUntil:1,coveredMessageId:other.id,updatedAt:2};assert.throws(()=>S.validateBackup(input,s),/其他会话/);
 });
-test('deleting a friend refunds only their pending user payments and restored backup cannot refund them twice',()=>{
+test('deleting a friend retains their payments with a name snapshot and never refunds them twice',()=>{
   const s=sampleState(),[role,other]=s.roles,p=R.values(s,'actions');
   const outgoing=(amount,type='transfer')=>A.transfer(s,role.id,{amountCents:amount,type},'user',p);
   outgoing(1000);outgoing(2000,'redpacket');
@@ -159,21 +159,62 @@ test('deleting a friend refunds only their pending user payments and restored ba
   A.settle(s,A.transfer(s,role.id,{amountCents:600,type:'transfer'},'assistant',p).id,'receive','user',role.id);
   A.settle(s,A.transfer(s,role.id,{amountCents:700,type:'redpacket'},'assistant',p).id,'return','user',role.id);
   const otherPending=A.transfer(s,other.id,{amountCents:800,type:'transfer'},'user',p),before=s.wallet.balanceCents;
-  assert.equal(before,93800);S.apply(s,'role.delete',{id:role.id});assert.equal(s.wallet.balanceCents,96800);assert.equal(s.wallet.balanceCents,before+3000);assert.equal(s.wallet.transactions.some(t=>t.roleId===role.id),false);assert.equal(s.wallet.transactions[0].id,otherPending.id);
+  const at=Date.now()+1000;
+  assert.equal(before,93800);S.apply(s,'role.delete',{id:role.id},at);assert.equal(s.wallet.balanceCents,96800);
+  assert.equal(s.wallet.balanceCents,before+3000);
+  const retained=s.wallet.transactions.filter(t=>t.roleId===role.id);
+  assert.equal(retained.length,7);assert.ok(retained.every(t=>t.roleDeleted&&t.roleName===role.name));
+  assert.equal(retained.filter(t=>t.status==='returned'&&t.returnedAt===at).length,3);
+  assert.equal(retained.filter(t=>t.status==='received').length,2);
+  assert.equal(otherPending.status,'pending');
   const restored=S.validateBackup(wrap(s),s);assert.deepEqual(restored.wallet,s.wallet);S.defaults(restored);assert.equal(restored.wallet.balanceCents,96800);
   A.expirePayments(restored,Date.now()+25*3600000);assert.equal(restored.wallet.balanceCents,97600);A.expirePayments(restored,Date.now()+26*3600000);assert.equal(restored.wallet.balanceCents,97600);
 });
-test('clearing or deleting payment messages preserves pending transactions and balances',()=>{
+test('clearing chat returns unpaid transactions once but deleting a single payment message does not settle it',()=>{
   const s=sampleState(),role=s.roles[0],p=R.values(s,'actions');
   const outgoing=A.transfer(s,role.id,{amountCents:1000,type:'transfer'},'user',p),incoming=A.transfer(s,role.id,{amountCents:500,type:'redpacket'},'assistant',p),before=structuredClone(s.wallet);
   S.apply(s,'message.delete',{id:s.messages.at(-1).id});assert.deepEqual(s.wallet,before);
-  S.apply(s,'conversation.clear',{roleId:role.id});assert.deepEqual(s.wallet,before);assert.equal(s.messages.some(m=>m.roleId===role.id),false);
-  const restored=S.validateBackup(wrap(s),s);assert.deepEqual(restored.wallet,before);
-  A.settle(restored,outgoing.id,'receive','assistant',role.id);A.settle(restored,incoming.id,'receive','user',role.id);assert.equal(restored.wallet.balanceCents,99500);assert.equal(restored.wallet.roleBalances[role.id],100500);
+  const at=Date.now()+1000;S.apply(s,'conversation.clear',{roleId:role.id},at);
+  assert.equal(s.messages.some(m=>m.roleId===role.id),false);
+  assert.equal(s.wallet.balanceCents,before.balanceCents+1000);assert.equal(s.wallet.roleBalances[role.id],before.roleBalances[role.id]+500);
+  for(const t of [outgoing,incoming]){assert.equal(t.status,'returned');assert.equal(t.returnedAt,at);}
+  const restored=S.validateBackup(wrap(s),s);assert.deepEqual(restored.wallet,s.wallet);
+  S.apply(restored,'conversation.clear',{roleId:role.id},at+1);assert.deepEqual(restored.wallet,s.wallet);
+  assert.throws(()=>A.settle(restored,incoming.id,'receive','user',role.id),/已处理/);
 });
 test('friend deletion rejects an unsafe refund total before removing any records',()=>{
   const s=sampleState(),role=s.roles[0];A.transfer(s,role.id,{amountCents:1,type:'transfer'},'user',R.values(s,'actions'));s.wallet.balanceCents=Number.MAX_SAFE_INTEGER;const before=JSON.stringify(s);
   assert.throws(()=>S.apply(s,'role.delete',{id:role.id}),/数值超出允许范围/);assert.equal(JSON.stringify(s),before);
+});
+
+test('new friends default to no automatic moments, and legacy friends retain their previous default',()=>{
+  const s=sampleState(),[old,disabled]=s.roles;
+  delete old.momentsAutoEnabled;disabled.momentsAutoEnabled=false;
+  S.defaults(s);
+  S.apply(s,'role.save',{name:'新好友'});
+  S.apply(s,'role.save',{name:'明确开启的新好友',momentsAutoEnabled:true});
+  assert.equal(old.momentsAutoEnabled,true);assert.equal(disabled.momentsAutoEnabled,false);
+  assert.equal(s.roles[2].momentsAutoEnabled,false);assert.equal(s.roles[3].momentsAutoEnabled,true);
+  const restored=S.validateBackup(wrap(s),s);
+  assert.deepEqual(restored.roles.map(role=>role.momentsAutoEnabled),[true,false,false,true]);
+});
+
+test('moments exclusion applies to later friends and restores without changing fixed audiences',()=>{
+  const s=sampleState(),[excluded,included]=s.roles,visibility=require('../public/moment-visibility.js');
+  S.apply(s,'moment.create',{content:'排除朋友',visibility:{exclude:[excluded.id,excluded.id]},mentions:[included.id]});
+  S.apply(s,'moment.create',{content:'固定圈子',visibility:[included.id]});
+  S.apply(s,'moment.create',{content:'自己看',visibility:[]});
+  assert.throws(()=>S.apply(s,'moment.create',{content:'错误提醒',visibility:{exclude:[excluded.id]},mentions:[excluded.id]}),/可见范围/);
+  assert.throws(()=>S.apply(s,'moment.create',{content:'错误排除',visibility:{exclude:['invalid']}}),/不存在/);
+  S.apply(s,'role.save',{name:'后来加入的朋友'});
+  const later=s.roles.at(-1),[dynamic,fixed,privateOnly]=s.moments;
+  assert.deepEqual(dynamic.visibility,{exclude:[excluded.id]});
+  assert.equal(visibility.forRole(dynamic,excluded),false);assert.equal(visibility.forRole(dynamic,later),true);
+  assert.equal(visibility.forRole(fixed,later),false);assert.equal(visibility.forRole(privateOnly,included),false);
+  assert.equal(visibility.forRole(dynamic,{...included,permissions:{hideMyMoments:true}}),false);
+  assert.deepEqual(S.validateBackup(wrap(s),s).moments.map(moment=>moment.visibility),[{exclude:[excluded.id]},[included.id],[]]);
+  S.apply(s,'role.delete',{id:excluded.id});assert.deepEqual(dynamic.visibility,{exclude:[]});
+  assert.equal(visibility.forRole(dynamic,later),true);
 });
 
 test('retired friend model IDs survive profile save and backup with global chat active',()=>{

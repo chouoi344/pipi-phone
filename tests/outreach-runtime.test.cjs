@@ -51,12 +51,15 @@ test('the scheduled outreach job follows only the friend switch even with an old
   assert.equal(f.runtime.isBusy(f.roleId),false);
   assert.equal(f.getState().messages.length,0);
   f.mutate(s=>O.saveRoleSettings(s,f.roleId,{enabled:true},at));
+  assert.ok(O.view(f.getState(),f.roleId,at).nextDueAt>at);
+  await f.runtime.tick();assert.equal(O.view(f.getState(),f.roleId,at).count,0);
+  f.mutate(s=>{s.engine.data.outreach.records[f.roleId].nextDueAt=at-1;});
   await f.runtime.tick();
   await until(()=>!f.runtime.isBusy(f.roleId));
   assert.equal(O.view(f.getState(),f.roleId,at).count,1);
   assert.equal(f.getState().settings.modules.outreach.enabled,false);
  }finally{await f.runtime.close();}
 });
-test('real runtime writes messages before spending one contact round and skips without spending',async()=>{for(const skip of [false,true]){const f=fixture();try{f.api.call=async()=>{assert.equal(O.view(f.getState(),f.roleId,at).count,0);return {message:{content:skip?'[NO_ACTION]':'刚读完这章。挺有意思'},model:f.config,modelId:'isolated'};};await f.start();await until(()=>!f.runtime.isBusy(f.roleId));const s=f.getState(),v=O.view(s,f.roleId,at);assert.equal(v.count,skip?0:1);assert.equal(v.unanswered,skip?0:1);assert.equal(v.pending,null);assert.equal(s.messages.filter(m=>m.sender==='assistant').length,skip?0:2);}finally{await f.runtime.close();}}});
+test('real runtime counts an intentional skip once without counting an unanswered contact',async()=>{for(const skip of [false,true]){const f=fixture();try{f.api.call=async()=>{assert.equal(O.view(f.getState(),f.roleId,at).count,0);return {message:{content:skip?'[NO_ACTION]':'刚读完这章。挺有意思'},model:f.config,modelId:'isolated'};};await f.start();await until(()=>!f.runtime.isBusy(f.roleId));const s=f.getState(),v=O.view(s,f.roleId,at);assert.equal(v.count,1);assert.equal(v.unanswered,skip?0:1);assert.equal(v.pending,null);assert.equal(s.messages.filter(m=>m.sender==='assistant').length,skip?0:2);}finally{await f.runtime.close();}}});
 test('runtime invalidation during generation cancels delivery and releases quietly',async()=>{const f=fixture();try{f.api.call=async()=>{f.mutate(s=>{S.role(s,f.roleId).prompt='改变后的身份';});return {message:{content:'不应发出的旧身份消息'},model:f.config,modelId:'isolated'};};await f.start();await until(()=>!f.runtime.isBusy(f.roleId));const s=f.getState(),v=O.view(s,f.roleId,at);assert.equal(v.count,0);assert.equal(v.pending,null);assert.equal(s.messages.length,0);assert(!s.settings.backgroundStatus?.lastError);assert.equal(Object.values(s.engine.data.execution.runs)[0].status,'interrupted');}finally{await f.runtime.close();}});
 test('manual cancellation releases reserved contact while model request is running',async()=>{const f=fixture();let started=false;try{f.api.call=async(s,req)=>{started=true;return new Promise((resolve,reject)=>req.signal.addEventListener('abort',()=>reject(new DOMException('cancelled','AbortError')),{once:true}));};await f.start();await until(()=>started);f.runtime.cancel(f.roleId,{keepPending:true});await until(()=>!f.runtime.active);const v=O.view(f.getState(),f.roleId,at);assert.equal(v.count,0);assert.equal(v.pending,null);}finally{await f.runtime.close();}});

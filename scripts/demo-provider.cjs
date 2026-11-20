@@ -82,7 +82,8 @@ function createDemoProvider({host='127.0.0.1',port=0,appUrl='',password=''}={}){
         }
         const system=body.messages.find(m=>m.role==='system')?.content||'',last=body.messages.findLast(m=>m.role==='user')?.content;
         event.hasImage=body.messages.some(m=>Array.isArray(m.content)&&m.content.some(p=>p.type==='image_url'));
-        const receipt=system.startsWith('Extract bookkeeping entries'),moment=typeof last==='string'&&last.startsWith('以你的角色身份写一条简短自然的朋友圈动态');
+        const receipt=system.startsWith('识别账单或小票')||system.startsWith('Extract bookkeeping entries');
+        const moment=typeof last==='string'&&last.startsWith('以你的角色身份写一条简短自然的朋友圈动态');
         const text=receipt?JSON.stringify([{amountCents:1250,type:'expense',category:'餐饮',merchant:'本地演示咖啡店',date:new Date().toISOString().slice(0,10),note:'固定演示草稿，不是真实图片识别'}]):
           '[本地演示响应] '+(event.hasImage&&!moment?'图片已通过真实请求到达本地模拟服务；这里返回固定说明，不识别图片内容。':last==='Reply with OK.'?'OK：本地模拟服务连通。':typeof last==='string'&&last.includes('朋友圈动态')?'今天把一件小事慢慢做好了。（固定演示文案）':'已收到：'+String(last||'').slice(0,80)+'。这条固定回复用于检查聊天、保存与重试。');
         json(res,200,{id:'local-demo-'+event.id,choices:[{message:{role:'assistant',content:text}}]});return;

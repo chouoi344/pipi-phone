@@ -40,7 +40,8 @@ function productFunction(name){
 }
 async function renderFromStatus(status){
   const calls=[],scope=vm.createContext({status,calls});
-  vm.runInContext(`let sourceUrl='',state=null;
+  vm.runInContext(`let sourceUrl='',state=null,binaryMedia=false,imageVariants=false,storageMaintenance=false,streamingBackup=false,accountSecurity=false,setupTokenRequired=false,momentExclusions=false,rolePanelAvailable=false;
+    const window={};async function restoreBrowserPage(){}
     const icons={chat:'',chevron:''};
     const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     function header(){return '';}
@@ -78,7 +79,9 @@ test('source URL: deployment metadata reaches the About link across setup and au
   const backup=await backupResponse.json(),stored=f.app.db.prepare('SELECT json FROM app WHERE id=1').get().json;
   assert.equal('sourceUrl' in backup.state,false);
   for(const serialized of [JSON.stringify(backup),stored])assert.ok(!serialized.includes('github.com/example/pipi-phone'));
-  assert.doesNotMatch(JSON.stringify(status),/Source-url-isolated-test_2026|setupToken|password|apiKey/);
+  assert.equal(typeof status.setupTokenRequired,'boolean');
+  assert.equal(Object.hasOwn(status,'setupToken'),false);assert.equal(Object.hasOwn(status,'token'),false);
+  assert.doesNotMatch(JSON.stringify(status),/Source-url-isolated-test_2026|"setupToken"\s*:|password|apiKey/);
 });
 
 test('source URL: missing configuration shows installation-package wording and no inactive link',async t=>{

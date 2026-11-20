@@ -19,17 +19,17 @@
     if(name!=='role-personas')return null;
     const folder=folders().find(item=>item.id===arg),folderId=folder?.id||'';
     const term=search.trim().toLocaleLowerCase();
-    const items=personas().filter(item=>(item.folderId||'')===folderId&&(!term||(item.name+'\n'+item.prompt).toLocaleLowerCase().includes(term)));
+    const items=personas().filter(item=>term?(item.name+'\n'+item.prompt).toLocaleLowerCase().includes(term):(item.folderId||'')===folderId);
     const cards=items.map(item=>{
       const bound=friends(item.id), attrs=`data-id="${esc(item.id)}"`;
       const label=bound.length?'已绑定：'+bound.map(roleName).join('、'):'暂未绑定朋友';
       return `<article class="rp-card">
-        ${button(`<h3>${esc(item.name)}</h3><p class="rp-snippet">${esc(item.prompt)}</p>`,'detail',`${attrs} class="rp-card-open"`)}
+        ${button(`<h3>${esc(item.name)}</h3>${term?`<p class="rp-snippet rp-source">文件夹：${esc(folders().find(folder=>folder.id===item.folderId)?.name||'未分类')}</p>`:''}<p class="rp-snippet">${esc(item.prompt)}</p>`,'detail',`${attrs} class="rp-card-open"`)}
         ${button(esc(label),'bind',`${attrs} class="rp-bound" aria-haspopup="dialog"`)}
         ${button('···','menu',`${attrs} class="rp-card-menu" aria-label="${esc(item.name)}的操作"`)}
       </article>`;
     }).join('');
-    return heading(folder?.name||'我的人设',button('＋','create-menu','aria-label="新建人设或文件夹" class="nav-text"'))+`<div class="content page-content rp-library" data-folder="${esc(folderId)}"><label class="rp-search"><input type="text" inputmode="search" id="rp-search" placeholder="搜索人设" aria-label="搜索人设" value="${esc(search)}"></label>${!folderId&&folders().length?`<div class="rp-folders">${folders().map(item=>`<div class="rp-folder">${button(`<span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h7l2 3h9v12H3Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>${esc(item.name)}</span><small>${personas().filter(p=>p.folderId===item.id).length}</small>`,'folder',`data-id="${esc(item.id)}" class="rp-folder-open"`)}${button('···','folder-menu',`data-id="${esc(item.id)}" class="rp-folder-menu" aria-label="${esc(item.name)}的文件夹操作"`)}</div>`).join('')}</div>`:''}<p class="rp-count">${folder?esc(folder.name):folders().length?'未分类人设':'全部人设'} <span>${items.length} 份</span></p><div class="rp-cards">${cards}</div>${!items.length?`<div class="empty"><h3>${term?'没有找到人设':personas().length||folder?'当前目录没有人设':'还没有人设'}</h3><p>${term?'试试其他关键词':'创建 AI 好友的性格、经历和说话方式。'}</p>${button('新建人设','create','class="primary-btn"')}</div>`:''}</div>`;
+    return heading(folder?.name||'我的人设',button('＋','create-menu','aria-label="新建人设或文件夹" class="nav-text"'))+`<div class="content page-content rp-library" data-folder="${esc(folderId)}"><label class="rp-search"><input type="text" inputmode="search" id="rp-search" placeholder="搜索人设" aria-label="搜索人设" value="${esc(search)}"></label>${!term&&!folderId&&folders().length?`<div class="rp-folders">${folders().map(item=>`<div class="rp-folder">${button(`<span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h7l2 3h9v12H3Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>${esc(item.name)}</span><small>${personas().filter(p=>p.folderId===item.id).length}</small>`,'folder',`data-id="${esc(item.id)}" class="rp-folder-open"`)}${button('···','folder-menu',`data-id="${esc(item.id)}" class="rp-folder-menu" aria-label="${esc(item.name)}的文件夹操作"`)}</div>`).join('')}</div>`:''}<p class="rp-count">${term?'全部文件夹搜索结果':folder?esc(folder.name):folders().length?'未分类人设':'全部人设'} <span>${items.length} 份</span></p><div class="rp-cards">${cards}</div>${!items.length?`<div class="empty"><h3>${term?'没有找到人设':personas().length||folder?'当前目录没有人设':'还没有人设'}</h3><p>${term?'试试其他关键词':'创建 AI 好友的性格、经历和说话方式。'}</p>${button('新建人设','create','class="primary-btn"')}</div>`:''}</div>`;
   }
   function bind(name,arg) {
     if(!['role-personas','role-persona-detail'].includes(name))return;

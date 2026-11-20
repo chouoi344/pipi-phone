@@ -12,6 +12,7 @@ const Stickers=require('./lib/engine/stickers.cjs');
 const {Readable}=require('node:stream'),{pipeline}=require('node:stream/promises');
 const requestDeadline=Symbol('pipi.requestDeadline');
 const {createUpdateService}=require('./lib/updates.cjs');
+const JsonResponse=require('./lib/json-response.cjs');
 const scrypt=promisify(crypto.scrypt),VERSION=require('./package.json').version;
 const MAX_BACKUP_BYTES=88*1024*1024;
 const UPDATE_MAINTENANCE_PHASES=new Set(['backing-up','installing','verifying','rolling-back']);
@@ -22,6 +23,7 @@ const safeEqual=(a,b)=>{
 const digest=x=>crypto.createHash('sha256').update(x).digest('hex');
 const loopback=ip=>ip==='127.0.0.1'||ip==='::1'||ip==='::ffff:127.0.0.1';
 function createApp(options={}){
+  const proxy=require('./lib/trusted-proxy.cjs').create(options.trustProxy??process.env.TRUST_PROXY??'');
   const updateDir=options.updates?.updateDir??process.env.PIPI_UPDATE_DIR;
   const updates=createUpdateService({
     repository:process.env.PIPI_UPDATE_REPOSITORY,
@@ -51,6 +53,8 @@ function createApp(options={}){
     const initialState=options.initialState||S.initial;
     db.prepare('INSERT INTO app(id,json) VALUES(1,?)').run(JSON.stringify(initialState()));
   }
+  try{require('./lib/password-reset.cjs').apply({requested:options.resetPassword??process.env.RESET_PASSWORD==='1',dataDir,getMeta,setMeta,db,transaction});}
+  catch(error){db.close();throw error;}
   const parse=json=>{
     const state=JSON.parse(json);
     state.profile.cover??='';
@@ -267,10 +271,10 @@ function createApp(options={}){
   if(!setupToken&&!getMeta('password')){
     setupToken=crypto.randomBytes(24).toString('hex');
     setMeta('setupToken',setupToken);
-    fs.writeFileSync(path.join(dataDir,'setup-token.txt'),setupToken+'\n',{
-      mode:0o600
-    });
   }
+  const tokenFile=path.join(dataDir,'setup-token.txt');
+  if(setupToken&&!getMeta('password')&&(!fs.existsSync(tokenFile)||fs.readFileSync(tokenFile,'utf8').trim()!==setupToken))fs.writeFileSync(tokenFile,setupToken+'\n',{mode:0o600});
+  const setupTokenRequired=()=>proxy.enabled||getMeta('passwordResetPending')==='1'||process.env.REQUIRE_SETUP_TOKEN==='1';
   const host=options.host||process.env.HOST||'127.0.0.1',port=options.port??Number(process.env.PORT||18766);
   const allowedHosts=new Set(['localhost','127.0.0.1','[::1]',host,...String(process.env.ALLOWED_HOSTS||'').split(',').map(x=>x.trim()).filter(Boolean)]);
   const buckets=new Map();
@@ -336,10 +340,16 @@ function createApp(options={}){
     if(res.destroyed||res.writableEnded)return;
     // A failure after streaming started cannot change the status; end the partial response instead of throwing again.
     if(res.headersSent){res.end();return;}
-    res.writeHead(status,{
-      'Content-Type':'application/json; charset=utf-8'
-    });
-    res.end(JSON.stringify(value));
+    const bytes=Buffer.from(JSON.stringify(value)),accepted=JsonResponse.negotiate(res.req?.headers['accept-encoding']);
+    res.setHeader('Vary',JsonResponse.vary(res.getHeader('Vary')));
+    const send=(payload,encoding)=>{
+      if(res.destroyed||res.writableEnded)return;
+      res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Content-Length':payload.length,...(encoding?{'Content-Encoding':encoding}:{})});
+      res.end(payload);
+    };
+    if(bytes.length>1024&&accepted.encoding)return JsonResponse.compress(bytes,accepted.encoding).then(payload=>send(payload,accepted.encoding));
+    if(!accepted.identityAllowed){res.writeHead(406,{'Content-Length':0});res.end();return;}
+    return send(bytes);
   }
   function backupPayload(current,includeModelKeys){
     const MemoryStore=require('./lib/engine/memory-store.cjs');
@@ -422,8 +432,16 @@ function createApp(options={}){
     const token=crypto.randomBytes(32).toString('hex'),csrf=crypto.randomBytes(24).toString('hex');
     db.prepare('DELETE FROM sessions WHERE expires<?').run(Date.now());
     db.prepare('INSERT INTO sessions(hash,csrf,expires) VALUES(?,?,?)').run(digest(token),csrf,Date.now()+7*86400000);
-    res.setHeader('Set-Cookie',`pipi_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800${req.socket.encrypted||process.env.COOKIE_SECURE==='1'?'; Secure':''}`);
+    res.setHeader('Set-Cookie',`pipi_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800${proxy.context(req).secure||process.env.COOKIE_SECURE==='1'?'; Secure':''}`);
     return csrf;
+  }
+  function account(auth){
+    const sessionCount=Number(db.prepare('SELECT COUNT(*) AS count FROM sessions WHERE expires>?').get(Date.now()).count);
+    return {sessionCount,otherSessionCount:sessionCount-(db.prepare('SELECT hash FROM sessions WHERE hash=? AND expires>?').get(auth.hash,Date.now())?1:0)};
+  }
+  function revokeOthers(auth){
+    db.prepare('DELETE FROM sessions WHERE hash<>?').run(auth.hash);
+    for(const client of clients)if(client.hash!==auth.hash){client.res.end();clients.delete(client);}
   }
   function publish(event,data){
     for(const client of clients){
@@ -445,6 +463,7 @@ function createApp(options={}){
   }
   async function route(req,res){
     security(req,res);
+    const clientAddress=proxy.context(req).client;
     let u;
     try{
       u=new URL(req.url,'http://'+req.headers.host);
@@ -459,30 +478,32 @@ function createApp(options={}){
       return json(res,200,{
         setupRequired:!getMeta('password'),authenticated:!!auth,...(auth?{
           csrfToken:auth.csrf
-        }:{}),version:VERSION,sourceUrl,rolePanel:true,softwareUpdates:true,binaryMedia:true,imageVariants:true,storageMaintenance:true,streamingBackup:true
+        }:{}),version:VERSION,sourceUrl,rolePanel:true,softwareUpdates:true,binaryMedia:true,imageVariants:true,storageMaintenance:true,streamingBackup:true,accountSecurity:true,setupTokenRequired:setupTokenRequired(),messageLimit:50000,momentExclusions:true
       });
     }
     if(req.method==='POST'&&(p==='/api/setup'||p==='/api/login')){
-      rate('auth:'+req.socket.remoteAddress,10,15*60000);
+      rate('auth:'+clientAddress,10,15*60000);
       const b=await body(req,65536);
       const password=S.text(b.password,256);
       if(p==='/api/setup'){
         if(getMeta('password'))S.fail('已完成初始化',409,'SETUP_DONE');
-        const directLocal=loopback(req.socket.remoteAddress)&&!req.headers.forwarded&&!req.headers['x-forwarded-for']&&!req.headers['x-real-ip']&&process.env.REQUIRE_SETUP_TOKEN!=='1';
+        const directLocal=loopback(req.socket.remoteAddress)&&!req.headers.forwarded&&!req.headers['x-forwarded-for']&&!req.headers['x-real-ip']&&!setupTokenRequired();
         // An empty token (already used, or the password row removed while running) never authorizes remote setup.
         if(!directLocal&&(!setupToken||!safeEqual(b.setupToken,setupToken)))S.fail('远程初始化需要 setupToken，请从服务器数据目录读取',403,'SETUP_TOKEN');
         if(password.length<8)S.fail('密码至少需要 8 个字符');
         const salt=crypto.randomBytes(24).toString('hex'),hash=await passwordHash(password,salt);
+        assertWritable();
         transaction(()=>{
           if(getMeta('password'))S.fail('已完成初始化',409);
           setMeta('password',JSON.stringify({
             salt,hash
           }));
           setMeta('setupToken','');
-          const s=read();
-          s.profile.name=S.text(b.displayName,80,'我');
-          s.revision++;
-          db.prepare('UPDATE app SET json=? WHERE id=1').run(JSON.stringify(s));
+          if(getMeta('passwordResetPending')!=='1'){
+            const s=read();s.profile.name=S.text(b.displayName,80,'我');s.revision++;
+            db.prepare('UPDATE app SET json=? WHERE id=1').run(JSON.stringify(s));
+          }
+          db.prepare("DELETE FROM meta WHERE key='passwordResetPending'").run();
         });
         setupToken='';
         try{
@@ -499,20 +520,23 @@ function createApp(options={}){
         salt,hash
       }       =JSON.parse(stored);
       if(!safeEqual(await passwordHash(password,salt),hash))S.fail('密码错误',401,'INVALID_PASSWORD');
+      if(closed)S.fail('服务器正在关闭',503,'CLOSING');
+      if(getMeta('password')!==stored)S.fail('密码已更新，请重新登录',401,'INVALID_PASSWORD');
       return json(res,200,{
         csrfToken:makeSession(req,res),state:S.publicState(read())
       });
     }
     const mutating=!['GET','HEAD'].includes(req.method),auth=authorized(req,mutating);
+    if(req.method==='GET'&&p==='/api/account')return json(res,200,account(auth));
     if(mutating&&p!=='/api/logout')assertWritable();
     if(req.method==='GET'&&p==='/api/updates/status')return json(res,200,await updates.status());
     if(req.method==='GET'&&p==='/api/updates/check'){
-      rate('update-check:'+auth.hash,15);
+      rate('update-check:'+clientAddress,15);
       return json(res,200,await updates.check({force:u.searchParams.get('refresh')==='1'}));
     }
     if(req.method==='POST'&&p==='/api/updates/install'){
-      rate('update-install:'+auth.hash,6);
-      const input=await body(req,4096);assertWritable();
+      rate('update-install:'+clientAddress,6);
+      const input=await body(req,4096);authorized(req,true);assertWritable();
       return json(res,202,await updates.request(input));
     }
     if(mutating&&p!=='/api/logout'&&await updateMaintenance())S.fail('小手机正在更新，请稍后再试',503,'UPDATE_IN_PROGRESS');
@@ -537,6 +561,7 @@ function createApp(options={}){
         let received,rollback;
         try{
           received=await streamingBackup.receive({readable:req.iterator({destroyOnReturn:false}),signal});
+          authorized(req,true);
           if(restoreBusy())S.fail('后台任务进行中，请完成后再恢复',409,'BUSY');
           const current=read(),payload=received.payload,restored=S.validateBackup(payload,current);
           const modelKeyCounts=Models.restoreBackupKeys(restored.settings.ai,payload.modelKeys);checkProviderUrls(restored);
@@ -547,6 +572,7 @@ function createApp(options={}){
           rollback=await streamingBackup.merge(received,{state:restored,livingMemory:payload.livingMemory});
           Object.defineProperty(restored,Symbol.for('pipi.mediaDir'),{value:dataDir});S.limit(restored);signal.throwIfAborted();
           if(closed||storageOperation!=='restore')S.fail('恢复已中断，原资料已保留',503,'SERVER_CLOSING');
+          authorized(req,true);
           if(restoreBusy())S.fail('后台任务进行中，请完成后再恢复',409,'BUSY');
           const commit=()=>{transaction(()=>{if(living)MemoryStore.restoreAttached(db,living,restored);restored.revision=current.revision+1;db.prepare('UPDATE app SET json=? WHERE id=1').run(JSON.stringify(restored));db.exec('DELETE FROM requests');});rollback=null;};
           if(living)MemoryStore.withRestoreJournal(db,dataDir,commit);else commit();
@@ -634,6 +660,8 @@ function createApp(options={}){
       const limit=u.searchParams.has('limit')?S.integer(Number(u.searchParams.get('limit')),1,100):null;
       const offset=u.searchParams.has('offset')?S.integer(Number(u.searchParams.get('offset')),0,Number.MAX_SAFE_INTEGER):0;
       let cards=Mem.listMergedCards(s,roleId,{dataDir,status});
+      const byRecent=(a,b)=>(b.lastMentionedAt||0)-(a.lastMentionedAt||0)||b.createdAt-a.createdAt||a.id.localeCompare(b.id);
+      if(status==='archived')cards.sort(byRecent);
       if(!grouped&&query.trim()){
         const q=query.trim().toLowerCase();
         cards=cards.filter(c=>[c.content,...c.topics,...c.keyFacts].some(value=>value.toLowerCase().includes(q)));
@@ -643,14 +671,14 @@ function createApp(options={}){
         const timezone=s.settings.timezone||'UTC',time=require('./lib/engine/time.cjs');
         const monthById=new Map(),counts=new Map();
         for(const card of cards){
-          const month=card.createdAt>0&&card.createdAt<=8.64e15?time.dayKey(card.createdAt,timezone).slice(0,7):'unknown';
+          const month=status==='archived'&&card.lastMentionedAt>0?'recent':card.createdAt>0&&card.createdAt<=8.64e15?time.dayKey(card.createdAt,timezone).slice(0,7):'unknown';
           monthById.set(card.id,month);
           counts.set(month,(counts.get(month)||0)+1);
         }
-        const months=[...counts].sort(([a],[b])=>a==='unknown'?1:b==='unknown'?-1:b.localeCompare(a)).map(([month,count])=>({month,count}));
+        const months=[...counts].sort(([a],[b])=>a==='recent'?-1:b==='recent'?1:a==='unknown'?1:b==='unknown'?-1:b.localeCompare(a)).map(([month,count])=>({month,count,...(month==='recent'?{label:'最近聊到过'}:{})}));
         const q=query.trim().toLowerCase(),month=q?null:counts.has(requestedMonth)?requestedMonth:months[0]?.month||null;
         cards=cards.filter(card=>q?(card.content.toLowerCase().includes(q)||card.topics.some(t=>t.toLowerCase().includes(q))||card.keyFacts.some(f=>f.toLowerCase().includes(q))):monthById.get(card.id)===month);
-        cards.sort((a,b)=>b.createdAt-a.createdAt||a.id.localeCompare(b.id));
+        cards.sort(status==='archived'?byRecent:(a,b)=>b.createdAt-a.createdAt||a.id.localeCompare(b.id));
         const total=cards.length,page=cards.slice(offset,offset+(limit??300)),nextOffset=offset+page.length<total?offset+page.length:null;
         return json(res,200,{cards:page,profile,total,nextOffset,months,month});
       }
@@ -666,9 +694,9 @@ function createApp(options={}){
     }
     if(req.method==='GET'&&p==='/api/backup')return downloadBackup(res);
     if(req.method==='POST'&&p==='/api/engine/memory/import'){
-      rate('api:'+auth.hash,30,60000);
+      rate('api:'+clientAddress,30,60000);
       const raw=await rawBody(req,128*1024*1024);
-      assertWritable();
+      authorized(req,true);assertWritable();
       const mode=S.enumOf(u.searchParams.get('mode')||'preview',['preview','execute']);
       const format=S.enumOf(u.searchParams.get('format')||'json',['json','csv']);
       const MS=require('./lib/engine/memory-store.cjs');
@@ -689,11 +717,12 @@ function createApp(options={}){
     }
     if(req.method!=='POST')S.fail('接口不存在',404,'NOT_FOUND');
     if(p==='/api/media/upload'&&!String(req.headers['content-type']||'').toLowerCase().startsWith('application/json')){
-      rate('api:'+auth.hash,180,60000);
+      rate('api:'+clientAddress,180,60000);
       activeUploads++;
-      try{const url=await Media.receiveUpload(dataDir,req);assertWritable();return json(res,200,{url});}finally{activeUploads--;}
+      try{const url=await Media.receiveUpload(dataDir,req);authorized(req,true);assertWritable();return json(res,200,{url});}finally{activeUploads--;}
     }
     const b=await body(req,p==='/api/restore'?MAX_BACKUP_BYTES:(p==='/api/action'?64:32)*1024*1024);
+    authorized(req,true);
     if(p!=='/api/logout')assertWritable();
     const chatRequest=p==='/api/chat'||p==='/api/chat/send';
     const originalChatMedia=chatRequest?{image:b.image,audio:b.audio}:null;
@@ -709,8 +738,26 @@ function createApp(options={}){
       }
     }
     if(p!=='/api/restore')Media.externalize(dataDir,b,{image:(value,field)=>S.image(value,false,field==='avatar'?'头像':field==='cover'?'朋友圈背景图':'')});
-    rate('api:'+auth.hash,180,60000);
+    rate('api:'+clientAddress,180,60000);
     switch(p){
+      case '/api/account/password':{
+        rate('auth:'+clientAddress,10,15*60000);
+        const currentPassword=S.text(b.currentPassword,256),newPassword=S.text(b.newPassword,256),confirmPassword=S.text(b.confirmPassword,256);
+        if(newPassword.length<8)S.fail('新密码至少需要 8 个字符');
+        if(newPassword!==confirmPassword)S.fail('两次输入的新密码不一致');
+        const stored=getMeta('password'),current=JSON.parse(stored);
+        if(!safeEqual(await passwordHash(currentPassword,current.salt),current.hash))S.fail('当前密码错误',401,'INVALID_PASSWORD');
+        const salt=crypto.randomBytes(24).toString('hex'),hash=await passwordHash(newPassword,salt);
+        authorized(req,true);assertWritable();
+        transaction(()=>{
+          if(getMeta('password')!==stored)S.fail('密码已更新，请重新输入当前密码',409,'PASSWORD_CHANGED');
+          setMeta('password',JSON.stringify({salt,hash}));revokeOthers(auth);
+        });
+        return json(res,200,{ok:true,...account(auth),message:'密码已修改，其他设备需要重新登录'});
+      }
+      case '/api/account/sessions/revoke':
+        revokeOthers(auth);
+        return json(res,200,{ok:true,...account(auth),message:'已退出其他设备'});
       case '/api/storage/retention':{
         const retention=b.retention;
         if(!Retention.retentionChoices.includes(retention))S.fail('请选择有效的保存时长');
@@ -745,7 +792,7 @@ function createApp(options={}){
       }
       case '/api/logout':db.prepare('DELETE FROM sessions WHERE hash=?').run(auth.hash);
       for(const client of clients)if(client.hash===auth.hash){client.res.end();clients.delete(client);}
-      res.setHeader('Set-Cookie','pipi_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
+      res.setHeader('Set-Cookie',`pipi_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${proxy.context(req).secure||process.env.COOKIE_SECURE==='1'?'; Secure':''}`);
       return json(res,200,{
         ok:true
       });
@@ -765,7 +812,13 @@ function createApp(options={}){
           const roleId=type==='message.deleteMany'?b.payload?.roleId:read().messages.find(m=>m.id===b.payload?.id)?.roleId;
           if(roleId&&runtime.isBusy(roleId))S.fail('正在生成中，请稍后删除消息',409,'CHAT_BUSY');
         }
-        const result=mutate(s=>S.apply(s,type,b.payload===undefined?{}:b.payload));
+        const result=mutate(s=>{
+          if(type==='memory.delete'){
+            const memory=S.find(s.memories,S.text(b.payload?.id,100),'记忆');
+            return require('./lib/engine/memory-store.cjs').deleteCard(dataDir,s,memory.roleId,memory.id);
+          }
+          return S.apply(s,type,b.payload===undefined?{}:b.payload);
+        });
         if(['rolePersona.bind','rolePersona.save','rolePersona.delete','role.save'].includes(type))runtime.checkChatPersonas(result.state);
         if(type==='role.delete')require('./lib/engine/memory-store.cjs').removeRole(dataDir,null,b.payload?.id);
         if(type==='role.save'&&result.state.roles.find(r=>r.id===b.payload?.id)?.permissions.blocked)runtime.cancel(b.payload.id);
@@ -797,7 +850,7 @@ function createApp(options={}){
       }
       case '/api/chat/send':
       case '/api/chat':{
-        rate('ai:'+auth.hash,40);
+        rate('ai:'+clientAddress,40);
         const roleId=S.text(b.roleId,100),text=S.text(b.text,16000),img=S.image(b.image);
         const variants=S.imageVariants(b,Boolean(img));
         S.chatAllowed(S.role(read(),roleId));
@@ -860,7 +913,7 @@ function createApp(options={}){
         return json(res,200,{accepted:true,messageId,state:S.publicState(read())});
       }
       case '/api/chat/retry':{
-        rate('ai:'+auth.hash,40);
+        rate('ai:'+clientAddress,40);
         const m=S.find(read().messages,b.messageId,'消息');
         if(m.meta?.expired)S.fail('聊天媒体已过期，请重新发送',409,'MEDIA_EXPIRED');
         S.chatAllowed(S.role(read(),m.roleId));
@@ -875,7 +928,7 @@ function createApp(options={}){
         return json(res,200,{accepted:true,messageId:m.id,state:S.publicState(read())});
       }
       case '/api/moments/generate':{
-        rate('ai:'+auth.hash,40);const s=read(),r=S.role(s,S.text(b.roleId,100));S.momentAllowed(r);
+        rate('ai:'+clientAddress,40);const s=read(),r=S.role(s,S.text(b.roleId,100));S.momentAllowed(r);
         // Reject here what the background run would reject, so the page is never told an impossible post was accepted.
         require('./lib/engine/modules/life-moments.cjs').eligible(s,r.id);chatModel(s,r);
         if(!runtime.initiate(r.id,{kind:'moment',instruction:'以你的角色身份写一条简短自然的朋友圈动态。只输出正文。'}))S.fail('该好友正在回复，请稍后再试',409,'CHAT_BUSY');
@@ -899,7 +952,7 @@ function createApp(options={}){
         const result=mutate(s=>Models.removeSource(s,b.sourceId,{expectedKeyRevisions:{[b.sourceId]:b.expectedKeyRevision}}));return json(res,200,{state:S.publicState(result.state)});
       }
       case '/api/engine/models/list':{
-        rate('ai:'+auth.hash,40);
+        rate('ai:'+clientAddress,40);
         return json(res,200,{models:await Models.list(read(),b,providerUrls)});
       }
       case '/api/engine/models/metadata':{
@@ -916,7 +969,7 @@ function createApp(options={}){
         return json(res,200,{...info,timeoutSeconds});
       }
       case '/api/engine/models/test':{
-        rate('ai:'+auth.hash,40);
+        rate('ai:'+clientAddress,40);
         const draft=read();
         if(b.source!==undefined||b.model!==undefined){
           const {source,model}=b;
@@ -938,7 +991,7 @@ function createApp(options={}){
         return json(res,200,{state:S.publicState(result.state)});
       }
       case '/api/engine/voices':{
-        rate('ai:'+auth.hash,40);
+        rate('ai:'+clientAddress,40);
         const voiceType=S.enumOf(b.voiceType||'all',['all','personal','default']);
         const search=S.text(b.search||'',100);
         return json(res,200,await AI.listSpeechVoices(read(),{voiceType,search}));
@@ -946,7 +999,7 @@ function createApp(options={}){
       case '/api/engine/life':{
         const panel=require('./lib/engine/life-panel.cjs'),ctx={getState:read,mutate,runtime,dataDir,preview:options.lifePreview};
         if(!options.lifePreview||['saveInteraction','saveMoments'].includes(b.action))return json(res,200,await panel.act(b,ctx));
-        rate('ai:'+auth.hash,40);
+        rate('ai:'+clientAddress,40);
         if(inFlight+runtime.active>=8)S.fail('模型服务正忙，请稍后再试',429,'PROVIDER_BUSY');
         inFlight++;
         try{return json(res,200,await panel.act(b,ctx));}
@@ -992,7 +1045,7 @@ function createApp(options={}){
           });
           return json(res,200,{result:result.value,view:sched.view(result.state,roleId),state:S.publicState(result.state)});
         }
-        rate('ai:'+auth.hash,40);S.chatAllowed(S.role(read(),roleId));
+        rate('ai:'+clientAddress,40);S.chatAllowed(S.role(read(),roleId));
         if(inFlight+runtime.active>=8)S.fail('模型服务正忙，请稍后再试',429,'PROVIDER_BUSY');
         inFlight++;
         try{
@@ -1054,7 +1107,7 @@ function createApp(options={}){
         }
       }
       case '/api/engine/memory/extract':{
-        rate('ai:'+auth.hash,40);
+        rate('ai:'+clientAddress,40);
         const roleId=S.text(b.roleId,100);S.chatAllowed(S.role(read(),roleId));
         if(inFlight+runtime.active>=8)S.fail('模型服务正忙，请稍后再试',429,'PROVIDER_BUSY');
         inFlight++;
@@ -1090,18 +1143,18 @@ function createApp(options={}){
         const cancelled=runtime.cancelSlowChat(role.id);
         return json(res,200,{cancelled,state:S.publicState(read())});
       }
-      case '/api/providers/test':rate('ai:'+auth.hash,40);
+      case '/api/providers/test':rate('ai:'+clientAddress,40);
       return json(res,200,await AI.test(read(),b.capability,{onUsage:runtime.onUsage}));
-      case '/api/providers/models':rate('ai:'+auth.hash,40);
+      case '/api/providers/models':rate('ai:'+clientAddress,40);
       return json(res,200,{
         models:await AI.models(read(),b.capability)
       });
-      case '/api/ledger/recognize':rate('ai:'+auth.hash,40);
+      case '/api/ledger/recognize':rate('ai:'+clientAddress,40);
       return json(res,200,{
         drafts:await AI.recognize(read(),S.image(b.image,false),{onUsage:runtime.onUsage,dataDir})
       });
       case '/api/voice/transcribe':{
-        rate('ai:'+auth.hash,40);
+        rate('ai:'+clientAddress,40);
         if(inFlight+runtime.active>=8)S.fail('模型服务正忙，请稍后再试',429,'PROVIDER_BUSY');
         inFlight++;
         try{
@@ -1130,7 +1183,7 @@ function createApp(options={}){
         }finally{inFlight--;}
       }
       case '/api/voice/speak':{
-        rate('ai:'+auth.hash,40);
+        rate('ai:'+clientAddress,40);
         if(inFlight+runtime.active>=8)S.fail('模型服务正忙，请稍后再试',429,'PROVIDER_BUSY');
         inFlight++;
         try{
@@ -1242,7 +1295,7 @@ function createApp(options={}){
     route(req,res).catch(e=>{
       // Expected failures carry a status; anything else is a server bug that must leave a trace in the log.
       if(!e?.status)console.error('Unexpected server error:',req.method,String(req.url||'').split('?')[0],e);
-      json(res,e?.status||500,{
+      return json(res,e?.status||500,{
         error:e?.status?e.message:'服务器处理失败',code:e?.code||'SERVER_ERROR',...(e?.keyRevisions?{keyRevisions:e.keyRevisions}:{}),...(e?.includeState&&!closed?{
           state:S.publicState(read())
         }:{})

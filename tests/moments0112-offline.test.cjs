@@ -44,8 +44,8 @@ function fixture(extra={}){
   };
   const P={getState:()=>state,esc:value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),avatar:person=>`<span class="avatar">${person.name}</span>`,icons:{chevron:'<svg></svg>',camera:'<svg></svg>',search:'<svg></svg>',more:'<svg></svg>'},openModal:open,openNestedPage:open,openPage:open,closePage:()=>pages.pop(),act:async(type,payload)=>calls.push([type,payload]),refresh(){},toast:message=>toasts.push(message),openPhoto:(...args)=>calls.push(['photo',...args]),showView:(...args)=>calls.push(['view',...args])};
   const document={querySelector:selector=>selector==='#overlay > .page-editor'?pages.at(-1).section:selector==='#overlay > .page-editor .modal-form'?pages.at(-1).form:null,querySelectorAll:()=>[]};
-  const context=vm.createContext({window:{Pipi:P},document,Date,Map,Set,Math,Promise,AbortController,FormData:class{constructor(form){this.form=form;}get(key){return this.form.values?.[key]||'';}},setTimeout,clearTimeout,setInterval,clearInterval});
-  vm.runInContext(source.replace('  window.PipiFeatures = {','  window.Probe={momentVisibility,momentFriends,momentTagGroups,pickMomentPrivacy,pickMomentFriends,pickMomentTags,ui};\n  window.PipiFeatures = {'),context);
+  const context=vm.createContext({window:{Pipi:P,PipiMomentVisibility:require('../public/moment-visibility.js')},document,Date,Map,Set,Math,Promise,AbortController,FormData:class{constructor(form){this.form=form;}get(key){return this.form.values?.[key]||'';}},setTimeout,clearTimeout,setInterval,clearInterval});
+  vm.runInContext(source.replace('  window.PipiFeatures = {','  window.Probe={momentVisibility,momentFriends,momentTagGroups,pickMomentPrivacy,pickMomentFriends,pickMomentTags,walletBillRows,ui};\n  window.PipiFeatures = {'),context);
   const page=()=>pages.at(-1);
   const fire=(selector,type='click',value)=>{const node=page().form.querySelector(selector);if(value!==undefined)node[type==='change'?'checked':'value']=value;assert.ok(node.events[type],`${selector} ${type}`);return node.events[type]({currentTarget:node});};
   return {state,P,pages,page,calls,toasts,fire,api:context.window.PipiFeatures,probe:context.window.Probe};
@@ -56,7 +56,7 @@ test('0112 privacy modes use the existing stored audience model and permission-f
   assert.deepEqual(plain(f.probe.momentVisibility({mode:'self'})),[]);
   assert.equal(f.probe.momentVisibility({mode:'all'}),'all');
   assert.deepEqual(plain(f.probe.momentVisibility({mode:'some',some:['a','d']})),['a']);
-  assert.deepEqual(plain(f.probe.momentVisibility({mode:'exclude',exclude:['b']})),['a','c']);
+  assert.deepEqual(plain(f.probe.momentVisibility({mode:'exclude',exclude:['b']})),{exclude:['b']});
   assert.throws(()=>f.probe.momentVisibility({mode:'some',some:[]}),/至少/);
   assert.deepEqual(plain(f.probe.momentTagGroups(f.probe.momentFriends())),[['家人',['c']],['朋友',['a']],['同学',['a','b']]]);
 });
@@ -147,6 +147,29 @@ test('excluded friends cannot be reminded while visible friends remain selectabl
   f.fire('#moment-mention');
   assert.match(f.page().html,/data-moment-choice="a"/);assert.match(f.page().html,/data-moment-choice="c"/);
   assert.doesNotMatch(f.page().html,/data-moment-choice="b"/);
+});
+
+test('posting an exclusion saves the exclusions in a new server and a fixed list on an older server',async()=>{
+  for(const supported of [true,false]){
+    const f=fixture();f.P.supportsMomentExclusions=()=>supported;f.api.composeMoment();
+    const compose=f.page();compose.form.values={content:'新动态'};
+    f.fire('#moment-visibility');f.fire('[data-moment-privacy="exclude"]');f.fire('#moment-privacy-contacts');
+    f.fire('[data-moment-choice="b"]','change',true);await f.page().submit();await f.page().submit();
+    await compose.submit(compose.form);
+    assert.deepEqual(plain(f.calls[0][1].visibility),supported?{exclude:['b']}:['a','c']);
+  }
+});
+
+test('wallet bills show one outgoing refund at its own time and keep an incoming return as a single row',()=>{
+  const past=new Date(2026,8,1,12).getTime(),returnDate=new Date(2026,9,1,12).getTime();
+  const f=fixture({wallet:{transactions:[
+    {id:'out',roleId:'deleted',roleName:'原名',roleDeleted:true,type:'transfer',direction:'out',status:'returned',amountCents:1234,createdAt:past,returnedAt:returnDate},
+    {id:'in',roleId:'b',type:'redpacket',direction:'in',status:'returned',amountCents:500,createdAt:past,updatedAt:returnDate}]}});
+  const html=f.probe.walletBillRows();
+  assert.match(html,/退款 - 来自 已删除的好友（原名）/);assert.match(html,/\+¥12\.34/);
+  assert.equal((html.match(/data-wallet-transaction="out"/g)||[]).length,2);
+  assert.equal((html.match(/data-wallet-transaction="in"/g)||[]).length,1);
+  assert.ok(html.indexOf('2026年10月')<html.indexOf('2026年9月'));
 });
 
 test('0112 friend and tag selection enforce the backend 200-person limit',()=>{

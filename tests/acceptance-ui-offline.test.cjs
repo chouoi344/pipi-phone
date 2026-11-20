@@ -49,7 +49,7 @@ test('search results have cancel and drill-down links without a main-tab frame',
   const html=scope.render();assert.match(html,/data-action="cancel-global-search"/);assert.match(html,/data-nav="role" data-arg="alice"/);assert.match(html,/data-global-message="old"/);assert.doesNotMatch(html,/bottom-tabs|top-nav|new-menu/);
 });
 test('settings and role manager no longer expose removed search or proactive controls',()=>{
-  const scope=vm.createContext({});vm.runInContext(`const state={settings:{},roles:[{id:'alice'}],personas:[],memories:[]},route={arg:'alice'},routes=new Map(),storageMaintenance=false;function header(){return '';}function plainCell(title,action){return title+' '+action;}function roleById(){return state.roles[0];}function roleName(){return 'Alice';}
+  const scope=vm.createContext({});vm.runInContext(`const state={settings:{},roles:[{id:'alice'}],personas:[],memories:[]},route={arg:'alice'},routes=new Map(),storageMaintenance=false,accountSecurity=false;function header(){return '';}function plainCell(title,action){return title+' '+action;}function roleById(){return state.roles[0];}function roleName(){return 'Alice';}
     ${productFunction('renderSettings')}${productFunction('renderRoleConfig')}globalThis.ui={renderSettings,renderRoleConfig};`,scope);
   assert.doesNotMatch(scope.ui.renderSettings(),/settings-search|搜索/);const html=scope.ui.renderRoleConfig();assert.doesNotMatch(html,/主动消息|proactive/);assert.doesNotMatch(html,/edit-role-setting|bind-persona|bind-role-model/);assert.doesNotMatch(html,/bind-role-persona/);
 });

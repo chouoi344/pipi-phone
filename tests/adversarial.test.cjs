@@ -19,7 +19,7 @@ function wavFixture(sample=0){
 
 test('local fonts: correct MIME and conditional caching without caching private state',async t=>{
   const f=await fixture(t);
-  for(const name of ['InterVariable.woff2','NotoSansSC-VF.woff2']){
+  for(const name of ['InterVariable.woff2','NotoSansSC-common.woff2','NotoSansSC-extended.woff2']){
     const response=await f.request('/fonts/'+name,undefined,{method:'HEAD'});
     assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'font/woff2');
     assert.ok(Number(response.headers.get('content-length'))>100000);
@@ -415,7 +415,7 @@ test('first setup behind forwarded headers requires one-time token and consumes 
   rejected(await f.request('/api/setup',{password:PASSWORD,setupToken},{headers}));
 });
 
-test('native conversation deletion clears only conversation and survives backup restore',async t=>{
+test('native conversation deletion clears chat, returns open payments and keeps unrelated data through restore',async t=>{
   const f=await fixture(t),roleId=f.initial.roles[0].id;
   ok(await f.action('memory.save',{roleId,content:'DELETE_KEEP_MEMORY'}));
   ok(await f.action('message.favorite',{id:f.initial.messages.find(x=>x.roleId===roleId).id}));
@@ -426,10 +426,15 @@ test('native conversation deletion clears only conversation and survives backup 
   let after=await f.state();
   assert.equal(after.messages.some(x=>x.roleId===roleId),false);
   const role=after.roles.find(x=>x.id===roleId);assert.ok(role);assert.equal(role.hidden,true);assert.equal(role.unread,0);assert.equal(role.muted,true);
-  assert.deepEqual(after.wallet,before.wallet);assert.deepEqual(after.memories,before.memories);
+  const returned=after.wallet.transactions.at(-1);
+  assert.equal(returned.id,before.wallet.transactions.at(-1).id);assert.equal(returned.status,'returned');
+  assert.ok(returned.returnedAt>=returned.createdAt);
+  assert.equal(after.wallet.balanceCents,before.wallet.balanceCents+100);
+  assert.deepEqual(after.wallet.roleBalances,before.wallet.roleBalances);assert.deepEqual(after.memories,before.memories);
   assert.equal(after.favorites.length,before.favorites.length);assert.equal(after.favorites[0].content,before.favorites[0].content);
   assert.equal(after.favorites.some(x=>x.messageId&&before.messages.some(m=>m.roleId===roleId&&m.id===x.messageId)),false);
   const saved=await backup(f);ok(await f.request('/api/restore',{backup:saved,confirm:true}));after=await f.state();assert.equal(after.roles.find(x=>x.id===roleId).muted,true);
+  assert.deepEqual(after.wallet.transactions.at(-1),returned);
   rejected(await f.action('conversation.mute',{roleId,muted:'true'}));
 });
 

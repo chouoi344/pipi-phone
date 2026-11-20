@@ -8,7 +8,6 @@
  */
 /* Self-hosted OFL fonts shared by mobile browsers and future app WebViews. */
 @font-face{font-family:"Inter";src:url('/fonts/InterVariable.woff2') format('woff2');font-style:normal;font-weight:100 900;font-display:swap}
-@font-face{font-family:"Noto Sans SC";src:url('/fonts/NotoSansSC-VF.woff2') format('woff2');font-style:normal;font-weight:100 900;font-display:swap}
 :root{--ui-font:"Inter","Noto Sans SC",-apple-system,BlinkMacSystemFont,sans-serif;--green:#07c160;--green-dark:#06a651;--bg:#ededed;--paper:#fff;--ink:#191919;--muted:#a7a7a7;--line:#e5e5e5;--blue:#576b95;--danger:#fa5151;font-family:var(--ui-font);color:var(--ink);font-synthesis:none;-webkit-text-size-adjust:100%}
 
 *{box-sizing:border-box}

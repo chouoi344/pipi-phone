@@ -9,6 +9,8 @@ const {
 const S=require('./lib/state.cjs'),AI=require('./lib/providers.cjs'),Media=require('./lib/media-store.cjs');
 const Models=require('./lib/engine/models.cjs'),Registry=require('./lib/engine/registry.cjs'),Jobs=require('./lib/engine/scheduler.cjs'),Time=require('./lib/engine/time.cjs'),Runtime=require('./lib/engine/runtime.cjs');
 const Stickers=require('./lib/engine/stickers.cjs');
+const {Readable}=require('node:stream'),{pipeline}=require('node:stream/promises');
+const requestDeadline=Symbol('pipi.requestDeadline');
 const {createUpdateService}=require('./lib/updates.cjs');
 const scrypt=promisify(crypto.scrypt),VERSION=require('./package.json').version;
 const MAX_BACKUP_BYTES=88*1024*1024;
@@ -116,12 +118,13 @@ function createApp(options={}){
     publish('revision',{revision:result.state.revision});
     return result;
   }
-  const {migrateLegacy,diskSpace}=require('./lib/media-migration.cjs');
+  const {migrateLegacy,diskSpace,prepareLargeLegacyBackup}=require('./lib/media-migration.cjs');
   const migrationKey='mediaMigration',retentionStartKey='mediaRetentionStartedAt';
   const readMigration=()=>JSON.parse(getMeta(migrationKey)||'null');
   migrateLegacy({
     dataDir,state:read(),previous:readMigration(),readSpace:options.mediaMigrationSpace,
     now:options.mediaMigrationClock,saveImage:Media.saveImage,saveAudio:Media.saveAudio,
+    makeLargeBackup:state=>prepareLargeLegacyBackup(dataDir,backupPayload(state,true),VERSION),
     makeBackup(state){
       try{return buildLegacyBackup(state,true);}
       catch(error){
@@ -208,6 +211,36 @@ function createApp(options={}){
     S.fail('服务器硬盘空间不足，请清理服务器上的其他文件，或在设置里缩短图片保存时长',507,'DISK_SPACE');
   }
   const removeSpaceCheck=Media.installSpaceCheck(dataDir,requireMediaSpace);
+  const streamingBackup=require('./lib/streaming-backup.cjs').create({dataDir,version:VERSION,now:options.backupClock||Date.now,checkSpace:requireMediaSpace});
+  const transfers=new Set();
+  function storageLock(kind){
+    if(storageOperation)S.fail('资料正在备份或恢复，请稍后重试',409,'BUSY');
+    const operation=kind==='restore'?'restore':Symbol(kind);storageOperation=operation;
+    return ()=>{if(storageOperation===operation)storageOperation=null;};
+  }
+  function assertWritable(){
+    if(closed)S.fail('服务器正在关闭，请稍后重试',503,'SERVER_CLOSING');
+    if(storageOperation==='restore')S.fail('资料正在恢复，请稍后重试',409,'BUSY');
+  }
+  function restoreBusy(){
+    return inFlight||activeUploads||runtime.active||runtime.backgroundBusy||runtime.typingState().length||Object.values(read().stickerSemantics||{}).some(item=>['queued','analyzing'].includes(item.status));
+  }
+  async function transfer(req,res,operation,{idle=false}={}){
+    const controller=new AbortController(),item={controller};transfers.add(item);
+    const abort=message=>{if(!controller.signal.aborted)controller.abort(Object.assign(new Error(message),{status:408,code:'BACKUP_INTERRUPTED'}));};
+    const canceled=()=>{if(!res.writableFinished)abort('备份传输已中断，请重试');},timeout=()=>abort('备份传输超过两分钟没有数据，请重试');
+    const destroy=()=>{if(!req.readableEnded)req.destroy(controller.signal.reason);if(!res.destroyed)res.destroy(controller.signal.reason);};
+    controller.signal.addEventListener('abort',destroy,{once:true});
+    req.once('aborted',canceled);res.once('close',canceled);
+    if(idle){req[requestDeadline]?.('streaming');req.socket.setTimeout(options.backupInactivityMs??120000,timeout);}
+    item.done=(async()=>{
+      try{return await operation(controller.signal);}
+      catch(error){if(controller.signal.aborted)throw controller.signal.reason;throw error;}
+      finally{req.off('aborted',canceled);res.off('close',canceled);controller.signal.removeEventListener('abort',destroy);if(idle){req.socket.off('timeout',timeout);req.socket.setTimeout(res.writableEnded?server.keepAliveTimeout:0);}transfers.delete(item);}
+    })();
+    return item.done;
+  }
+
   async function periodicMediaCleanup(){
     try{
       if(closed||storageOperation||await updateMaintenance()||closed||storageOperation)return;
@@ -241,7 +274,7 @@ function createApp(options={}){
   const host=options.host||process.env.HOST||'127.0.0.1',port=options.port??Number(process.env.PORT||18766);
   const allowedHosts=new Set(['localhost','127.0.0.1','[::1]',host,...String(process.env.ALLOWED_HOSTS||'').split(',').map(x=>x.trim()).filter(Boolean)]);
   const buckets=new Map();
-  let inFlight=0,closed=false;
+  let inFlight=0,activeUploads=0,closed=false;
   function rate(key,max=15,window=60000){
     const now=Date.now();
     if(buckets.size>5000){
@@ -308,14 +341,18 @@ function createApp(options={}){
     });
     res.end(JSON.stringify(value));
   }
-  function buildLegacyBackup(current,includeModelKeys){
-    const Media=require('./lib/media-store.cjs'),MemoryStore=require('./lib/engine/memory-store.cjs');
+  function backupPayload(current,includeModelKeys){
+    const MemoryStore=require('./lib/engine/memory-store.cjs');
     const state=S.backupState(current);
     const payload={format:'pipi-phone',version:1,exportedAt:new Date().toISOString(),state,livingMemory:MemoryStore.exportBackup(dataDir,current)};
     if(includeModelKeys)payload.modelKeys=Models.backupKeys(current.settings.ai);
+    return payload;
+  }
+  function buildLegacyBackup(current,includeModelKeys){
+    const payload=backupPayload(current,includeModelKeys);
     const remaining=MAX_BACKUP_BYTES-Buffer.byteLength(JSON.stringify({backup:payload,confirm:true}))-10;
     if(remaining<2)S.fail('备份资料超过大小限制',413);
-    payload.media=Media.backupImages(dataDir,state,remaining);
+    payload.media=Media.backupImages(dataDir,payload.state,remaining);
     return payload;
   }
   function downloadBackup(res,includeModelKeys=false){
@@ -373,6 +410,7 @@ function createApp(options={}){
       if(!req.headers.origin)S.fail('写入请求必须携带同源 Origin',403,'ORIGIN');
       if(!safeEqual(req.headers['x-csrf-token'],auth.csrf))S.fail('CSRF 校验失败，请刷新后重试',403,'CSRF');
     }
+    req[requestDeadline]?.('authenticated');
     return auth;
   }
   async function passwordHash(password,salt){
@@ -421,7 +459,7 @@ function createApp(options={}){
       return json(res,200,{
         setupRequired:!getMeta('password'),authenticated:!!auth,...(auth?{
           csrfToken:auth.csrf
-        }:{}),version:VERSION,sourceUrl,rolePanel:true,softwareUpdates:true,binaryMedia:true,imageVariants:true,storageMaintenance:true
+        }:{}),version:VERSION,sourceUrl,rolePanel:true,softwareUpdates:true,binaryMedia:true,imageVariants:true,storageMaintenance:true,streamingBackup:true
       });
     }
     if(req.method==='POST'&&(p==='/api/setup'||p==='/api/login')){
@@ -466,6 +504,7 @@ function createApp(options={}){
       });
     }
     const mutating=!['GET','HEAD'].includes(req.method),auth=authorized(req,mutating);
+    if(mutating&&p!=='/api/logout')assertWritable();
     if(req.method==='GET'&&p==='/api/updates/status')return json(res,200,await updates.status());
     if(req.method==='GET'&&p==='/api/updates/check'){
       rate('update-check:'+auth.hash,15);
@@ -473,9 +512,53 @@ function createApp(options={}){
     }
     if(req.method==='POST'&&p==='/api/updates/install'){
       rate('update-install:'+auth.hash,6);
-      return json(res,202,await updates.request(await body(req,4096)));
+      const input=await body(req,4096);assertWritable();
+      return json(res,202,await updates.request(input));
     }
     if(mutating&&p!=='/api/logout'&&await updateMaintenance())S.fail('小手机正在更新，请稍后再试',503,'UPDATE_IN_PROGRESS');
+    if(mutating&&p!=='/api/logout'&&storageOperation==='restore')S.fail('资料正在恢复，请稍后重试',409,'BUSY');
+    if(req.method==='GET'&&p==='/api/backup/download'){
+      const unlock=storageLock('download');
+      let snapshot;
+      try{snapshot=streamingBackup.take(S.text(u.searchParams.get('token'),100),auth.hash);}catch(error){unlock();throw error;}
+      return await transfer(req,res,async signal=>{
+        try{
+          res.writeHead(200,{'Content-Type':'application/x-tar','Content-Disposition':`attachment; filename="${snapshot.filename}"`,'Content-Length':snapshot.estimatedBytes});
+          await pipeline(Readable.from(streamingBackup.pack(snapshot.entries)),res,{signal});
+        }finally{unlock();await snapshot.dispose();}
+      },{idle:true});
+    }
+    if(req.method==='POST'&&p==='/api/restore/tar'){
+      const type=String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase();
+      if(!['application/x-tar','application/octet-stream'].includes(type))S.fail('请选择 TAR 备份文件',415);
+      if(restoreBusy())S.fail('后台任务进行中，请完成后再恢复',409,'BUSY');
+      const unlock=storageLock('restore');
+      return await transfer(req,res,async signal=>{
+        let received,rollback;
+        try{
+          received=await streamingBackup.receive({readable:req.iterator({destroyOnReturn:false}),signal});
+          if(restoreBusy())S.fail('后台任务进行中，请完成后再恢复',409,'BUSY');
+          const current=read(),payload=received.payload,restored=S.validateBackup(payload,current);
+          const modelKeyCounts=Models.restoreBackupKeys(restored.settings.ai,payload.modelKeys);checkProviderUrls(restored);
+          const MemoryStore=require('./lib/engine/memory-store.cjs'),living=MemoryStore.validateBackup(payload.livingMemory,restored);
+          const available=ref=>{if(!Media.isMediaUrl(ref)&&!Media.isAudioMediaUrl(ref))return false;const name=ref.slice('/api/media/'.length);return received.files.has(name)||Boolean(Media.describeMediaFile(dataDir,name));};
+          if(!received.manifest.includeMedia)streamingBackup.missingMedia(restored,available,mediaClock());
+          else for(const name of Media.backupReferences(restored))if(!received.files.has(name)&&!Media.describeMediaFile(dataDir,name))S.fail('完整备份缺少已引用的媒体',400,'BACKUP_MEDIA');
+          rollback=await streamingBackup.merge(received,{state:restored,livingMemory:payload.livingMemory});
+          Object.defineProperty(restored,Symbol.for('pipi.mediaDir'),{value:dataDir});S.limit(restored);signal.throwIfAborted();
+          if(closed||storageOperation!=='restore')S.fail('恢复已中断，原资料已保留',503,'SERVER_CLOSING');
+          if(restoreBusy())S.fail('后台任务进行中，请完成后再恢复',409,'BUSY');
+          const commit=()=>{transaction(()=>{if(living)MemoryStore.restoreAttached(db,living,restored);restored.revision=current.revision+1;db.prepare('UPDATE app SET json=? WHERE id=1').run(JSON.stringify(restored));db.exec('DELETE FROM requests');});rollback=null;};
+          if(living)MemoryStore.withRestoreJournal(db,dataDir,commit);else commit();
+          publish('revision',{revision:restored.revision});
+          try{stickerQueue.recover();stickerQueue.idle().catch(error=>console.error('恢复后表情识别失败',error));}catch(error){console.error('恢复后无法继续表情识别',error);}
+          const previousAI=Models.sanitize(current.settings.ai),state=S.publicState(restored),clearedModelKeys=state.settings.ai.sources.some(source=>!source.keySet&&previousAI.sources.some(previous=>previous.id===source.id&&previous.keySet));
+          await received.dispose();received=null;
+          return json(res,200,{state,clearedModelKeys,...modelKeyCounts});
+        }finally{try{if(rollback)await rollback();}finally{unlock();if(received)await received.dispose();}}
+      },{idle:true});
+    }
+
     if(req.method==='GET'&&p==='/api/storage'){
       return json(res,200,storageView());
     }
@@ -585,6 +668,7 @@ function createApp(options={}){
     if(req.method==='POST'&&p==='/api/engine/memory/import'){
       rate('api:'+auth.hash,30,60000);
       const raw=await rawBody(req,128*1024*1024);
+      assertWritable();
       const mode=S.enumOf(u.searchParams.get('mode')||'preview',['preview','execute']);
       const format=S.enumOf(u.searchParams.get('format')||'json',['json','csv']);
       const MS=require('./lib/engine/memory-store.cjs');
@@ -606,9 +690,11 @@ function createApp(options={}){
     if(req.method!=='POST')S.fail('接口不存在',404,'NOT_FOUND');
     if(p==='/api/media/upload'&&!String(req.headers['content-type']||'').toLowerCase().startsWith('application/json')){
       rate('api:'+auth.hash,180,60000);
-      return json(res,200,{url:await Media.receiveUpload(dataDir,req)});
+      activeUploads++;
+      try{const url=await Media.receiveUpload(dataDir,req);assertWritable();return json(res,200,{url});}finally{activeUploads--;}
     }
     const b=await body(req,p==='/api/restore'?MAX_BACKUP_BYTES:(p==='/api/action'?64:32)*1024*1024);
+    if(p!=='/api/logout')assertWritable();
     const chatRequest=p==='/api/chat'||p==='/api/chat/send';
     const originalChatMedia=chatRequest?{image:b.image,audio:b.audio}:null;
     if(p!=='/api/restore'){
@@ -642,6 +728,12 @@ function createApp(options={}){
         }).state;
         if(shorter)recordCleanup(cleanupKey,items,next,at);
         return json(res,200,{storage:storageView(next),state:S.publicState(next)});
+      }
+      case '/api/backup/prepare':{
+        if(typeof b.includeKeys!=='boolean'||typeof b.includeMedia!=='boolean')S.fail('请明确选择是否包含密钥和媒体');
+        const unlock=storageLock('prepare');
+        try{return await transfer(req,res,async signal=>json(res,200,await streamingBackup.prepare(backupPayload(read(),b.includeKeys),{session:auth.hash,includeKeys:b.includeKeys,includeMedia:b.includeMedia,signal})));}
+        finally{unlock();}
       }
       case '/api/backup':{
         if(typeof b.includeModelKeys!=='boolean')S.fail('是否包含模型密钥必须明确指定');
@@ -1069,7 +1161,7 @@ function createApp(options={}){
       case '/api/restore':{
         if(b.confirm!==true)S.fail('恢复需要 confirm: true');
         if(storageOperation)S.fail('资料正在备份或恢复，请稍后重试',409,'BUSY');
-        if(inFlight||runtime.typingState().length)S.fail('模型请求进行中，请完成后再恢复',409,'BUSY');
+        if(restoreBusy())S.fail('后台任务进行中，请完成后再恢复',409,'BUSY');
         storageOperation='restore';
         try{
         const current=read(),restored=S.validateBackup(b.backup,current);
@@ -1081,15 +1173,13 @@ function createApp(options={}){
         Media.externalize(dataDir,restored);
         Object.defineProperty(restored,Symbol.for('pipi.mediaDir'),{value:dataDir});
         S.limit(restored);
-        const detach=living?MemoryStore.attachBackup(db,dataDir):null;
-        try{
-          transaction(()=>{
-            if(living)MemoryStore.restoreAttached(db,living,restored);
-            restored.revision=current.revision+1;
-            db.prepare('UPDATE app SET json=? WHERE id=1').run(JSON.stringify(restored));
-            db.exec('DELETE FROM requests');
-          });
-        }finally{detach?.();}
+        const commit=()=>transaction(()=>{
+          if(living)MemoryStore.restoreAttached(db,living,restored);
+          restored.revision=current.revision+1;
+          db.prepare('UPDATE app SET json=? WHERE id=1').run(JSON.stringify(restored));
+          db.exec('DELETE FROM requests');
+        });
+        if(living)MemoryStore.withRestoreJournal(db,dataDir,commit);else commit();
         publish('revision',{revision:restored.revision});
         // Restored stickers still waiting for analysis continue without a restart; the restore itself has already succeeded.
         try{stickerQueue.recover();stickerQueue.idle().catch(error=>console.error('Sticker analysis failed after restore:',error?.stack||String(error)));}
@@ -1145,6 +1235,10 @@ function createApp(options={}){
     else fs.createReadStream(file).on('error',()=>res.destroy()).pipe(res);
   }
   const server=http.createServer((req,res)=>{
+    let deadline;
+    const clearDeadline=()=>clearTimeout(deadline);
+    req[requestDeadline]=mode=>{clearDeadline();if(mode!=='streaming'&&!req.readableEnded){deadline=setTimeout(()=>req.destroy(Object.assign(new Error('请求上传超时'),{status:408})),mode==='authenticated'?15*60*1000:60000);deadline.unref();}};
+    req[requestDeadline]('anonymous');req.once('end',clearDeadline);req.once('close',clearDeadline);
     route(req,res).catch(e=>{
       // Expected failures carry a status; anything else is a server bug that must leave a trace in the log.
       if(!e?.status)console.error('Unexpected server error:',req.method,String(req.url||'').split('?')[0],e);
@@ -1156,10 +1250,10 @@ function createApp(options={}){
     });
   });
   // Large backups and memory imports can take minutes to upload; headersTimeout still limits slow request headers.
-  server.requestTimeout=15*60*1000;
+  server.requestTimeout=0;
   server.headersTimeout=15000;
   server.keepAliveTimeout=5000;
-  runtime=Runtime.create({getState:read,mutate,publish,isInitialized:async()=>Boolean(getMeta('password'))&&!await updateMaintenance(),externalBusy:()=>inFlight,demoModel:options.demoModel,dataDir});
+  runtime=Runtime.create({getState:read,mutate,publish,isInitialized:async()=>Boolean(getMeta('password'))&&storageOperation!=='restore'&&!await updateMaintenance()&&storageOperation!=='restore',externalBusy:()=>inFlight,demoModel:options.demoModel,dataDir});
   stickerQueue=Stickers.create({getState:read,mutate,dataDir,onUsage:runtime.onUsage});
   try{stickerQueue.recover();}catch(error){console.error('Unable to resume sticker analysis during startup:',error?.stack||String(error));}
   return {
@@ -1175,6 +1269,9 @@ function createApp(options={}){
       closed=true;
       clearTimeout(mediaTimer);
       removeSpaceCheck();
+      for(const item of transfers)item.controller.abort(Object.assign(new Error('服务器正在关闭'),{status:503}));
+      await Promise.allSettled([...transfers].map(item=>item.done));
+      await streamingBackup.close();
       await stickerQueue.close();
       for(const client of clients)client.res.end();clients.clear();
       await runtime.close();

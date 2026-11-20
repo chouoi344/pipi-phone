@@ -19,7 +19,11 @@
 .expired-voice small{font-size:12px;white-space:nowrap}
 .expired-voice-note{display:table;max-width:100%;margin:5px 0 0;padding:3px 6px;border-radius:4px;font-size:12px;line-height:18px;color:#59616a;background:rgba(255,255,255,.9)}
 .mine .expired-voice-note{margin-left:auto}
+.message-expired .transcript-error{color:#59616a}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="chat"] .chat-messages .message-row.message-expired .message-bubble:not(.image-bubble):not(.payment-card):not(.forward-card),
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="chat"] :is(.message-row.message-expired .voice-transcript,.message-quote.quote-expired){background-color:rgba(255,255,255,.9);text-shadow:none}
 .image-stage.media-expired{background:#d9dcde}
 .image-stage.media-expired>img{filter:blur(9px);opacity:.75}
 .image-viewer .image-stage img[hidden]{display:none}
 .image-stage.media-expired>.expired-viewer-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;text-shadow:0 1px 3px #0008;pointer-events:none}
+.image-stage.media-expired:has(>img[hidden])>.expired-viewer-label{color:#59616a;text-shadow:none}

@@ -138,3 +138,24 @@ test('pressure clears an older generated chat picture while keeping a life-album
   assert.ok(state.messages.some(message=>message.content===album&&!message.meta?.expired));
   assert.ok(state.messages.some(message=>message.meta?.expired?.kind==='image'));
 });
+
+test('expired merged chat snapshots remove nested originals and retain their captions and transcripts',async t=>{
+  const f=await fixture(t);
+  const image=Media.saveImage(f.dataDir,bytes(15)),thumb=Media.saveImage(f.dataDir,bytes(16)),audio=Media.saveAudio(f.dataDir,wav);
+  const merged=f.seed((state,role)=>chat(state,role,'forward','聊天记录',start,{entries:[
+    {senderName:'好友',type:'image',content:image,meta:{thumb,caption:'河边照片'}},
+    {senderName:'好友',type:'forward',content:'聊天记录',meta:{entries:[
+      {senderName:'好友',type:'voice',content:'',meta:{audio,durationMs:1000,transcript:'语音原文'}}]}}
+  ]}));
+  await f.request('/api/storage/retention',{retention:90});
+  f.bump(start+8*day);
+  const plan=await f.request('/api/storage/retention',{retention:7,preview:true});
+  assert.deepEqual(plan.affected,{images:1,voices:1,bytes:bytes(15).length+wav.length});
+  const {state}=await f.request('/api/storage/retention',{retention:7,confirmationToken:plan.confirmationToken});
+  const [photo,folder]=state.messages.find(row=>row.id===merged.id).meta.entries;
+  assert.equal(photo.content,'');assert.equal(photo.meta.expired.kind,'image');
+  assert.equal(photo.meta.thumb,thumb);assert.equal(photo.meta.caption,'河边照片');
+  const [voice]=folder.meta.entries;
+  assert.equal(voice.meta.expired.kind,'voice');assert.equal(voice.meta.audio,undefined);
+  assert.equal(voice.meta.durationMs,1000);assert.equal(voice.meta.transcript,'语音原文');
+});

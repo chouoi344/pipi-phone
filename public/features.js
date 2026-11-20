@@ -970,12 +970,12 @@
     }), root);
     root.querySelectorAll('.favorite-audio').forEach(audio => {
       const button = audio.previousElementSibling;
-      const playing = value => { button.setAttribute('aria-pressed', String(value)); button.setAttribute('aria-label', value ? '停止播放收藏语音' : '播放收藏语音'); button.querySelector('span:not(.fw-feature-icon)').textContent = value ? '正在播放' : '语音'; };
+      const playing = value => { const unavailable=Boolean(audio.error);button.disabled=unavailable;button.setAttribute('aria-pressed', String(value)); button.setAttribute('aria-label', unavailable?'收藏语音不可用':value ? '停止播放收藏语音' : '播放收藏语音'); button.querySelector('span:not(.fw-feature-icon)').textContent = unavailable?'语音不可用':value ? '正在播放' : '语音'; };
       playing(!audio.paused);
       audio.addEventListener('play', () => playing(true));
       audio.addEventListener('pause', () => playing(false));
       audio.addEventListener('ended', () => playing(false));
-      audio.addEventListener('error', () => { playing(false); });
+      audio.addEventListener('error', () => playing(false));
     });
     on('.favorite-image-button', 'click', e => { const button = e.currentTarget, container = button.closest('.favorite-card, .favorite-detail'), buttons = [...container.querySelectorAll('.favorite-image-button')], images = buttons.map(item => item.querySelector('img').getAttribute('src')), index = buttons.indexOf(button); P().openPhoto(images[index], '收藏的图片', { images, index }); }, root);
   }

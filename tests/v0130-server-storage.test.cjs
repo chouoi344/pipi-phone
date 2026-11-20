@@ -125,7 +125,7 @@ test('S5: an already consumed empty setup token cannot authorize remote setup af
   assert.equal(f.app.db.prepare("SELECT value FROM meta WHERE key='password'").get(),undefined);
 });
 
-test('S1/S6/S10: since responses skip unchanged documents, changed revisions return full state and upload timeout is 15 minutes',async t=>{
+test('S1/S6/S10: since responses skip unchanged documents, changed revisions return full state and streaming uploads use per-request timeouts',async t=>{
   const f=await fixture(t),revision=f.state.revision;
   assert.deepEqual(await f.request('/api/state?since='+revision),{status:200,value:{revision,unchanged:true}});
   const changed=await f.request('/api/action',{type:'profile.save',payload:{name:'已更改'}});assert.equal(changed.status,200);
@@ -133,7 +133,7 @@ test('S1/S6/S10: since responses skip unchanged documents, changed revisions ret
   assert.equal((await f.request('/api/state')).value.revision,full.value.revision);
   assert.equal((await f.request('/api/state?since=invalid')).value.profile.name,'已更改');
   assert.equal((await f.request('/api/state',undefined,{anonymous:true})).status,401);
-  assert.equal(f.app.server.requestTimeout,15*60*1000);assert.equal(f.app.server.headersTimeout,15000);
+  assert.equal(f.app.server.requestTimeout,0);assert.equal(f.app.server.headersTimeout,15000);
   f.app.db.prepare('UPDATE app SET json=? WHERE id=1').run(JSON.stringify({revision:88,profile:null}));
   assert.deepEqual((await f.request('/api/state?since=88')).value,{revision:88,unchanged:true});
 });

@@ -88,7 +88,7 @@
   let rolePanelAvailable=false;
   const restoredPage=history.state?.pipi&&typeof history.state.route?.name==='string'?history.state:null;
   let state = null, csrf = '', authEpoch = 0, route = restoredPage?{...restoredPage.route}:{name:initialView,arg:null}, authSetup = false, modalOpen = false, searchTerm = '', searchOpen = false;
-  let sourceUrl = '',binaryMedia=false,imageVariants=false,storageMaintenance=false;
+  let sourceUrl = '',binaryMedia=false,imageVariants=false,storageMaintenance=false,streamingBackup=false;
   let composeText = '', composeImage = '', composeImageMeta=null, composeStickerId = '', quoteId = '', panel = '', sending = false, sendingRoleId = '', outgoing = null, avatarDraft = '', toastTimer, pendingRender = false, modalReturnFocus = null;
   let recordingSession=null,dictationBusy=false,composeComposing=false,searchComposing=false,deferredComposerUpdate=false;
   const routes = new Map();
@@ -922,7 +922,7 @@
       const chunks=null;
       const bubbles=chunks&&chunks.length>1?chunks.map(chunk=>`<div class="message-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}" aria-label="${esc(chunk.slice(0,80))}，长按或右键操作">${richText(chunk)}</div>`).join(''):`<div class="message-bubble ${imageClass} ${transferClass}" role="button" tabindex="0" data-bubble="${esc(m.id)}" aria-label="${m.type==='image'?(m.meta?.stickerId?'表情':'图片'):m.type==='voice'?`语音消息，${voiceSeconds}秒`:m.type==='forward'?'聊天记录':paymentLabel?esc(paymentLabel):esc(String(m.content).slice(0,80))}，长按或右键操作">${bubble}</div>`;
       const attachedImage=m.type==='text'&&m.meta?.expired?.kind==='image'?`<div class="message-bubble image-bubble expired-media-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}">${renderExpiredImage(m.meta.thumb)}</div>`:m.type==='text'&&safeImage(m.meta?.image)?`<div class="message-bubble image-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}"><img class="message-image" src="${esc(m.meta.image)}" alt="附带的聊天图片" loading="lazy"></div>`:'';
-      return timeLabel+`<div class="message-row ${mine?'mine':''} ${chatSelection?.ids.has(m.id)?'message-selected':''}" data-message="${esc(m.id)}">${chatSelection?`<button class="message-select" data-select-message="${esc(m.id)}" aria-label="选择消息" aria-pressed="${chatSelection.ids.has(m.id)}">${chatSelection.ids.has(m.id)?'✓':''}</button>`:''}<button class="message-avatar" data-chat-avatar="${mine?'self':'contact'}" aria-label="${mine?'我的头像':'朋友头像'}：单击查看资料，双击拍一拍">${avatar(entity,43)}</button><div class="message-body ${m.type==='voice'?'voice-body':''}" ${m.type==='voice'?`style="--voice-width:${voiceWidth}px"`:''}>${bubbles}${attachedImage}${m.type==='text'&&m.meta?.expired?.kind==='voice'?'<p class="expired-voice-note">语音已过期</p>':''}${m.type==='text'&&m.sender==='assistant'&&m.status!=='demo'&&!chatSelection&&!m.meta?.expired?speechIndicator(m.id):''}${m.meta?.quote?renderMessageQuote(m.meta.quote,r):''}${m.type==='voice'?renderVoiceTranscript(m):''}${chatSelection?`<button class="message-range" data-select-range="${esc(m.id)}">选择到这里</button>`:''}${m.status==='error'?`<button class="message-failure" data-retry="${esc(m.id)}" aria-label="发送失败，点击重试">!</button>`:''}</div></div>`;
+      return timeLabel+`<div class="message-row ${mine?'mine':''} ${m.meta?.expired?'message-expired':''} ${chatSelection?.ids.has(m.id)?'message-selected':''}" data-message="${esc(m.id)}">${chatSelection?`<button class="message-select" data-select-message="${esc(m.id)}" aria-label="选择消息" aria-pressed="${chatSelection.ids.has(m.id)}">${chatSelection.ids.has(m.id)?'✓':''}</button>`:''}<button class="message-avatar" data-chat-avatar="${mine?'self':'contact'}" aria-label="${mine?'我的头像':'朋友头像'}：单击查看资料，双击拍一拍">${avatar(entity,43)}</button><div class="message-body ${m.type==='voice'?'voice-body':''}" ${m.type==='voice'?`style="--voice-width:${voiceWidth}px"`:''}>${bubbles}${attachedImage}${m.type==='text'&&m.meta?.expired?.kind==='voice'?'<p class="expired-voice-note">语音已过期</p>':''}${m.type==='text'&&m.sender==='assistant'&&m.status!=='demo'&&!chatSelection&&!m.meta?.expired?speechIndicator(m.id):''}${m.meta?.quote?renderMessageQuote(m.meta.quote,r):''}${m.type==='voice'?renderVoiceTranscript(m):''}${chatSelection?`<button class="message-range" data-select-range="${esc(m.id)}">选择到这里</button>`:''}${m.status==='error'?`<button class="message-failure" data-retry="${esc(m.id)}" aria-label="发送失败，点击重试">!</button>`:''}</div></div>`;
     }).join('');
     const pending=outgoing?.roleId===r.id?`<div class="message-row mine"><span>${avatar(state.profile,43)}</span><div class="message-body">${outgoing.image?`<div class="message-bubble image-bubble"><img class="message-image" src="${esc(outgoing.image)}" alt="正在发送的图片"></div>`:''}${outgoing.text?`<div class="message-bubble">${esc(outgoing.text)}</div>`:''}<div class="message-label" style="text-align:right;margin-top:5px">发送中…</div></div></div>`:'';
     return header(chatSelection?`已选择 ${chatSelection.ids.size} 条消息`:window.PipiEngine?.isTyping(r.id)?'对方正在输入…':roleName(r),{back:true,right:chatSelection?'':iconButton('more','chat-details','聊天信息')})+`<div class="chat-messages ${chatSelection?'chat-selecting':''}" id="chat-messages" ${safeImage(r.chatBackground)?`style="background-image:url('${esc(r.chatBackground)}')"`:''}>${messages.some(m=>m.status==='demo')?'<div class="system-message demo-notice">这里保留了用于介绍界面的示例对话，非模型生成。</div>':''}${body}${pending}</div>${chatSelection?'':'<div class="chat-notice-slot"><button type="button" class="chat-new-messages" hidden></button></div>'}${chatSelection?renderMessageSelection():renderComposer()}`;
@@ -939,7 +939,7 @@
     const label=expired?.kind==='voice'?'[语音已过期]':'[图片已过期]';
     const text=expired?(quote.type==='text'&&quote.content?quote.content+' '+label:label):({image:image?'':'[图片]',voice:'[语音]',forward:'[聊天记录]',transfer:'[转账]',redpacket:'[红包]'})[quote.type]??quote.content;
     const unavailable=quote.unavailable==='recalled'?'原消息已撤回':quote.unavailable==='deleted'?'原消息已删除':'';
-    return `<button type="button" class="message-quote ${image||expired?.kind==='image'?'quote-with-image':''} ${unavailable?'quote-unavailable':''}" data-quote-message="${available?esc(quote.messageId):''}" ${available?'':'disabled'} aria-label="${available?'定位被引用的消息':unavailable||(!quote.messageId?'引用快照':'原消息不可用')}"><span class="quote-copy">${esc(name)}：${richText(text)}</span>${expired?.kind==='image'?renderExpiredImage(quote.thumb||original?.meta?.thumb,true):image?`<img src="${esc(image)}" alt="引用的图片" class="quote-image">`:''}${unavailable?`<small class="quote-unavailable-note">${unavailable}</small>`:''}</button>`;
+    return `<button type="button" class="message-quote ${expired?'quote-expired':''} ${image||expired?.kind==='image'?'quote-with-image':''} ${unavailable?'quote-unavailable':''}" data-quote-message="${available?esc(quote.messageId):''}" ${available?'':'disabled'} aria-label="${available?'定位被引用的消息':unavailable||(!quote.messageId?'引用快照':'原消息不可用')}"><span class="quote-copy">${esc(name)}：${richText(text)}</span>${expired?.kind==='image'?renderExpiredImage(quote.thumb||original?.meta?.thumb,true):image?`<img src="${esc(image)}" alt="引用的图片" class="quote-image">`:''}${unavailable?`<small class="quote-unavailable-note">${unavailable}</small>`:''}</button>`;
   }
   function renderVoiceTranscript(message){
     const ui=transcriptViews.get(message.id),transcript=message.meta?.transcript;
@@ -1630,8 +1630,9 @@
     more.onclick=()=>{menu.hidden=!menu.hidden;more.setAttribute('aria-expanded',String(!menu.hidden));if(!menu.hidden)menu.querySelector('button:not([hidden])').focus({preventScroll:true});};
     box.querySelector('[data-image-menu-cancel]').onclick=()=>{hideMenu();more.focus({preventScroll:true});};stage.onclick=hideMenu;
     const transform=()=>{img.style.transform=`translate(${x}px,${y}px) scale(${scale})`;reset.textContent=Math.round(scale*100)+'%';};
-    const zoom=value=>{if(stage.classList.contains('media-expired'))return;scale=Math.max(1,Math.min(4,value));if(scale===1){x=0;y=0;}transform();};
-    const paint=()=>{scale=1;x=0;y=0;hideMenu();const media=currentMedia(),expired=Boolean(media?.meta?.expired),source=expired?media.meta.thumb:images[index];stage.classList.toggle('media-expired',expired);img.hidden=!source;if(source)img.src=source;else img.removeAttribute('src');let label=stage.querySelector('.expired-viewer-label');if(expired&&!label){label=document.createElement('span');label.className='expired-viewer-label';label.textContent='图片已过期';stage.append(label);}if(label)label.hidden=!expired;more.hidden=expired;save.disabled=expired;box.querySelectorAll('.image-zoom-controls button').forEach(button=>button.disabled=expired);box.querySelector('.image-counter').textContent=images.length>1?`${index+1} / ${images.length}`:'';box.querySelector('[data-image-prev]').disabled=index===0;box.querySelector('[data-image-next]').disabled=index===images.length-1;const message=currentMedia(),messageId=options.messageIds?.[index];forward.hidden=expired||!messageId||!message||message.sender==='system'||message.status!=='sent';favorite.hidden=expired||!messageId||!message||message.sender==='system';const extMatch=/^data:image\/([^;]+)/.exec(images[index])||/\.([a-z0-9]+)$/i.exec(images[index]);downloadName=`pipi-image-${index+1}.${({png:'png',jpeg:'jpg',jpg:'jpg',webp:'webp',gif:'gif'})[extMatch?.[1]?.toLowerCase()]||'png'}`;transform();};
+    const zoom=value=>{if(stage.matches('.media-expired,.media-unavailable'))return;scale=Math.max(1,Math.min(4,value));if(scale===1){x=0;y=0;}transform();};
+    img.onerror=()=>{if(currentMedia()?.meta?.expired)return;stage.classList.add('media-unavailable');img.hidden=true;more.hidden=true;save.disabled=true;box.querySelectorAll('.image-zoom-controls button').forEach(button=>button.disabled=true);const label=document.createElement('span');label.className='unavailable-viewer-label';label.textContent='图片不可用';stage.append(label);};
+    const paint=()=>{scale=1;x=0;y=0;hideMenu();stage.classList.remove('media-unavailable');stage.querySelector('.unavailable-viewer-label')?.remove();const media=currentMedia(),expired=Boolean(media?.meta?.expired),source=expired?media.meta.thumb:images[index];stage.classList.toggle('media-expired',expired);img.hidden=!source;if(source)img.src=source;else img.removeAttribute('src');let label=stage.querySelector('.expired-viewer-label');if(expired&&!label){label=document.createElement('span');label.className='expired-viewer-label';label.textContent='图片已过期';stage.append(label);}if(label)label.hidden=!expired;more.hidden=expired;save.disabled=expired;box.querySelectorAll('.image-zoom-controls button').forEach(button=>button.disabled=expired);box.querySelector('.image-counter').textContent=images.length>1?`${index+1} / ${images.length}`:'';box.querySelector('[data-image-prev]').disabled=index===0;box.querySelector('[data-image-next]').disabled=index===images.length-1;const message=currentMedia(),messageId=options.messageIds?.[index];forward.hidden=expired||!messageId||!message||message.sender==='system'||message.status!=='sent';favorite.hidden=expired||!messageId||!message||message.sender==='system';const extMatch=/^data:image\/([^;]+)/.exec(images[index])||/\.([a-z0-9]+)$/i.exec(images[index]);downloadName=`pipi-image-${index+1}.${({png:'png',jpeg:'jpg',jpg:'jpg',webp:'webp',gif:'gif'})[extMatch?.[1]?.toLowerCase()]||'png'}`;transform();};
     save.onclick=async()=>{if(currentMedia()?.meta?.expired){toast('图片已过期');return;}hideMenu();const data=images[index];let blob;if(data.startsWith('data:')){const comma=data.indexOf(','),binary=atob(data.slice(comma+1)),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);blob=new Blob([bytes],{type:data.slice(5,data.indexOf(';'))});}else{const resp=await fetch(data,{credentials:'same-origin'});blob=await resp.blob();}const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=downloadName;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);};
     forward.onclick=async()=>{const id=options.messageIds[index];closeModal(false);await afterOverlayBack();await forwardMessages([id]);};
     favorite.onclick=async()=>{if(currentMedia()?.meta?.expired){toast('图片已过期，无法收藏。');return;}hideMenu();try{await act('message.favorite',{id:options.messageIds[index]});toast('已加入收藏');}catch(err){toast(err.message);}};
@@ -2055,8 +2056,13 @@
     ]);
   }
   function downloadBackup() {
-    openModal('导出备份',`<label class="check-row"><input type="checkbox" name="includeModelKeys" checked>包含模型 API Key</label><p class="page-note">勾选后，备份文件会包含可用的模型密钥，请妥善保管。</p>`,async form=>{
-      const result=await api('/api/backup',{includeModelKeys:form.elements.includeModelKeys.checked});
+    openModal('导出备份',`<label class="check-row"><input type="checkbox" name="includeModelKeys" checked>包含 API 密钥</label><p class="page-note">包含密钥的备份不要发给别人或传到公开的地方</p>${streamingBackup?'<label class="check-row"><input type="checkbox" name="includeMedia" checked>包含图片和语音</label><p class="page-note">不勾选时只备份文字，原有媒体引用仍会保留。</p>':''}`,async form=>{
+      const includeKeys=form.elements.includeModelKeys.checked;
+      if(streamingBackup){
+        const result=await api('/api/backup/prepare',{includeKeys,includeMedia:form.elements.includeMedia.checked});if(!form.isConnected)return;
+        const link=document.createElement('a');link.href='/api/backup/download?token='+encodeURIComponent(result.token);link.download=result.filename;document.body.append(link);link.click();link.remove();closeModal(false);toast('备份已开始下载，请在浏览器下载列表查看进度');return;
+      }
+      const result=await api('/api/backup',{includeModelKeys:includeKeys});
       if(!form.isConnected)return;
       const hasKeys=result.modelKeys?.length>0;
       const blob=new Blob([JSON.stringify(result)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');
@@ -2064,20 +2070,20 @@
       link.download=`pipi-phone-backup-${new Date().toISOString().slice(0,10)}${hasKeys?'-with-model-keys':''}.json`;
       document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
       closeModal(false);toast('备份已开始下载');
-    },'下载');
+    },'下载',undefined,'cancel',{lockWhileSaving:true});
     overlay.querySelector(':scope > .page-editor').classList.add('model-sheet');
   }
   function pickBackup() {
-    const input=document.createElement('input');input.type='file';input.accept='.json,application/json';
+    const input=document.createElement('input');input.type='file';input.accept=streamingBackup?'.tar,.json,application/x-tar,application/json':'.json,application/json';
     input.onchange=async()=>{
-      const file=input.files?.[0];if(!file)return;if(file.size>88*1024*1024){toast('备份不能超过 88 MB');return;}
+      const file=input.files?.[0];if(!file)return;const tar=file.name.toLowerCase().endsWith('.tar');if(tar&&!streamingBackup){toast('请先升级小手机服务，再恢复 .tar 备份');return;}if(!tar&&file.size>88*1024*1024){toast('旧格式 JSON 备份不能超过 88 MB');return;}
       try{
-        const backup=JSON.parse(await file.text());
+        const backup=tar?null:JSON.parse(await file.text());
         const hasKeys=Array.isArray(backup?.modelKeys)&&backup.modelKeys.length>0;
-        const keyNote=hasKeys?'这份备份包含模型 API Key，会按服务商地址恢复。':'这份备份未包含模型 API Key。相同服务商地址的现有密钥可继续使用。';
+        const keyNote=tar?'备份中的模型密钥会按服务商地址恢复。未包含在备份中的聊天图片和语音会显示已过期，其他缺失媒体会显示不可用。':hasKeys?'这份备份包含模型 API Key，会按服务商地址恢复。':'这份备份未包含模型 API Key。相同服务商地址的现有密钥可继续使用。';
         openModal('恢复这份备份？',`<div class="inline-note" style="margin:12px 0">文件：${esc(file.name)}<br>恢复会覆盖当前业务资料，保留登录密码。${keyNote}</div><label class="check-row"><input type="checkbox" name="confirmed" required>我已导出需要保留的数据，确认恢复</label>`,async form=>{
           if(!form.elements.confirmed.checked)throw new Error('请先勾选确认');
-          const result=await api('/api/restore',{backup,confirm:true});
+          const result=tar?await apiRaw('/api/restore/tar',file):await api('/api/restore',{backup,confirm:true});
           setState(result.state);
           if(form.isConnected){closeModal(false);void afterOverlayBack().then(()=>showView('chats'));}
           const restored=result.restoredModelKeys?`，已恢复 ${result.restoredModelKeys} 个模型密钥`:'';
@@ -2107,11 +2113,13 @@
     };
   }
   async function boot() {
-    try{const status=await api('/api/status');sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;imageVariants=binaryMedia&&status.imageVariants===true;storageMaintenance=status.storageMaintenance===true;rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
+    try{const status=await api('/api/status');sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;imageVariants=binaryMedia&&status.imageVariants===true;storageMaintenance=status.storageMaintenance===true;streamingBackup=status.streamingBackup===true;rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
     catch(err){renderAuth(false,`暂时无法连接这部小手机。${err.message}`);}
   }
   window.PipiExpiry={sync:syncExpiredMedia};
   window.Pipi={getState:()=>state,api,apiRaw,act,receiveState,updateTyping,syncChatProgress,readImage,readProfileImage,uploadMedia,uploadImage,uploadImageData,uploadProfileImage,showView,goBack,openWhenReady,openChatMessage:(roleId,messageId)=>{focusMessageId=messageId;showView('chat',roleId);},preserveChatLayout:callback=>{const snapshot=captureChatLayout();callback();restoreChatLayout(snapshot);},scrollChatToBottom:(roleId)=>{forceBottomRole=roleId;chatScrolls.delete(roleId);if(route.name==='chat'&&route.arg===roleId)scrollChat();},openModal,closeModal,openPage,openNestedPage,openChildDialog,closeChildDialog,closePage:closeModal,openPhoto:lightbox,actionSheet,confirmDialog,toast,esc,avatar,icons,refresh,setState,registerRoute:(name,renderer)=>routes.set(name,renderer)};
+  document.addEventListener('error',event=>{const image=event.target;if(image.tagName!=='IMG'||!/^\/api\/media\//.test(image.getAttribute('src')||''))return;image.classList.add('unavailable-media');image.dataset.availableAlt??=image.alt;image.alt='图片不可用';},true);
+  document.addEventListener('load',event=>{const image=event.target;if(image.tagName!=='IMG'||!image.classList.contains('unavailable-media'))return;image.classList.remove('unavailable-media');image.alt=image.dataset.availableAlt;delete image.dataset.availableAlt;},true);
   document.addEventListener('keydown', event => {
     if (event.isComposing || composeComposing) return;
     if (event.key === 'Tab' && modalOpen) {

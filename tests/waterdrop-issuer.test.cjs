@@ -5,9 +5,55 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
-const {generateKeyPairSync} = require('node:crypto');
+const {createHash, generateKeyPairSync} = require('node:crypto');
 const {createIssuerServer} = require('../scripts/waterdrop-issuer.cjs');
 const {verifyCode} = require('../lib/waterdrop-activation.cjs');
+
+test('签发页 CSP 哈希兼容 LF、CRLF 和独立 CR 换行', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipi-issuer-lines-'));
+  const {privateKey, publicKey} = generateKeyPairSync('ed25519');
+  const privateKeyPath = path.join(dir, 'private.pem');
+  const publicKeyPath = path.join(dir, 'public.pem');
+  fs.writeFileSync(privateKeyPath, privateKey.export({type:'pkcs8', format:'pem'}));
+  fs.writeFileSync(publicKeyPath, publicKey.export({type:'spki', format:'pem'}));
+  const htmlPath = path.resolve(__dirname, '../scripts/waterdrop-issuer.html');
+  const readFileSync = fs.readFileSync;
+  const originalHtml = readFileSync(htmlPath, 'utf8').replace(/\r\n?/g, '\n');
+  let sourceHtml = originalHtml;
+  t.mock.method(fs, 'readFileSync', function(file, ...args) {
+    return file === htmlPath ? sourceHtml : readFileSync.call(this, file, ...args);
+  });
+  const server = createIssuerServer({port:0, privateKeyPath, publicKeyPath});
+  t.after(async () => {
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(dir, {recursive:true});
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  for (const [name, newline] of [['LF', '\n'], ['CRLF', '\r\n'], ['CR', '\r']]) {
+    await t.test(name, async () => {
+      sourceHtml = originalHtml.replace(/\n/g, newline);
+      const response = await new Promise((resolve, reject) => {
+        http.get(`http://127.0.0.1:${server.address().port}/`, res => {
+          let text = '';
+          res.setEncoding('utf8');
+          res.on('data', chunk => text += chunk);
+          res.on('end', () => resolve({status:res.statusCode, headers:res.headers, text}));
+        }).on('error', reject);
+      });
+      assert.equal(response.status, 200);
+      const browserHtml = response.text.replace(/\r\n?/g, '\n');
+      assert.equal(browserHtml, originalHtml);
+      const policy = response.headers['content-security-policy'];
+      for (const tag of ['style', 'script']) {
+        const blocks = [...browserHtml.matchAll(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'gi'))];
+        assert.ok(blocks.length > 0, `${name}: missing inline ${tag}`);
+        const directive = policy.split(';').map(value => value.trim()).find(value => value.startsWith(`${tag}-src `));
+        const expected = blocks.map(match => `'sha256-${createHash('sha256').update(match[1]).digest('base64')}'`);
+        assert.deepEqual(directive.split(/\s+/).slice(1), expected, `${name}: browser-normalized ${tag} hashes`);
+      }
+    });
+  }
+});
 
 test('本地签发与请求隔离', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipi-issuer-'));

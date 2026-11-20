@@ -29,7 +29,8 @@ function createIssuerServer({port = 51337, privateKeyPath = path.join(os.homedir
     if (req.headers.host !== host) return reply(403, '请从本机签发工具地址打开。');
     if (req.url === '/' && (req.method === 'GET' || req.method === 'HEAD')) {
       try {
-        const html = fs.readFileSync(path.join(__dirname, 'waterdrop-issuer.html'), 'utf8');
+        // HTML parsing normalizes line endings before checking inline CSP hashes.
+        const html = fs.readFileSync(path.join(__dirname, 'waterdrop-issuer.html'), 'utf8').replace(/\r\n?/g, '\n');
         const hashes = tag => [...html.matchAll(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'gi'))].map(match => `'sha256-${createHash('sha256').update(match[1]).digest('base64')}'`).join(' ');
         res.setHeader('Content-Security-Policy', `default-src 'none'; script-src ${hashes('script')}; style-src ${hashes('style')}; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`);
         res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});

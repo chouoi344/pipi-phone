@@ -18,7 +18,7 @@ async function main(){
   const env={...process.env,PIPI_UPDATE_DIR:shared,PIPI_UPDATE_REPOSITORY:'example/isolated-smoke'};
   async function docker(args){return (await execute('docker',args,{env,timeout:600000,maxBuffer:8*1024*1024})).stdout.trim();}
   const compose=(...args)=>['compose','--project-name',project,'--project-directory',dir,'-f',composeFile,'-f',featureFile,...args];
-  let cookie='',csrf='',worker;
+  let cookie='',csrf='',worker,stage='build isolated images';
   async function api(route,body){
     const response=await fetch(origin+route,{method:body===undefined?'GET':'POST',headers:{Cookie:cookie,...(body===undefined?{}:{Origin:origin,'Content-Type':'application/json','X-CSRF-Token':csrf})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(5000)});
     const result=await response.json();assert.equal(response.status,200,JSON.stringify(result));
@@ -40,13 +40,19 @@ async function main(){
       }
       await fs.writeFile(path.join(context,'Dockerfile'),dockerfile);await docker(['build','--tag',images[kind],context]);
     }
-    await fs.writeFile(composeFile,JSON.stringify({services:{'pipi-phone':{image:images.old,restart:'no',ports:[`127.0.0.1:${port}:8000`],volumes:['pipi-data:/app/data'],environment:{HOST:'0.0.0.0',PORT:'8000',DATA_DIR:'/app/data',NODE_ENV:'production'},read_only:true,tmpfs:['/tmp'],networks:['isolated']}},volumes:{'pipi-data':{}},networks:{isolated:{internal:true}}}));
+    // The host updater needs the loopback-published port. Docker ignores port
+    // mappings on containers attached only to an internal bridge network.
+    stage='start original container on the project bridge';
+    await fs.writeFile(composeFile,JSON.stringify({services:{'pipi-phone':{image:images.old,restart:'no',ports:[`127.0.0.1:${port}:8000`],volumes:['pipi-data:/app/data'],environment:{HOST:'0.0.0.0',PORT:'8000',DATA_DIR:'/app/data',NODE_ENV:'production'},read_only:true,tmpfs:['/tmp']}},volumes:{'pipi-data':{}}}));
     await docker(compose('up','-d','--no-build','pipi-phone'));
+    const initial=await currentContainer();
+    assert.equal(initial.NetworkSettings.Ports['8000/tcp']?.[0]?.HostPort,String(port),'Docker must publish the application port on the host');
     const deadline=Date.now()+30000;
     while(true){try{assert.equal((await api('/api/status')).version,versions.old);break;}catch(error){if(Date.now()>deadline)throw error;await wait(250);}}
-    const original=await currentContainer(),setupToken=await docker(['exec',original.Id,'cat','/app/data/setup-token.txt']);
+    stage='create profile, session and media fixture';
+    const setupToken=await docker(['exec',initial.Id,'cat','/app/data/setup-token.txt']);
     await api('/api/setup',{password,setupToken,displayName:'CI persistent profile'});
-    await docker(['exec',original.Id,'node','-e',"const fs=require('node:fs');fs.mkdirSync('/app/data/media',{recursive:true});fs.writeFileSync('/app/data/media/smoke.txt','CI_PERSISTENT_MEDIA')"]);
+    await docker(['exec',initial.Id,'node','-e',"const fs=require('node:fs');fs.mkdirSync('/app/data/media',{recursive:true});fs.writeFileSync('/app/data/media/smoke.txt','CI_PERSISTENT_MEDIA')"]);
     const before=await assertRetained();
     const config=readConfig({PIPI_UPDATE_DIR:shared,PIPI_UPDATE_STATE_DIR:path.join(dir,'host-state'),PIPI_UPDATE_COMPOSE_FILE:composeFile,PIPI_UPDATE_COMPOSE_FEATURE_FILE:featureFile,PIPI_UPDATE_REPOSITORY:env.PIPI_UPDATE_REPOSITORY,PIPI_UPDATE_COMPOSE_PROJECT:project,PIPI_UPDATE_HEALTH_ORIGIN:origin,PIPI_UPDATE_HEALTH_TIMEOUT_MS:'15000'});
     const releaseImages=new Map([[versions.next,images.next],[versions.broken,images.broken]]);
@@ -54,14 +60,20 @@ async function main(){
     const dependencies={docker:async args=>{if(args[0]==='pull'){assert.equal(args.length,2);assert.ok([...releaseImages.values()].includes(args[1]));await docker(['image','inspect',args[1]]);pulls.push(args[1]);return args[1];}return docker(args);},getRelease:async({repository,version})=>{assert.equal(repository,config.repository);assert.ok(releaseImages.has(version));return {version,image:releaseImages.get(version)};},log:error=>console.error('Expected failing-version diagnostics:',error.message)};
     worker=createUpdater(config,dependencies);await worker.initialize();
     async function update(id,version,previousVersion){await fs.writeFile(path.join(shared,'request.json'),JSON.stringify({id,version,previousVersion}));return worker.tick();}
-    assert.equal((await update('upgrade',versions.next,versions.old)).phase,'succeeded');assert.equal((await api('/api/status')).version,versions.next);
+    stage='upgrade and verify retained data';
+    const upgrade=await update('upgrade',versions.next,versions.old);
+    assert.equal(upgrade.phase,'succeeded',upgrade.message);assert.equal((await api('/api/status')).version,versions.next);
     const upgraded=await assertRetained();assert.equal(upgraded.volume,before.volume);assert.notEqual(upgraded.container.Image,before.container.Image);
-    assert.equal((await update('failure',versions.broken,versions.next)).phase,'rolled-back');assert.equal((await api('/api/status')).version,versions.next);
+    stage='break the new container and verify snapshot recovery';
+    const failedUpgrade=await update('failure',versions.broken,versions.next);
+    assert.equal(failedUpgrade.phase,'rolled-back',failedUpgrade.message);assert.equal((await api('/api/status')).version,versions.next);
     const restored=await assertRetained(),journal=JSON.parse(await fs.readFile(path.join(config.stateDir,'current.json'),'utf8'));
     assert.equal(restored.container.Image,upgraded.container.Image);assert.equal(restored.volume,journal.rollbackVolume);assert.notEqual(restored.volume,journal.originalVolume);
     assert.equal(await fileInVolume(journal.snapshotVolume,'media/smoke.txt'),'CI_PERSISTENT_MEDIA');assert.equal(await fileInVolume(journal.originalVolume,'media/smoke.txt'),'BROKEN_MIGRATION');
     assert.deepEqual(pulls,[images.next,images.broken]);
     console.log(JSON.stringify({result:'passed',upgrade:'real Compose image replacement',rollback:'real failed container and snapshot-clone recovery',retained:['SQLite profile','login session','media bytes'],externalModels:'none',project}));
+  }catch(error){
+    throw new Error('Compose acceptance failed while attempting to '+stage,{cause:error});
   }finally{
     if(worker)await worker.close();
     if(await fs.stat(composeFile).catch(error=>{if(error.code==='ENOENT')return null;throw error;}))await docker(compose('down','--volumes','--remove-orphans'));

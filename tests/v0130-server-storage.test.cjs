@@ -111,7 +111,7 @@ test('S3: distinct sources evict the oldest windows while the current source sti
 });
 
 test('S4: an error after response headers were sent ends the response without writing a second header',()=>{
-  const json=vm.runInNewContext('('+serverSource.match(/  function json\([\s\S]*?(?=\n  function downloadBackup\()/)[0]+')');
+  const json=vm.runInNewContext('('+serverSource.match(/^  function json\([\s\S]*?(?=\n  function )/m)[0]+')');
   let ended=0;
   json({headersSent:true,writeHead(){assert.fail('headers already sent');},end(){ended++;}},500,{error:'失败'});
   assert.equal(ended,1);

@@ -68,9 +68,6 @@ function createApp(options={}){
   const storedJson=()=>db.prepare('SELECT json FROM app WHERE id=1').get().json;
   const read=()=>parse(storedJson());
   const clients=new Set();let runtime,stickerQueue;
-  const migrated=read();Jobs.recover(migrated);
-  const migratedJson=JSON.stringify(migrated);
-  if(migratedJson!==db.prepare('SELECT json FROM app WHERE id=1').get().json)db.prepare('UPDATE app SET json=? WHERE id=1').run(migratedJson);
   const providerUrls=options.providerUrlAllowlist&&new Set(options.providerUrlAllowlist);
   function checkProviderUrls(state){
     if(!providerUrls)return;
@@ -119,6 +116,34 @@ function createApp(options={}){
     publish('revision',{revision:result.state.revision});
     return result;
   }
+  const {migrateLegacy}=require('./lib/media-migration.cjs');
+  const migrationKey='mediaMigration',retentionStartKey='mediaRetentionStartedAt';
+  const readMigration=()=>JSON.parse(getMeta(migrationKey)||'null');
+  migrateLegacy({
+    dataDir,state:read(),previous:readMigration(),readSpace:options.mediaMigrationSpace,
+    now:options.mediaMigrationClock,saveImage:Media.saveImage,saveAudio:Media.saveAudio,
+    makeBackup(state){
+      try{return buildLegacyBackup(state,true);}
+      catch(error){
+        if(error?.status===413)error.userMessage='旧格式升级备份超过大小限制，已保留原资料。';
+        throw error;
+      }
+    },
+    saveProgress:result=>setMeta(migrationKey,JSON.stringify(result)),
+    complete(state,result,changed){
+      transaction(()=>{
+        if(changed){
+          state.revision++;
+          db.prepare('UPDATE app SET json=? WHERE id=1').run(JSON.stringify(state));
+        }
+        setMeta(migrationKey,JSON.stringify(result));
+        if(!getMeta(retentionStartKey))setMeta(retentionStartKey,String(result.completedAt));
+      });
+    }
+  });
+  const migrated=read();Jobs.recover(migrated);
+  const migratedJson=JSON.stringify(migrated);
+  if(migratedJson!==storedJson())db.prepare('UPDATE app SET json=? WHERE id=1').run(migratedJson);
   // An interrupted upstream call is recoverable rather than left permanently pending.
   // A failure here (for example a full data store) is logged and must not stop the service from starting.
   try{
@@ -207,14 +232,18 @@ function createApp(options={}){
     });
     res.end(JSON.stringify(value));
   }
-  function downloadBackup(res,includeModelKeys=false){
+  function buildLegacyBackup(current,includeModelKeys){
     const Media=require('./lib/media-store.cjs'),MemoryStore=require('./lib/engine/memory-store.cjs');
-    const current=read(),state=S.backupState(current);
+    const state=S.backupState(current);
     const payload={format:'pipi-phone',version:1,exportedAt:new Date().toISOString(),state,livingMemory:MemoryStore.exportBackup(dataDir,current)};
     if(includeModelKeys)payload.modelKeys=Models.backupKeys(current.settings.ai);
     const remaining=MAX_BACKUP_BYTES-Buffer.byteLength(JSON.stringify({backup:payload,confirm:true}))-10;
     if(remaining<2)S.fail('备份资料超过大小限制',413);
     payload.media=Media.backupImages(dataDir,state,remaining);
+    return payload;
+  }
+  function downloadBackup(res,includeModelKeys=false){
+    const payload=buildLegacyBackup(read(),includeModelKeys);
     res.setHeader('Content-Disposition',`attachment; filename="pipi-backup-${payload.exportedAt.slice(0,10)}.json"`);
     return json(res,200,payload);
   }
@@ -363,6 +392,10 @@ function createApp(options={}){
       return json(res,202,await updates.request(await body(req,4096)));
     }
     if(mutating&&p!=='/api/logout'&&await updateMaintenance())S.fail('小手机正在更新，请稍后再试',503,'UPDATE_IN_PROGRESS');
+    if(req.method==='GET'&&p==='/api/storage'){
+      const {status,detail,startedAt,completedAt,beforeBytes,afterBytes,migratedCount,backupName}=readMigration();
+      return json(res,200,{migration:{status,detail,startedAt,completedAt,beforeBytes,afterBytes,migratedCount,backupName}});
+    }
     if(req.method==='GET'&&p==='/api/state'){
       // Background refresh sends the revision it already has; an unchanged revision skips re-sending the whole state.
       const since=u.searchParams.get('since');
@@ -493,8 +526,10 @@ function createApp(options={}){
       return json(res,200,{url:await Media.receiveUpload(dataDir,req)});
     }
     const b=await body(req,p==='/api/restore'?MAX_BACKUP_BYTES:(p==='/api/action'?64:32)*1024*1024);
+    const chatRequest=p==='/api/chat'||p==='/api/chat/send';
+    const originalChatMedia=chatRequest?{image:b.image,audio:b.audio}:null;
     if(p!=='/api/restore'){
-      const allowed=['/api/chat','/api/chat/send'].includes(p)?['thumb','modelImage']:p==='/api/chat/media/thumbnail'?['thumb']:[];
+      const allowed=chatRequest?['thumb','modelImage']:p==='/api/chat/media/thumbnail'?['thumb']:[];
       const pending=[b];
       while(pending.length){
         const value=pending.pop();
@@ -584,12 +619,18 @@ function createApp(options={}){
         if(!/^[\w-]{8,100}$/.test(requestId))S.fail('请提供有效 requestId');
         const stickerId=b.stickerId===undefined?undefined:S.text(b.stickerId,100);
         if(stickerId!==undefined&&(!stickerId||!img||audio))S.fail('表情消息须提供有效表情和图片');
-        const signature=digest(JSON.stringify({
+        const signatureBody={
           roleId,text,img,...(stickerId===undefined?{}:{stickerId}),...(audio?{audio,durationMs}:{}),...(quoteId?{quoteId}:{}),...variants
-        }));
+        },signature=digest(JSON.stringify(signatureBody));
         const existing=db.prepare('SELECT * FROM requests WHERE id=?').get(requestId);
         if(existing){
-          if(existing.roleId!==roleId||existing.signature!==signature)S.fail('requestId 已用于其他消息',409,'REQUEST_REUSED');
+          // Older clients signed the media text before it was moved to a file.
+          let matches=existing.signature===signature;
+          if(!matches&&(originalChatMedia.image!==b.image||originalChatMedia.audio!==b.audio)){
+            const original={...signatureBody,img:S.image(originalChatMedia.image),...(audio?{audio:S.audio(originalChatMedia.audio)}:{})};
+            matches=existing.signature===digest(JSON.stringify(original));
+          }
+          if(existing.roleId!==roleId||!matches)S.fail('requestId 已用于其他消息',409,'REQUEST_REUSED');
           return json(res,200,{
             state:S.publicState(read())
           });

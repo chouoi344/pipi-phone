@@ -53,17 +53,9 @@
 docker compose up -d --build
 ```
 
-本机打开 **http://127.0.0.1:18766/**。Docker 首次使用时，填写下方命令读取的初始化令牌，并设置至少 8 个字符的登录密码。
+本机打开 **http://127.0.0.1:18766/**。首次使用时填写名字，并设置至少 8 个字符的登录密码，再次输入确认即可。
 
 容器内使用 Node.js 24，数据保存在 `pipi-data` 命名卷中。镜像不包含个人记录、登录密码或 API Key。普通重启和重新构建保留数据；不要使用 `docker compose down -v`，该操作会删除数据卷。
-
-容器网络中的首次初始化需要填写初始化令牌，从自己的终端读取：
-
-```sh
-docker compose exec pipi-phone cat /app/data/setup-token.txt
-```
-
-初始化完成后令牌文件自动删除。
 
 常用操作：
 
@@ -89,7 +81,6 @@ ssh -N -L 18766:127.0.0.1:18766 ubuntu@你的服务器地址
 ```yaml
 ALLOWED_HOSTS: phone.example.com
 COOKIE_SECURE: "1"
-REQUIRE_SETUP_TOKEN: "1"
 ```
 
 将示例域名替换为自己的域名。代理需要保留原始 `Host`，网页和 API 使用同一域名。默认只在服务器的 `127.0.0.1` 上发布端口。需要指定其他宿主机监听地址时，通过同目录 `.env` 设置 `PIPI_HOST_BIND`。本次交付不包含域名、证书或公网部署。

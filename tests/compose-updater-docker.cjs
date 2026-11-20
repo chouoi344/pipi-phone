@@ -50,8 +50,7 @@ async function main(){
     const deadline=Date.now()+30000;
     while(true){try{assert.equal((await api('/api/status')).version,versions.old);break;}catch(error){if(Date.now()>deadline)throw error;await wait(250);}}
     stage='create profile, session and media fixture';
-    const setupToken=await docker(['exec',initial.Id,'cat','/app/data/setup-token.txt']);
-    await api('/api/setup',{password,setupToken,displayName:'CI persistent profile'});
+    await api('/api/setup',{password,displayName:'CI persistent profile'});
     await docker(['exec',initial.Id,'node','-e',"const fs=require('node:fs');fs.mkdirSync('/app/data/media',{recursive:true});fs.writeFileSync('/app/data/media/smoke.txt','CI_PERSISTENT_MEDIA')"]);
     const before=await assertRetained();
     const config=readConfig({PIPI_UPDATE_DIR:shared,PIPI_UPDATE_STATE_DIR:path.join(dir,'host-state'),PIPI_UPDATE_COMPOSE_FILE:composeFile,PIPI_UPDATE_COMPOSE_FEATURE_FILE:featureFile,PIPI_UPDATE_REPOSITORY:env.PIPI_UPDATE_REPOSITORY,PIPI_UPDATE_COMPOSE_PROJECT:project,PIPI_UPDATE_HEALTH_ORIGIN:origin,PIPI_UPDATE_HEALTH_TIMEOUT_MS:'15000'});

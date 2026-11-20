@@ -61,18 +61,18 @@
 
 ```sh
 docker compose up -d --build
-docker compose exec pipi-phone cat /app/data/setup-token.txt
 ```
 
-Docker 默认在运行 Docker 的设备本机发布端口。首次构建需要下载 Node 基础镜像。本机安装时，打开 `http://127.0.0.1:18766/`，填写上一步令牌并设置自己的密码。
+Docker 默认在运行 Docker 的设备本机发布端口。首次构建需要下载 Node 基础镜像。本机安装时，打开 `http://127.0.0.1:18766/`，填写名字并设置自己的访问密码，密码至少8个字符。
 
-部署在远程服务器时，先在自己的电脑运行下面的命令，把 `username@your-server` 换成实际登录用户名和服务器地址。保持这个终端打开，再用电脑浏览器访问 `http://127.0.0.1:18766/`。
+在远程服务器上测试公网访问时，从部署目录执行下面的命令。
 
 ```sh
-ssh -N -L 18766:127.0.0.1:18766 username@your-server
+printf '\nPIPI_HOST_BIND=0.0.0.0\n' >> .env
+docker compose up -d
 ```
 
-手机跨网络访问时，配置自己的域名与 HTTPS 反向代理，具体设置见[反向代理和大备份](#反向代理和大备份)。监听地址可在同目录 `.env` 设置 `PIPI_HOST_BIND`，端口可设置 `PIPI_PORT`，默认分别为 `127.0.0.1` 与 `18766`。
+在浏览器打开 `http://服务器公网IP:18766/`，首次由自己完成账号设置。若访问超时，检查服务器控制面板是否允许 TCP 18766 端口入站。长期使用时配置自己的域名与 HTTPS 反向代理，具体设置见[反向代理和大备份](#反向代理和大备份)。端口可在同目录 `.env` 设置 `PIPI_PORT`，默认是 `18766`。
 
 首次安装从空白通讯录和聊天记录开始。在聊天首页点“创建新朋友”即可添加角色。
 
@@ -115,7 +115,7 @@ Docker 和直接运行 Node 都内置 `https://choupi.tech/v1` 与下列分组�
 
 ## 反向代理和大备份
 
-直接访问小手机时，保持 `TRUST_PROXY` 未设置。同一台机器、同一网络环境内的 Nginx 或 Caddy 可设 `TRUST_PROXY=loopback`。程序和代理分开运行时，填应用实际接收到请求的代理 IP 或必要的最小网段，例如 `172.30.44.2` 或 `172.30.44.2/32`。启用后首次设置必须使用一次性令牌。可信代理报告 HTTPS 时，程序会自动给登录 Cookie 加 `Secure`。否则如需强制仅通过 HTTPS 携带登录凭证，可设置 `COOKIE_SECURE=1`。
+直接访问小手机时，保持 `TRUST_PROXY` 未设置。同一台机器、同一网络环境内的 Nginx 或 Caddy 可设 `TRUST_PROXY=loopback`。程序和代理分开运行时，填应用实际接收到请求的代理 IP 或必要的最小网段，例如 `172.30.44.2` 或 `172.30.44.2/32`。可信代理报告 HTTPS 时，程序会自动给登录 Cookie 加 `Secure`。否则如需强制仅通过 HTTPS 携带登录凭证，可设置 `COOKIE_SECURE=1`。
 
 代理应覆盖或追加真实连接地址。应用只接受受信任的上一跳，沿 `X-Forwarded-For` 从右往左判断客户端。将公网来源或共享网段误设为信任范围会让外部请求伪造来源地址。Docker 的 `.env` 只参与 Compose 变量替换。要让 `COOKIE_SECURE`、`TRUST_PROXY` 或 `RESET_PASSWORD` 进到容器，应明确写在 `pipi-phone` 服务的 `environment`，然后按正常配置更新流程重建服务。
 

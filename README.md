@@ -52,14 +52,13 @@
 git clone https://github.com/chouoi344/pipi-phone.git
 cd pipi-phone
 docker compose up -d --build
-docker compose exec pipi-phone cat /app/data/setup-token.txt
 ```
 
-在运行 Docker 的电脑上打开 [http://127.0.0.1:18766/](http://127.0.0.1:18766/)，填写终端显示的初始化令牌，并设置至少 8 个字符的访问密码。初始化完成后，令牌文件自动删除。
+在运行 Docker 的电脑上打开 [http://127.0.0.1:18766/](http://127.0.0.1:18766/)，填写名字并设置至少 8 个字符的访问密码，再次输入确认即可创建账号。首次部署完成后，请先完成自己的账号设置。
 
 Docker 内已包含 Node.js，业务资料保存在 `pipi-data` 数据卷。普通重启和重新构建会保留资料。
 
-> 部署在远程服务器时，`127.0.0.1` 指向访问者当前使用的设备。默认端口只监听服务器本机。可先用 SSH 隧道体验，手机跨网络访问时配置自己的域名与 HTTPS 反向代理。操作步骤见[安装说明](INSTALL.zh-CN.md#首次安装)。
+> 部署在远程服务器时，可在同目录 `.env` 设置 `PIPI_HOST_BIND=0.0.0.0`，重建容器后用 `http://服务器公网IP:18766/` 测试。长期使用时配置域名与 HTTPS 反向代理。操作步骤见[安装说明](INSTALL.zh-CN.md#首次安装)。
 
 <details>
 <summary>使用 Node.js 在本机直接运行</summary>

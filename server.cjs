@@ -22,7 +22,6 @@ const safeEqual=(a,b)=>{
   return x.length===y.length&&crypto.timingSafeEqual(x,y);
 };
 const digest=x=>crypto.createHash('sha256').update(x).digest('hex');
-const loopback=ip=>ip==='127.0.0.1'||ip==='::1'||ip==='::ffff:127.0.0.1';
 function createApp(options={}){
   const proxy=require('./lib/trusted-proxy.cjs').create(options.trustProxy??process.env.TRUST_PROXY??'');
   const updateDir=options.updates?.updateDir??process.env.PIPI_UPDATE_DIR;
@@ -274,14 +273,16 @@ function createApp(options={}){
       }
     });
   }catch(error){console.error('Unable to mark interrupted messages as failed during startup:',error?.stack||String(error));}
+  let setupAllowed=!getMeta('password');
+  const requireSetupToken=options.requireSetupToken??process.env.REQUIRE_SETUP_TOKEN==='1';
+  const setupTokenRequired=()=>getMeta('passwordResetPending')==='1'||requireSetupToken;
   let setupToken=getMeta('setupToken');
-  if(!setupToken&&!getMeta('password')){
+  if(!setupToken&&setupAllowed&&setupTokenRequired()){
     setupToken=crypto.randomBytes(24).toString('hex');
     setMeta('setupToken',setupToken);
   }
   const tokenFile=path.join(dataDir,'setup-token.txt');
-  if(setupToken&&!getMeta('password')&&(!fs.existsSync(tokenFile)||fs.readFileSync(tokenFile,'utf8').trim()!==setupToken))fs.writeFileSync(tokenFile,setupToken+'\n',{mode:0o600});
-  const setupTokenRequired=()=>proxy.enabled||getMeta('passwordResetPending')==='1'||process.env.REQUIRE_SETUP_TOKEN==='1';
+  if(setupToken&&setupAllowed&&setupTokenRequired()&&(!fs.existsSync(tokenFile)||fs.readFileSync(tokenFile,'utf8').trim()!==setupToken))fs.writeFileSync(tokenFile,setupToken+'\n',{mode:0o600});
   const host=options.host||process.env.HOST||'127.0.0.1',port=options.port??Number(process.env.PORT||18766);
   const allowedHosts=new Set(['localhost','127.0.0.1','[::1]',host,...String(process.env.ALLOWED_HOSTS||'').split(',').map(x=>x.trim()).filter(Boolean)]);
   const buckets=new Map();
@@ -494,9 +495,8 @@ function createApp(options={}){
       const password=S.text(b.password,256);
       if(p==='/api/setup'){
         if(getMeta('password'))S.fail('已完成初始化',409,'SETUP_DONE');
-        const directLocal=loopback(req.socket.remoteAddress)&&!req.headers.forwarded&&!req.headers['x-forwarded-for']&&!req.headers['x-real-ip']&&!setupTokenRequired();
-        // An empty token (already used, or the password row removed while running) never authorizes remote setup.
-        if(!directLocal&&(!setupToken||!safeEqual(b.setupToken,setupToken)))S.fail('远程初始化需要 setupToken，请从服务器数据目录读取',403,'SETUP_TOKEN');
+        if(!setupAllowed)S.fail('账号状态已变化，请由服务器管理员重置密码',403,'SETUP_TOKEN');
+        if(setupTokenRequired()&&(!setupToken||!safeEqual(b.setupToken,setupToken)))S.fail('请输入服务器提供的设置令牌',403,'SETUP_TOKEN');
         if(password.length<8)S.fail('密码至少需要 8 个字符');
         const salt=crypto.randomBytes(24).toString('hex'),hash=await passwordHash(password,salt);
         assertWritable();
@@ -512,7 +512,7 @@ function createApp(options={}){
           }
           db.prepare("DELETE FROM meta WHERE key='passwordResetPending'").run();
         });
-        setupToken='';
+        setupAllowed=false;setupToken='';
         try{
           fs.unlinkSync(path.join(dataDir,'setup-token.txt'));
         }

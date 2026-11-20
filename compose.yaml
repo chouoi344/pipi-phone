@@ -11,7 +11,7 @@ services:
       PORT: 8000
       DATA_DIR: /app/data
       NODE_ENV: production
-      REQUIRE_SETUP_TOKEN: "1"
+      REQUIRE_SETUP_TOKEN: "${REQUIRE_SETUP_TOKEN:-0}"
       ALLOWED_HOSTS: "${ALLOWED_HOSTS:-}"
       SOURCE_URL: "${SOURCE_URL:-}"
       PIPI_SOURCE_URL: "${PIPI_SOURCE_URL:-}"

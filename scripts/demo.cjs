@@ -29,8 +29,7 @@ async function createDemo({host='127.0.0.1',browserHost=host,appPort=51022,provi
     if(resumeDir){
       const login=await request('/api/login',{password:PASSWORD});if(login.status!==200)throw new Error(login.body.error);
     }else{
-      const setupToken=(await readFile(path.join(dataDir,'setup-token.txt'),'utf8')).trim();
-      const setup=await request('/api/setup',{password:PASSWORD,displayName:'本地模型演示',setupToken});
+      const setup=await request('/api/setup',{password:PASSWORD,displayName:'本地模型演示'});
       if(setup.status!==200)throw new Error(setup.body.error);
       const configured=await request('/api/engine/config');if(configured.status!==200)throw new Error(configured.body.error);
       const ai=configured.body.ai;

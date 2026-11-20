@@ -102,12 +102,12 @@ test('emoji recents: exact token whitelist, bounded MRU and durable migration',a
   ok(await f.request('/api/restore',{backup:saved,confirm:true}));assert.deepEqual((await f.state()).emojiRecents,before.emojiRecents);
 });
 
-async function fixture(t,{privateProviders=true,setup=true,password=PASSWORD}={}) {
+async function fixture(t,{privateProviders=true,setup=true,password=PASSWORD,requireSetupToken=false}={}) {
   const old=process.env.ALLOW_PRIVATE_PROVIDERS;
   if(privateProviders)process.env.ALLOW_PRIVATE_PROVIDERS='1';else delete process.env.ALLOW_PRIVATE_PROVIDERS;
   const dir=await mkdtemp(path.join(os.tmpdir(),'pipi-adversarial-'));
   let app;
-  try{app=createApp({dataDir:dir,host:'127.0.0.1',port:0});await app.listen();}catch(e){await rm(dir,{recursive:true,force:true});throw e;}
+  try{app=createApp({dataDir:dir,host:'127.0.0.1',port:0,requireSetupToken});await app.listen();}catch(e){await rm(dir,{recursive:true,force:true});throw e;}
   let base=`http://127.0.0.1:${app.server.address().port}`;
   let cookie='',csrf='';
   async function request(route,body,options={}) {
@@ -120,7 +120,7 @@ async function fixture(t,{privateProviders=true,setup=true,password=PASSWORD}={}
     if(json?.csrfToken&&!options.anonymous)csrf=json.csrfToken;
     return {status:res.status,json,text,headers:res.headers};
   }
-  const f={get app(){return app;},get base(){return base;},dir,restart:async()=>{await app.close();app=createApp({dataDir:dir,host:"127.0.0.1",port:0});await app.listen();base=`http://127.0.0.1:${app.server.address().port}`;},request,action:(type,payload={})=>request('/api/action',{type,payload}),state:async()=>{const r=await request('/api/state');ok(r);return r.json;},get cookie(){return cookie;},get csrf(){return csrf;}};
+  const f={get app(){return app;},get base(){return base;},dir,restart:async()=>{await app.close();app=createApp({dataDir:dir,host:"127.0.0.1",port:0,requireSetupToken});await app.listen();base=`http://127.0.0.1:${app.server.address().port}`;},request,action:(type,payload={})=>request('/api/action',{type,payload}),state:async()=>{const r=await request('/api/state');ok(r);return r.json;},get cookie(){return cookie;},get csrf(){return csrf;}};
   t.after(async()=>{await app.close();await rm(dir,{recursive:true,force:true});if(old===undefined)delete process.env.ALLOW_PRIVATE_PROVIDERS;else process.env.ALLOW_PRIVATE_PROVIDERS=old;});
   if(setup){
     const r=await request('/api/setup',{password,displayName:'Test only'});ok(r);
@@ -404,8 +404,8 @@ test('hidden summaries remain internal across ordinary APIs and failed engine re
   }
 });
 
-test('first setup behind forwarded headers requires one-time token and consumes it',async t=>{
-  const f=await fixture(t,{setup:false});
+test('explicitly protected first setup behind forwarded headers requires one-time token and consumes it',async t=>{
+  const f=await fixture(t,{setup:false,requireSetupToken:true});
   const headers={'X-Forwarded-For':'203.0.113.10'};
   rejected(await f.request('/api/setup',{password:PASSWORD},{headers}));
   rejected(await f.request('/api/setup',{password:PASSWORD,setupToken:'invalid'},{headers}));

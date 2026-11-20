@@ -42,8 +42,8 @@ test('proxy address resolution trusts only the immediate peer, then walks the ch
   for(const invalid of ['yes','10.0.0.0/33','::1/129','1.2.3.4/not-a-prefix'])assert.throws(()=>Proxy.create(invalid),/TRUST_PROXY/);
 });
 
-test('trusted proxy setup requires its token and HTTPS cookies; status publishes account capabilities',async t=>{
-  const f=await fixture(t,{trustProxy:'loopback'}),a=f.device();
+test('explicitly protected proxy setup requires its token and HTTPS cookies; status publishes account capabilities',async t=>{
+  const f=await fixture(t,{trustProxy:'loopback',requireSetupToken:true}),a=f.device();
   const status=ok(await a.request('/api/status'));
   assert.equal(status.setupTokenRequired,true);for(const key of ['accountSecurity','momentExclusions'])assert.equal(status[key],true);assert.equal(status.messageLimit,50000);
   assert.equal((await a.request('/api/setup',{password:PASSWORD})).status,403);
@@ -59,7 +59,7 @@ test('forwarding headers cannot set a Secure cookie when TRUST_PROXY is disabled
 
 test('trusted client address separates login and API rate windows from spoofed leftmost addresses',async t=>{
   const f=await fixture(t,{trustProxy:'loopback'}),a=f.device(),bad={'X-Forwarded-For':'198.51.100.10'};
-  ok(await a.request('/api/setup',{password:PASSWORD,setupToken:f.token()},{'X-Forwarded-For':'198.51.100.1'}));
+  ok(await a.request('/api/setup',{password:PASSWORD},{'X-Forwarded-For':'198.51.100.1'}));
   for(let i=0;i<10;i++)assert.equal((await a.request('/api/login',{password:'wrong'},bad)).status,401);
   assert.equal((await a.request('/api/login',{password:PASSWORD},{'X-Forwarded-For':'6.6.6.6,198.51.100.10'})).status,429);
   assert.equal((await a.request('/api/account/password',pw(),bad)).status,429);

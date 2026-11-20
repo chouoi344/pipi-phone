@@ -96,7 +96,7 @@
   const newChatMessageIds=new Set();
   let speechSession=null;
   let slowReplyRole='',chatProgressSequence=0;
-  const composerHistories=new Map(),pendingDraftSends=new Map();
+  const composerHistories=new Map();
   const composerPointers=new Set();
   const patRequests=new Set();
   const avatarTaps=new Map();
@@ -113,6 +113,9 @@
   let globalSearchTerm='';
   let contactsReturn=null,chatsReturn=0;
   const transcriptViews=new Map();
+  const chatDraftKey='pipi.chat-drafts',failedSends=new Map(),pressTimers=new Set(),avatarSources=new Map(),avatarKeys=new Map();
+  const roleRoutes=new Set(['chat','role','memories','role-memories','role-schedule','role-references','chat-info','role-config','contact-settings','contact-more','contact-permissions','chat-search','friend-profile','role-stickers','role-reminders']);
+  let avatarSequence=0,renderTimer=0,bootStale=Boolean(restoredPage&&(restoredPage.overlay||restoredPage.chatSelection||restoredPage.childDialog||restoredPage.featureSelection));
   const statusChoices=[['happy','美滋滋','statusHappy'],['daze','发呆','statusDaze'],['busy','忙','statusBusy'],['focus','学习','statusFocus'],['fish','摸鱼','statusFish'],['work','搬砖','statusWork'],['travel','出差','statusTravel'],['exercise','运动','statusExercise'],['coffee','喝咖啡','statusCoffee'],['rest','休息','statusRest'],['music','听歌','statusMusic'],['game','玩游戏','statusGame'],['sleep','睡觉','statusSleep'],['other','其他','statusOther']];
   const statusGroups=[['心情想法',['happy','daze']],['工作学习',['busy','focus','fish','work','travel']],['活动',['exercise','coffee']],['休息',['rest','music','game','sleep']],['其他',['other']]];
   const statusThemes={happy:'#8c9364',daze:'#747f92',busy:'#797b69',focus:'#657f91',fish:'#6d8f8b',work:'#a6a46d',travel:'#687f95',exercise:'#9c8270',coffee:'#9b8275',rest:'#7d7f9a',music:'#7e7e9a',game:'#738989',sleep:'#6c718d',other:'#718c83'};
@@ -163,9 +166,12 @@
   function restoreComposerEdit(redo=false){if(composeComposing||sending)return;const history=composerHistories.get(route.arg),from=history?.[redo?'redo':'undo'],to=history?.[redo?'undo':'redo'];if(!from?.length)return;const next=from.pop();to.push({text:composeText,selection:{...composerSelection}});composeText=next.text;composerSelection={...next.selection};syncComposerDraft();}
   const roleById = id => state?.roles?.find(r => r.id === id);
   const roleName = r => r?.remark || r?.name || '联系人';
+  function avatarKey(src){if(typeof src!=='string'||!src)return '';let key=avatarKeys.get(src);if(key===undefined){if(!safeImage(src))return '';key=String(++avatarSequence);}else avatarKeys.delete(src);avatarKeys.set(src,key);avatarSources.set(key,src);if(avatarKeys.size>512){const [oldSrc,oldKey]=avatarKeys.entries().next().value;avatarKeys.delete(oldSrc);avatarSources.delete(oldKey);}return key;}
+  function paintAvatars(root){if(root?.nodeType!==1)return;for(const img of root.matches('img[data-avatar-key]:not([src])')?[root]:root.querySelectorAll('img[data-avatar-key]:not([src])')){const src=avatarSources.get(img.dataset.avatarKey);if(src)img.src=src;}}
+  new MutationObserver(records=>{for(const record of records)for(const node of record.addedNodes)paintAvatars(node);}).observe(document.body,{childList:true,subtree:true});
   function avatar(entity = {}, size = 48) {
-    const name = String(entity.name || entity.remark || '我');
-    return `<span class="avatar ${safeImage(entity.avatar)?'':'avatar-empty'}" style="--avatar-size:${Math.max(20,Math.min(100,Number(size)||48))}px">${safeImage(entity.avatar) ? `<img src="${esc(entity.avatar)}" alt="${esc(name)}的头像" loading="lazy">` : assetIcon('people-filled')}</span>`;
+    const name = String(entity.name || entity.remark || '我'), key = avatarKey(entity.avatar);
+    return `<span class="avatar ${key?'':'avatar-empty'}" style="--avatar-size:${Math.max(20,Math.min(100,Number(size)||48))}px">${key ? `<img data-avatar-key="${key}" alt="${esc(name)}的头像" loading="lazy">` : assetIcon('people-filled')}</span>`;
   }
   function toast(text, subtle = false) {
     clearTimeout(toastTimer);
@@ -178,13 +184,20 @@
     toastEl.classList.add('visible');
     toastTimer = setTimeout(() => toastEl.classList.remove('visible'), subtle ? 1800 : 3200);
   }
-  function setState(next) { if (next && typeof next === 'object') {if(state&&next.revision<state.revision)return;globalThis.window?.WaterdropChat?.observeState(state,next,view);trackNewChatMessages(state,next);state = next;globalThis.window?.PipiStickers?.syncDetail();syncVisibleChatRead();globalThis.window?.PipiEngine?.start();} }
+  function setState(next) { if (next && typeof next === 'object') {if(state&&next.revision<state.revision)return;const foreign=state&&next.revision>state.revision+1;globalThis.window?.WaterdropChat?.observeState(state,next,view);trackNewChatMessages(state,next);state = next;globalThis.window?.PipiStickers?.syncDetail();syncVisibleChatRead();globalThis.window?.PipiEngine?.start();if(foreign)scheduleRender();} }
   function receiveState(next) {
     if(!state||next.revision<=state.revision)return;
-    setState(next);
-    if(modalOpen||composeComposing||searchComposing){pendingRender=true;return;}
+    setState(next);pendingRender=true;flushRender(true);
+  }
+  // A revision gap means a response also carried changes made elsewhere; draw them
+  // even when the caller only updates its own part of the page.
+  function scheduleRender(){pendingRender=true;clearTimeout(renderTimer);renderTimer=setTimeout(flushRender);}
+  // Every deferred redraw leaves through here: composer text, caret and scroll survive.
+  function flushRender(force=false){
+    if(!pendingRender||!state||modalOpen||composeComposing||searchComposing||recordingSession||(!force&&route.name==='providers'))return;
     const active=document.activeElement,input=view.querySelector('#compose-text');
-    if(active&&active!==input&&(active.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))){pendingRender=true;return;}
+    if(active&&active!==input&&(active.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)))return;
+    if(roleRoutes.has(route.name)&&!roleById(route.arg)){showView(route.name==='chat'?'chats':'contacts');return;}
     const focused=!!input&&active===input,anchor=captureChatLayout();
     if(input){composeText=readComposerText(input);composerSelection=readComposerSelection(input);composerScroll.input=input.scrollTop;}
     refresh();restoreChatLayout(anchor);
@@ -220,13 +233,13 @@
     const roleId=route.name==='chat'&&!document.hidden?route.arg:null;
     if(!roleId||!roleById(roleId)?.unread||readRequests.has(roleId))return;
     readRequests.add(roleId);
-    act('conversation.read',{roleId}).then(()=>{readRequests.delete(roleId);pendingRender=true;if(route.name!=='chat'&&!modalOpen&&!document.activeElement?.matches('input,textarea,select,[contenteditable]'))refresh();syncVisibleChatRead();}).catch(err=>{readRequests.delete(roleId);toast(err.message);});
+    act('conversation.read',{roleId}).then(()=>{readRequests.delete(roleId);pendingRender=true;flushRender(true);syncVisibleChatRead();}).catch(err=>{readRequests.delete(roleId);toast(err.message);});
   }
   async function api(path, body, method) {
     const requestEpoch=authEpoch,verb = method || (body === undefined ? 'GET' : 'POST');
     const headers={...(body!==undefined?{'Content-Type':'application/json'}:{}),...(verb!=='GET'&&csrf?{'X-CSRF-Token':csrf}:{})};
     if(path==='/api/engine/models')headers['X-Pipi-Model-Page']='card-save';
-    const response = await fetch(path, {method:verb,credentials:'same-origin',headers,...(body===undefined?{}:{body:JSON.stringify(body)})});
+    let response;try{response=await fetch(path, {method:verb,credentials:'same-origin',headers,...(body===undefined?{}:{body:JSON.stringify(body)})});}catch(cause){throw new Error('网络连接失败，请检查网络后重试',{cause});}
     let result; try { result = await response.json(); } catch { throw new Error('服务器返回了无法读取的响应，请稍后重试'); }
     if(requestEpoch!==authEpoch){const error=new Error('登录状态已变化，请重新操作');error.stale=true;throw error;}
     if (result.csrfToken) csrf = result.csrfToken;
@@ -242,7 +255,7 @@
   }
   async function apiRaw(path, body, contentType='application/octet-stream', method='POST') {
     const requestEpoch=authEpoch;
-    const response = await fetch(path, {method,credentials:'same-origin',headers:{'Content-Type':contentType,...(csrf?{'X-CSRF-Token':csrf}:{})},body});
+    let response;try{response=await fetch(path, {method,credentials:'same-origin',headers:{'Content-Type':contentType,...(csrf?{'X-CSRF-Token':csrf}:{})},body});}catch(cause){throw new Error('网络连接失败，请检查网络后重试',{cause});}
     let result; try { result = await response.json(); } catch { throw new Error('服务器返回了无法读取的响应，请稍后重试'); }
     if(requestEpoch!==authEpoch){const error=new Error('登录状态已变化，请重新操作');error.stale=true;throw error;}
     if (result.csrfToken) csrf = result.csrfToken;
@@ -276,7 +289,7 @@
   // the parent's existing DOM and consumes only the top layer.
   function closeModal(notifyClose=true,fromHistory=false) {
     if(modalSaveInProgress&&notifyClose!==false){if(fromHistory)trackModalHistory();return;}
-    const hadModal=modalOpen,callback=modalCloseCallback,childDepth=childDialog&&history.state?.childDialog===childDialog.id?1:0;closeChildDialog(true);modalCloseCallback=null;overlay.replaceChildren(); modalOpen = false; if(modalReturnFocus?.isConnected)modalReturnFocus.focus({preventScroll:true}); modalReturnFocus=null;if(hadModal&&!fromHistory&&history.state?.overlay){if(overlayBackPending)overlayCloseQueued=notifyClose===false?'all':true;else{overlayBackPending=true;const depth=(notifyClose===false?(history.state.overlayDepth||1):1)+childDepth;if(depth>1)history.go(-depth);else history.back();}}if(notifyClose!==false&&typeof callback==='function')callback();
+    const hadModal=modalOpen,callback=modalCloseCallback,childDepth=childDialog&&history.state?.childDialog===childDialog.id?1:0;closeChildDialog(true);modalCloseCallback=null;overlay.replaceChildren(); modalOpen = false; if(modalReturnFocus?.isConnected)modalReturnFocus.focus({preventScroll:true}); modalReturnFocus=null;if(hadModal&&!fromHistory&&history.state?.overlay){if(overlayBackPending)overlayCloseQueued=notifyClose===false?'all':true;else{overlayBackPending=true;const depth=(notifyClose===false?(history.state.overlayDepth||1):1)+childDepth;if(depth>1)history.go(-depth);else history.back();}}if(notifyClose!==false&&typeof callback==='function')callback();if(hadModal&&state)scheduleRender();
   }
   function bindSheetBackdrop() {
     let pressedSheet=null;
@@ -442,6 +455,7 @@
   function showView(name, arg, fromBack=false) {
     if(modalSaveInProgress)return;
     if(name==='sticker-store')name='stickers';
+    if(state&&roleRoutes.has(name)&&!roleById(arg?.roleId||arg?.id||arg)){if(fromBack&&navStack.length){history.back();return;}const list=name==='chat'?'chats':'contacts';if(fromBack)history.replaceState({pipi:true,route:{name:list,arg:null},stack:[]},'');name=list;arg=undefined;navStack.length=0;}
     if(overlayBackPending){queuedView={name,arg,fromBack};return;}
     if(chatSelection&&(name!=='chat'||(arg?.roleId||arg?.id||arg)!==chatSelection.roleId)){finishMessageSelection();if(overlayBackPending){queuedView={name,arg,fromBack};return;}}
     if(modalOpen&&history.state?.overlay&&!fromBack){closeModal(false);queuedView={name,arg,fromBack};return;}
@@ -458,6 +472,7 @@
       drafts.set(route.arg,{text:composeText,image:composeImage,stickerId:composeStickerId,quote:quoteId,panel,selection:{...composerSelection},scroll:{...composerScroll},morePage,emojiPage,emojiTab,emojiSearch,emojiExpandedHeight});
       const list=view.querySelector('#chat-messages');if(list)chatScrolls.set(route.arg,list.scrollTop);
     }
+    persistChatDrafts();
     if(route.name==='chats')chatsReturn=view.querySelector('.content')?.scrollTop||0;
     if(route.name==='contacts'){const content=view.querySelector('.content.contacts');contactsReturn={top:content?.scrollTop||0,term:searchTerm};}
     if(route.name==='settings'){
@@ -543,7 +558,11 @@
     if(route.name==='engine-usage')position.usage=window.PipiUsage.getView();
     sessionStorage.setItem(browserPositionKey,JSON.stringify({route:[route.name,route.arg],position,modelDrafts:window.PipiModels?.captureDrafts()}));
   }
+  function persistChatDrafts(){if(!state)return;const saved={};for(const [roleId,draft] of drafts)if(draft.text||draft.quote)saved[roleId]={text:draft.text||'',quote:draft.quote||''};if(route.name==='chat'){delete saved[route.arg];if(composeText||quoteId)saved[route.arg]={text:composeText,quote:quoteId};}try{if(Object.keys(saved).length)sessionStorage.setItem(chatDraftKey,JSON.stringify(saved));else sessionStorage.removeItem(chatDraftKey);}catch{}}
+  function restoreChatDrafts(){let saved;try{saved=JSON.parse(sessionStorage.getItem(chatDraftKey)||'{}');}catch{return;}for(const [roleId,draft] of Object.entries(saved||{}))if(roleById(roleId)&&typeof draft?.text==='string'&&!drafts.has(roleId))drafts.set(roleId,{text:draft.text,quote:typeof draft.quote==='string'?draft.quote:''});const draft=route.name==='chat'?drafts.get(route.arg):null;if(draft&&!composeText&&!quoteId){composeText=draft.text;quoteId=draft.quote;composerSelection={start:composeText.length,end:composeText.length};}}
   async function restoreBrowserPage(){
+    if(roleRoutes.has(route.name)&&!roleById(route.arg)){route={name:route.name==='chat'?'chats':'contacts',arg:null};navStack.length=0;history.replaceState({pipi:true,route:{...route},stack:[]},'');}
+    restoreChatDrafts();
     const saved=sessionStorage.getItem(browserPositionKey);
     sessionStorage.removeItem(browserPositionKey);
     const snapshot=saved?JSON.parse(saved):null;
@@ -559,11 +578,15 @@
       restorePagePosition(view.querySelector('.content'),position);
     }
   }
+  function pressTimer(run,delay){const id=setTimeout(()=>{pressTimers.delete(id);run();},delay);pressTimers.add(id);return id;}
   function renderView() {
     if (!state) return;
     if(route.name==='chat'&&view.dataset.route==='chat'&&composerPointerBusy()){pointerViewRefreshPending=true;pendingRender=true;return;}
     if(recordingSession?.mode==='hold'){pendingRender=true;return;}
     if(searchComposing||(route.name==='chat'&&composeComposing&&view.dataset.route==='chat')){pendingRender=true;return;}
+    for(const timer of pressTimers)clearTimeout(timer);pressTimers.clear();
+    const previousInput=view.querySelector('#compose-text'),previousEmoji=view.querySelector('.emoji-scroll');
+    if(route.name==='chat'&&view.dataset.chatRole===route.arg){if(previousInput)composerScroll.input=previousInput.scrollTop;if(previousEmoji)composerScroll.emoji=previousEmoji.scrollTop;}
     window.PipiFeatures?.cleanup?.();
     const previousContacts=route.name==='contacts'&&view.dataset.route==='contacts'?view.querySelector('.content.contacts'):null;
     if(previousContacts)contactsReturn={top:view.dataset.contactsTerm===searchTerm?previousContacts.scrollTop:0,term:searchTerm};
@@ -745,7 +768,7 @@
   function renderChatSearch(){
     const r=roleById(route.arg),term=chatSearch.trim().toLowerCase(),searching=!!(term||chatSearchDate||chatSearchFilter!=='all');
     const messages=(state.messages||[]).filter(m=>{
-      if(m.roleId!==r?.id||!searching||!String(m.meta?.transcript||m.content).toLowerCase().includes(term))return false;
+      if(m.roleId!==r?.id||!searching||!String(m.type==='image'?'[图片]':m.meta?.transcript||m.content).toLowerCase().includes(term))return false;
       if(chatSearchFilter==='image'&&m.type!=='image'&&!safeImage(m.meta?.image))return false;
       if(chatSearchFilter==='payment'&&!['transfer','redpacket'].includes(m.type))return false;
       if(chatSearchFilter==='voice'&&m.type!=='voice')return false;
@@ -916,9 +939,10 @@
     syncDictationState();
     if(changed)resizeComposeInput(view.querySelector('#compose-text'));restoreChatLayout(anchor);
   }
-  function syncComposerDraft(){if(route.name==='chat')window.PipiEngine?.activity(route.arg);const input=view.querySelector('#compose-text');if(input&&!composeComposing){paintComposer(input,document.activeElement===input);resizeComposeInput(input);syncComposerControls();}else updateComposer();}
+  function syncComposerDraft(){persistChatDrafts();if(route.name==='chat')window.PipiEngine?.activity(route.arg);const input=view.querySelector('#compose-text');if(input&&!composeComposing){paintComposer(input,document.activeElement===input);resizeComposeInput(input);syncComposerControls();}else updateComposer();}
+  function quotedMessage(id,roleId=route.arg){const m=id?state?.messages?.find(item=>item.id===id):null;return m&&m.roleId===roleId&&m.meta?.kind!=='recalled'?m:null;}
   function renderComposer() {
-    const quote=(state.messages||[]).find(m=>m.id===quoteId);
+    const quote=quotedMessage(quoteId);
     const tools=[['toolImage','upload-chat-image','照片'],['toolCamera','coming-camera','拍摄'],['toolVideo','coming-video','视频通话'],['toolLocation','coming-location','位置'],['toolRedpacket','chat-redpacket','红包'],['mic','dictation','语音转文字'],['toolTransfer','chat-transfer','转账'],['toolFavorites','favorites','收藏'],['toolGift','coming-gift','礼物'],['toolContact','coming-contact-card','个人名片'],['toolFile','coming-file','文件'],['toolCards','coming-cards','卡券'],['toolMusic','coming-music','音乐']];
     const more=panel==='more'?'<div class="more-pages"><div class="compose-panel">'+tools.slice(morePage*8,morePage*8+8).map(([icon,action,label])=>'<button type="button" data-action="'+action+'"'+(action==='dictation'?' class="compose-dictation" aria-label="语音转文字" aria-pressed="false"':'')+'><span class="panel-icon">'+(action==='dictation'?micMark:icons[icon]||'')+'</span><span>'+label+'</span></button>').join('')+'</div></div><div class="panel-dots">'+[0,1].map(i=>'<button type="button" class="'+(morePage===i?'active':'')+'" data-action="more-'+(i?'next':'prev')+'" aria-label="第'+(i+1)+'页" aria-current="'+(morePage===i?'page':'false')+'"></button>').join('')+'</div>':'';
     const textField=panel==='voice'?'<button type="button" class="voice-record" data-record aria-label="按住说话；左上滑取消，右上滑转文字">按住 说话</button>':'<div class="compose-field"><div id="compose-text" class="compose-input" contenteditable="true" role="textbox" enterkeyhint="send" aria-multiline="true" aria-disabled="false" inputmode="'+(panel==='emoji'?'none':'text')+'" aria-label="输入消息" spellcheck="false">'+richText(composeText,true)+'</div></div>';
@@ -946,6 +970,7 @@
   window.addEventListener('blur',releaseAllComposerPointers);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseAllComposerPointers();});
   function updateComposer() {
+    persistChatDrafts();
     if(composerPointerBusy()){pointerComposerUpdatePending=true;return;}
     if(recordingSession?.mode==='hold')return;
     pointerComposerUpdatePending=false;
@@ -999,7 +1024,7 @@
     let composing=false,scheduled=false;
     const update=()=>{if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;if(composing||!input.isConnected)return;const cursor=input.selectionStart,id=input.id;setValue(input.value);render();const next=view.querySelector('#'+id);next?.focus({preventScroll:true});try{next?.setSelectionRange(cursor,cursor);}catch{}});};
     input.addEventListener('compositionstart',()=>{composing=true;searchComposing=true;});
-    input.addEventListener('compositionend',()=>{composing=false;searchComposing=false;if(input.isConnected){setValue(input.value);update();}});
+    input.addEventListener('compositionend',()=>{composing=false;searchComposing=false;if(input.isConnected){setValue(input.value);update();flushRender();}});
     input.oninput=event=>{if(event.isComposing){composing=true;searchComposing=true;}setValue(input.value);if(!composing&&!event.isComposing)update();};
   }
   function bindContactIndex(){
@@ -1100,7 +1125,7 @@
       case 'toggle-mute': if(r){await act('conversation.mute',{roleId:r.id,muted:!r.muted});refresh();}break;
       case 'toggle-star':if(r){await act('role.save',{id:r.id,starred:!r.starred});refresh();}break;
       case 'clear-conversation': if(r)confirmDialog('清空聊天记录？',`将删除与 ${roleName(r)} 的全部消息，保留联系人和共同记忆。`,()=>act('conversation.clear',{roleId:r.id}),'清空');break;
-      case 'delete-role': if(r)confirmDialog('删除这位联系人？','聊天记录和关联记忆将一并删除，无法恢复。',async isCurrent=>{await act('role.delete',{id:r.id});if(isCurrent())showView('contacts');},'删除');break;
+      case 'delete-role': if(r)confirmDialog('删除这位联系人？','将删除聊天记录、共同记忆、转账和红包明细、TA 的朋友圈和点赞评论、农场记录及提醒。你发出且未被领取的款项会退回零钱，收藏保留快照。',async isCurrent=>{await act('role.delete',{id:r.id});if(isCurrent())showView('contacts');},'删除');break;
       case 'chat-search': chatSearch='';chatSearchFilter='all';chatSearchDate='';showView('chat-search',r?.id);view.querySelector('#chat-search')?.focus();break;
       case 'compose-moment': window.PipiFeatures?.openMomentCamera?.(); break;
       case 'add-role': editRole(); break;
@@ -1147,7 +1172,7 @@
       case 'chat-transfer': showView('wallet',{roleId:r?.id,mode:'transfer'}); break;
       case 'chat-redpacket': showView('wallet',{roleId:r?.id,mode:'redpacket'}); break;
       case 'chat-pat': if(r)await patChat(r.id,'contact');break;
-      case 'logout': confirmDialog('退出登录？','数据会保留在服务器，输入密码即可重新登录。',async()=>{await api('/api/logout',{}); csrf=''; state=null; window.PipiEngine?.stop(); renderAuth(false);},'退出登录'); break;
+      case 'logout': confirmDialog('退出登录？','数据会保留在服务器，输入密码即可重新登录。',async()=>{await api('/api/logout',{}); csrf=''; state=null;drafts.clear();composerHistories.clear();failedSends.clear();composeText='';composeImage='';composeStickerId='';quoteId='';sessionStorage.removeItem(chatDraftKey);window.PipiEngine?.stop(); renderAuth(false);},'退出登录'); break;
       case 'download-backup': downloadBackup(); break;
       case 'restore-backup': pickBackup(); break;
     }
@@ -1175,7 +1200,7 @@
       const r=roleById(el.dataset.openChat); let timer, startX=0,startY=0, suppress=false;
       el.addEventListener('click',event=>{if(suppress){event.preventDefault();suppress=false;return;} if(el.classList.contains('swiped')){el.classList.remove('swiped');return;} showView('chat',r.id);});
       el.addEventListener('contextmenu',event=>{event.preventDefault();conversationMenu(r);});
-      el.addEventListener('pointerdown',event=>{if(event.button!==0)return;startX=event.clientX;startY=event.clientY;suppress=false;timer=setTimeout(()=>{suppress=true;conversationMenu(r);},550);});
+      el.addEventListener('pointerdown',event=>{if(event.button!==0)return;startX=event.clientX;startY=event.clientY;suppress=false;timer=pressTimer(()=>{suppress=true;conversationMenu(r);},550);});
       el.addEventListener('pointermove',event=>{if(Math.abs(event.clientX-startX)>12||Math.abs(event.clientY-startY)>12)clearTimeout(timer);});
       el.addEventListener('pointerup',event=>{clearTimeout(timer);if(event.clientX-startX < -45 && Math.abs(event.clientY-startY)<40){suppress=true;view.querySelectorAll('.swiped').forEach(node=>node.classList.remove('swiped'));el.classList.add('swiped');}else if(event.clientX-startX>45){suppress=true;el.classList.remove('swiped');}});
       el.addEventListener('pointercancel',()=>clearTimeout(timer)); el.addEventListener('pointerleave',()=>clearTimeout(timer));
@@ -1318,7 +1343,7 @@
     view.querySelectorAll('[data-bubble]').forEach(el=>{
       let timer, suppress=false, startX=0,startY=0;
       el.oncontextmenu=event=>{event.preventDefault();suppress=true;clearTimeout(timer);if(!chatSelection)messageMenu(el.dataset.bubble,el);};
-      el.onpointerdown=event=>{if(event.button!==0)return;startX=event.clientX;startY=event.clientY;suppress=false;if(!chatSelection)timer=setTimeout(()=>{suppress=true;messageMenu(el.dataset.bubble,el);},500);};
+      el.onpointerdown=event=>{if(event.button!==0)return;startX=event.clientX;startY=event.clientY;suppress=false;if(!chatSelection)timer=pressTimer(()=>{suppress=true;messageMenu(el.dataset.bubble,el);},500);};
       el.onpointermove=event=>{if(Math.abs(event.clientX-startX)>12||Math.abs(event.clientY-startY)>12){suppress=true;clearTimeout(timer);}};
       el.onpointerup=()=>clearTimeout(timer);el.onpointercancel=()=>{suppress=true;clearTimeout(timer);};el.onpointerleave=()=>clearTimeout(timer);
       el.onclick=()=>{if(suppress){suppress=false;return;}if(chatSelection){if(state.messages.find(x=>x.id===el.dataset.bubble)?.sender!=='system')toggleSelectedMessage(el.dataset.bubble);return;}const m=state.messages.find(x=>x.id===el.dataset.bubble);if(!m)return;if(m.type==='voice'){playAudio(m.meta?.audio,m.id);return;}if(['transfer','redpacket'].includes(m.type)){if(m.meta?.transactionId)window.PipiFeatures?.walletTransaction?.(m.meta.transactionId, undefined, { fromChat: true });else toast('未找到这笔交易的详情');return;}if(m.type==='forward'){openForwardDetails(m);return;}if(el.classList.contains('sticker-bubble'))return;if(el.classList.contains('image-bubble')){const src=m.type==='image'?m.content:m.meta?.image;if(safeImage(src)){const images=state.messages.filter(message=>message.roleId===m.roleId&&!(message.type==='image'&&message.meta?.stickerId)).map(message=>({id:message.id,src:message.type==='image'?message.content:message.meta?.image})).filter(item=>safeImage(item.src));lightbox(src,'聊天图片',{images:images.map(item=>item.src),messageIds:images.map(item=>item.id),index:images.findIndex(item=>item.id===m.id)});}}};
@@ -1349,10 +1374,10 @@
       const useKeyboard=(afterInput=false)=>{if(panel==='emoji'||panel==='more'){panel='';input.inputMode='text';if(afterInput)requestAnimationFrame(()=>{if(input.isConnected)updateComposer();});else updateComposer();}};
       input.onpointerdown=()=>useKeyboard();
       input.onselect=rememberSelection;input.onkeyup=rememberSelection;input.onclick=()=>{rememberSelection();useKeyboard();};input.onblur=rememberSelection;
-      const acceptInput=()=>{composeText=readComposerText(input);rememberSelection();if(!composeComposing)paintComposer(input,document.activeElement===input);resizeComposeInput(input);syncComposerControls();};
+      const acceptInput=()=>{composeText=readComposerText(input);rememberSelection();if(!composeComposing)paintComposer(input,document.activeElement===input);resizeComposeInput(input);syncComposerControls();persistChatDrafts();};
       input.oninput=event=>{if(!input.isConnected)return;if(event.isComposing)composeComposing=true;acceptInput();if(composeComposing||composeText.trim())window.PipiEngine?.activity(route.arg);else window.PipiEngine?.stopActivity?.(route.arg);useKeyboard();};
       input.addEventListener('compositionstart',()=>{rememberSelection();rememberComposerEdit();composeComposing=true;window.PipiEngine?.activity(route.arg);syncComposerControls();});
-      input.addEventListener('compositionend',()=>{if(!input.isConnected)return;composeComposing=false;composeText=readComposerText(input);rememberSelection();resizeComposeInput(input);syncComposerControls();requestAnimationFrame(()=>{if(composeComposing||!input.isConnected)return;acceptInput();if(recordingSession?.transcript)applyDictationTranscript(recordingSession);if(deferredComposerUpdate){deferredComposerUpdate=false;updateComposer();}});});
+      input.addEventListener('compositionend',()=>{if(!input.isConnected)return;composeComposing=false;composeText=readComposerText(input);rememberSelection();resizeComposeInput(input);syncComposerControls();requestAnimationFrame(()=>{if(composeComposing||!input.isConnected)return;acceptInput();if(recordingSession?.transcript)applyDictationTranscript(recordingSession);if(deferredComposerUpdate){deferredComposerUpdate=false;updateComposer();}flushRender();});});
       input.onkeydown=event=>{
         if(event.isComposing||composeComposing||event.keyCode===229)return;
         const key=event.key?.toLowerCase();
@@ -1382,7 +1407,7 @@
     view.querySelectorAll('[data-emoji]').forEach(el=>el.onclick=()=>{const token=el.dataset.emoji;insertComposerText(token);act('emoji.use',{token}).then(()=>{if(panel==='emoji'&&route.name==='chat')updateComposer();}).catch(err=>toast(err.message));});
     view.querySelectorAll('[data-emoji-tab]').forEach(el=>el.onclick=()=>{emojiTab=el.dataset.emojiTab;updateComposer();if(emojiTab==='search')view.querySelector('#emoji-search')?.focus();});
     const emojiInput=view.querySelector('#emoji-search');if(emojiInput)bindFilterInput(emojiInput,value=>{emojiSearch=value;},updateComposer);
-    view.querySelectorAll('[data-sticker]').forEach(el=>el.onclick=()=>{const sticker=state.stickers?.find(s=>s.id===el.dataset.sticker);if(sticker&&safeImage(sticker.image)){composeImage=sticker.image;composeStickerId=sticker.id;sendMessage(true);}});
+    view.querySelectorAll('[data-sticker]').forEach(el=>el.onclick=()=>{const sticker=state.stickers?.find(s=>s.id===el.dataset.sticker);if(sticker&&safeImage(sticker.image)){sendSticker(sticker);}});
     const stickerFile=view.querySelector('#sticker-file');if(stickerFile)stickerFile.onchange=()=>uploadStickers(stickerFile);
     const drag=view.querySelector('.emoji-drag-handle');if(drag){let startY=0,height=0;const resize=delta=>{const max=Math.max(220,document.querySelector('.phone-shell').clientHeight-180);emojiExpandedHeight=Math.max(220,Math.min(max,height+delta));const anchor=captureChatLayout();view.querySelector('.emoji-board').style.height=emojiExpandedHeight+'px';restoreChatLayout(anchor);};drag.onpointerdown=e=>{startY=e.clientY;height=view.querySelector('.emoji-board').clientHeight;drag.setPointerCapture(e.pointerId);};drag.onpointermove=e=>{if(drag.hasPointerCapture(e.pointerId))resize(startY-e.clientY);};drag.onkeydown=e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown'){e.preventDefault();height=view.querySelector('.emoji-board').clientHeight;resize(e.key==='ArrowUp'?30:-30);}};}
     const file=view.querySelector('#chat-image-file'); if(file)file.onchange=async()=>{if(!file.files?.[0])return;const roleId=route.arg;try{const data=await readImage(file.files[0]);if(!file.isConnected||route.name!=='chat'||route.arg!==roleId)return;composeImage=data;composeStickerId='';panel='';updateComposer();if(!composeText.trim())sendMessage();}catch(err){toast(err.message);}};
@@ -1395,30 +1420,38 @@
   async function sendMessage(keepEmoji=false) {
     if(composeComposing||recordingSession||(!composeText.trim()&&!composeImage))return;
     const r=roleById(route.arg);if(!r)return;
-    const draft={text:composeText,image:composeImage,stickerId:composeStickerId,quote:quoteId},text=draft.text.trim(),image=draft.image,quote=state.messages?.find(m=>m.id===draft.quote);
+    const draft={text:composeText,image:composeImage,stickerId:composeStickerId,quote:quoteId},text=draft.text.trim(),image=draft.image,quote=quotedMessage(draft.quote),failed=failedSends.get(r.id);
+    // Resending an unchanged failed draft reuses its requestId, so a request that did reach the server is not stored twice.
+    const requestId=failed&&failed.text===text&&failed.image===image&&failed.stickerId===draft.stickerId&&failed.quote===(quote?.id||'')?failed.requestId:crypto.randomUUID();
     const restoreEmoji=keepEmoji&&panel==='emoji';
-    const sendToken={},historyBeforeSend=composerHistories.get(r.id);
-    pendingDraftSends.set(r.id,sendToken);
     window.PipiEngine?.resetActivity(r.id);
     composeText='';composeImage='';composeStickerId='';quoteId='';composerSelection={start:0,end:0};drafts.delete(r.id);composerHistories.delete(r.id);
     panel=restoreEmoji?'emoji':'';forceBottomRole=r.id;chatScrolls.delete(r.id);updateComposer();
     try {
-      const result=await api('/api/chat',{roleId:r.id,text,image:image||undefined,stickerId:draft.stickerId||undefined,quoteId:quote?.id,requestId:crypto.randomUUID()});receiveState(result.state);if(result.notice)toast(result.notice);
+      const result=await api('/api/chat',{roleId:r.id,text,image:image||undefined,stickerId:draft.stickerId||undefined,quoteId:quote?.id,requestId});if(failedSends.get(r.id)?.requestId===requestId)failedSends.delete(r.id);receiveState(result.state);if(result.notice)toast(result.notice);
     } catch(err) {
       toast(err.message);
-      if(!err.state&&pendingDraftSends.get(r.id)===sendToken&&!composerHistories.has(r.id)){
-        const saved=drafts.get(r.id),active=route.name==='chat'&&route.arg===r.id;
-        const hasNewDraft=saved&&(saved.text||saved.image||saved.stickerId||saved.quote)||active&&(composeText||composeImage||composeStickerId||quoteId);
-        if(!hasNewDraft){
-          if(historyBeforeSend)composerHistories.set(r.id,historyBeforeSend);
-          if(active){composeText=draft.text;composeImage=draft.image;composeStickerId=draft.stickerId;quoteId=draft.quote;composerSelection={start:draft.text.length,end:draft.text.length};updateComposer();}
-          else drafts.set(r.id,{...saved,...draft});
-        }
-      }
+      if(!err.state){failedSends.set(r.id,{text,image,stickerId:draft.stickerId,quote:quote?.id||'',requestId});restoreFailedDraft(r.id,draft);}
       if(err.state)refresh();
-    } finally {
-      if(pendingDraftSends.get(r.id)===sendToken)pendingDraftSends.delete(r.id);
     }
+  }
+  // The failed text goes back in front of anything typed since; the newer input is never replaced.
+  function mergeDraft(current={},failed){const text=failed.text?(current.text?failed.text+'\n'+current.text:failed.text):current.text||'',shift=text.length-(current.text||'').length;return {...current,text,image:current.image||failed.image||'',stickerId:current.image?current.stickerId:failed.stickerId||'',quote:current.quote||failed.quote||'',selection:current.selection?{start:current.selection.start+shift,end:current.selection.end+shift}:undefined};}
+  function restoreFailedDraft(roleId,draft){
+    if(route.name!=='chat'||route.arg!==roleId){drafts.set(roleId,drafts.has(roleId)?mergeDraft(drafts.get(roleId),draft):draft);persistChatDrafts();return;}
+    if(composeComposing){setTimeout(()=>restoreFailedDraft(roleId,draft),300);return;}
+    if(!composeText&&!composeImage){composeText=draft.text;composeImage=draft.image;composeStickerId=draft.stickerId;quoteId=draft.quote;composerSelection={start:draft.text.length,end:draft.text.length};updateComposer();return;}
+    const input=view.querySelector('#compose-text');if(input&&document.activeElement===input)composerSelection=readComposerSelection(input);
+    const before=[composeImage,quoteId],merged=mergeDraft({text:composeText,image:composeImage,stickerId:composeStickerId,quote:quoteId,selection:composerSelection},draft);
+    rememberComposerEdit();composeText=merged.text;composeImage=merged.image;composeStickerId=merged.stickerId;quoteId=merged.quote;composerSelection=merged.selection;syncComposerDraft();
+    if(before[0]!==composeImage||before[1]!==quoteId)updateComposer();
+  }
+  // A sticker tapped beside a draft is sent on its own; the draft text and picture stay put.
+  async function sendSticker(sticker){
+    if(composeComposing||recordingSession)return;
+    const r=roleById(route.arg);if(!r)return;
+    window.PipiEngine?.resetActivity(r.id);forceBottomRole=r.id;chatScrolls.delete(r.id);
+    try{const result=await api('/api/chat',{roleId:r.id,text:'',image:sticker.image,stickerId:sticker.id,requestId:crypto.randomUUID()});receiveState(result.state);}catch(err){toast(err.message);}
   }
   async function retryMessage(messageId) {
     if(sending)return; sending=true;sendingRoleId=state.messages?.find(m=>m.id===messageId)?.roleId||'';refresh();
@@ -1610,14 +1643,18 @@
   }
   async function uploadStickers(file){
     if(file.disabled||!file.files.length)return;
-    const origin=route;
+    const origin=route,before=new Set((state.stickers||[]).map(s=>s.id)),remaining=Math.max(0,200-before.size);
     file.disabled=true;
     try{
       const files=[...file.files],images=[];
       for(const item of files)images.push(await readImage(item,true));
+      // Pictures already in the library are skipped by the server and do not use up the 200 places.
+      const fresh=new Set(images.filter(image=>!(state.stickers||[]).some(s=>s.image===image))).size;
+      if(fresh>remaining){toast(`表情库最多 200 张，还能添加 ${remaining} 张，这次选了 ${fresh} 张新表情`);return;}
       await act('sticker.add',{images,names:files.map(item=>item.name.replace(/\.[^.]+$/,'').slice(0,100))});
+      const added=(state.stickers||[]).filter(s=>!before.has(s.id)).length;
       if(route===origin){if(route.name==='stickers')refresh();else if(route.name==='chat')updateComposer();}
-      toast('表情已添加');
+      toast(added?added<files.length?`已添加 ${added} 个表情，${files.length-added} 个重复未添加`:`已添加 ${added} 个表情`:'所选表情已在表情库中，未重复添加');
     }catch(err){toast(err.message);}finally{file.disabled=false;file.value='';}
   }
   function paintSpeech(id){
@@ -1724,7 +1761,7 @@
       if(session.cancelled||recordingSession!==session)return;
       const audio=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('无法读取录音'));reader.readAsDataURL(wav);});
       if(session.cancelled||recordingSession!==session)return;
-      const body={roleId:session.roleId,requestId:crypto.randomUUID(),quoteId:session.quoteId||undefined};
+      const body={roleId:session.roleId,requestId:crypto.randomUUID(),quoteId:quotedMessage(session.quoteId,session.roleId)?.id};
       if(session.mode==='voice'){Object.assign(body,{audio,durationMs});}
       else{
         const result=await api('/api/voice/transcribe',{audio,roleId:session.roleId});
@@ -1734,6 +1771,7 @@
         if(session.mode==='dictation'){session.transcript=text;applyDictationTranscript(session);return;}
         body.text=text;
       }
+      body.quoteId=quotedMessage(session.quoteId,session.roleId)?.id;
       window.PipiEngine?.resetActivity(session.roleId);
       const result=await api(session.mode==='voice'?'/api/chat/send':'/api/chat',body);
       if(recordingSession===session&&route.name==='chat'&&route.arg===session.roleId){
@@ -1755,7 +1793,7 @@
     if(mode==='dictation'&&!window.PipiEngine?.serviceReady('stt')){toast('请先在模型设置中选择录音转文字模型');return;}
     if(!window.MediaRecorder||!navigator.mediaDevices?.getUserMedia){toast('当前浏览器不支持录音，请使用 HTTPS 或本机 localhost');return;}
     const input=view.querySelector('#compose-text');if(input){composerSelection=readComposerSelection(input);}
-    const session={mode,hold,roleId:route.arg,quoteId,phase:'requesting',cancelled:false,chunks:[]};
+    const session={mode,hold,roleId:route.arg,quoteId:quotedMessage(quoteId)?.id||'',phase:'requesting',cancelled:false,chunks:[]};
     recordingSession=session;syncComposerControls();
     hold?.signal.addEventListener('abort',()=>{if(recordingSession===session)stopRecording(true);},{once:true});
     try{
@@ -1929,7 +1967,7 @@
       {label:r.pinned?'取消置顶聊天':'置顶聊天',icon:icons.pin,run:async()=>{await act('conversation.pin',{roleId:r.id,pinned:!r.pinned});refresh();}},
       {label:r.hidden?'重新显示此聊天':'不显示此聊天',run:async()=>{await act('conversation.hide',{roleId:r.id,hidden:!r.hidden});refresh();}},
       {label:'清空聊天记录',icon:icons.trash,danger:true,run:()=>confirmDialog('清空聊天记录？',`将删除与 ${roleName(r)} 的全部消息，保留角色资料与共同记忆。`,()=>act('conversation.clear',{roleId:r.id}),'清空记录')},
-      {label:'删除联系人',danger:true,run:()=>confirmDialog('删除这位联系人？',`与 ${roleName(r)} 的聊天记录和关联记忆将一并删除。`,async isCurrent=>{await act('role.delete',{id:r.id});if(isCurrent())showView('contacts');},'删除联系人')}
+      {label:'删除联系人',danger:true,run:()=>confirmDialog('删除这位联系人？',`将删除与 ${roleName(r)} 的聊天记录、共同记忆、转账和红包明细、TA 的朋友圈和点赞评论、农场记录及提醒。你发出且未被领取的款项会退回零钱，收藏保留快照。`,async isCurrent=>{await act('role.delete',{id:r.id});if(isCurrent())showView('contacts');},'删除联系人')}
     ]);
   }
   function downloadBackup() {
@@ -1979,7 +2017,7 @@
       if(!values.password||(setup&&values.password.length<8)){error.textContent=setup?'请设置至少 8 个字符的密码':'请输入访问密码';return;}
       if(setup&&values.password!==values.confirmPassword){error.textContent='两次输入的密码不一致';return;}
       button.disabled=true;error.textContent='';button.textContent='正在进入…';
-      try{const result=await api(setup?'/api/setup':'/api/login',{password:values.password,...(setup?{displayName:values.displayName,setupToken:values.setupToken}:{})});setState(result.state);if(!state){const next=await api('/api/state');setState(next.state||next);}showView(initialView);}
+      try{const result=await api(setup?'/api/setup':'/api/login',{password:values.password,...(setup?{displayName:values.displayName,setupToken:values.setupToken}:{})});setState(result.state);if(!state){const next=await api('/api/state');setState(next.state||next);}restoreChatDrafts();showView(initialView);}
       catch(err){error.textContent=err.message;button.textContent=setup?'开启我的小手机':'进入小手机';}
       finally{button.disabled=false;}
     };
@@ -2023,23 +2061,21 @@
     }
   });
   for(const type of ['input','compositionstart'])document.addEventListener(type,event=>{if(event.target.closest('.chat-composer'))cancelAvatarTaps();},true);
-  history.replaceState({pipi:true,route:{...route},stack:[...navStack]},'');window.addEventListener('popstate',event=>{if(overlayBackPending){overlayBackPending=false;if(overlayCloseQueued){const discardAll=overlayCloseQueued==='all';overlayCloseQueued=false;if(history.state?.overlay){overlayBackPending=true;if(discardAll)history.go(-(history.state.overlayDepth||1));else history.back();return;}}if(queuedView){const next=queuedView;queuedView=null;queuedBack=false;if(modalOpen&&history.state?.overlay){closeModal(false);queuedView=next;return;}if(modalOpen)closeModal(false,true);showView(next.name,next.arg,next.fromBack);}else if(queuedBack){queuedBack=false;goBack();}else if(modalOpen)trackModalHistory();if(!overlayBackPending&&!modalOpen)window.PipiFeatures?.handleBack?.('history');if(!overlayBackPending)overlayBackWaiters.splice(0).forEach(resolve=>resolve());return;}if(childDialog){closeChildDialog(true);return;}if(modalOpen){closeModal(true,true);return;}if(window.PipiFeatures?.handleBack?.('history'))return;if(chatSelection&&!event.state?.chatSelection){finishMessageSelection(true);return;}if(event.state?.overlay)history.replaceState({...event.state,overlay:false,childDialog:undefined},'');const previous=event.state?.route||{name:'chats',arg:null};navStack.splice(0,navStack.length,...(event.state?.stack||[]));showView(previous.name,previous.arg,true);});
+  history.replaceState({pipi:true,route:{...route},stack:[...navStack]},'');window.addEventListener('popstate',event=>{if(overlayBackPending){overlayBackPending=false;if(overlayCloseQueued){const discardAll=overlayCloseQueued==='all';overlayCloseQueued=false;if(history.state?.overlay){overlayBackPending=true;if(discardAll)history.go(-(history.state.overlayDepth||1));else history.back();return;}}if(queuedView){const next=queuedView;queuedView=null;queuedBack=false;if(modalOpen&&history.state?.overlay){closeModal(false);queuedView=next;return;}if(modalOpen)closeModal(false,true);showView(next.name,next.arg,next.fromBack);}else if(queuedBack){queuedBack=false;goBack();}else if(modalOpen)trackModalHistory();if(!overlayBackPending&&!modalOpen)window.PipiFeatures?.handleBack?.('history');if(!overlayBackPending)overlayBackWaiters.splice(0).forEach(resolve=>resolve());return;}if(bootStale){if(event.state?.overlay||event.state?.chatSelection||event.state?.childDialog||event.state?.featureSelection){history.back();return;}bootStale=false;}if(childDialog){closeChildDialog(true);return;}if(modalOpen){closeModal(true,true);return;}if(window.PipiFeatures?.handleBack?.('history'))return;if(chatSelection&&!event.state?.chatSelection){finishMessageSelection(true);return;}if(event.state?.overlay||event.state?.chatSelection||event.state?.childDialog||event.state?.featureSelection){history.back();return;}const previous=event.state?.route||{name:'chats',arg:null};navStack.splice(0,navStack.length,...(event.state?.stack||[]));showView(previous.name,previous.arg,true);});
   const viewport=window.visualViewport;const sizeViewport=()=>{const anchor=captureChatLayout(),height=viewport?.height||innerHeight;document.documentElement.style.setProperty('--app-height',height+'px');document.documentElement.style.setProperty('--viewport-top',(viewport?.offsetTop||0)+'px');restoreChatLayout(anchor);};viewport?.addEventListener('resize',sizeViewport);viewport?.addEventListener('scroll',sizeViewport);window.addEventListener('resize',sizeViewport);sizeViewport();
-  document.addEventListener('visibilitychange',()=>{if(document.hidden&&(recordingSession))stopRecording(true);else if(!document.hidden)syncVisibleChatRead();});window.addEventListener('pagehide',()=>{saveBrowserPosition();if(recordingSession)stopRecording(true);});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)persistChatDrafts();if(document.hidden&&(recordingSession))stopRecording(true);else if(!document.hidden)syncVisibleChatRead();});window.addEventListener('pagehide',()=>{persistChatDrafts();saveBrowserPosition();if(recordingSession)stopRecording(true);});
   let polling=false;
   setInterval(async()=>{
     if(!state||sending||polling||recordingSession||composeComposing||searchComposing||document.hidden)return;
     polling=true;
     try{
-      const next=await api('/api/state'),incoming=next.state||next;
-      if(incoming.revision!==state.revision){receiveState(incoming);}
-      if(pendingRender){
-        const active=document.activeElement,editing=active&&(active.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)),list=view.querySelector('#chat-messages'),nearBottom=!list||list.scrollHeight-list.scrollTop-list.clientHeight<100;
-        if(!modalOpen&&!editing&&!composeText&&!composeImage&&!['providers'].includes(route.name)&&nearBottom)refresh();
-      }
+      const next=await api('/api/state?since='+state.revision);
+      if(!next.unchanged)receiveState(next.state||next);
+      flushRender();
     }catch(err){if(err.status!==401)console.debug('Background refresh unavailable');}finally{polling=false;}
   },6500);
   window.Pipi.rolePanelAvailable=()=>rolePanelAvailable;
   bindSheetBackdrop();
+  if(bootStale)history.back();
   boot();
 })();

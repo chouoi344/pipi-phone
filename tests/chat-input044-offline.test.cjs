@@ -16,6 +16,7 @@ function productFunction(name){
   return source.slice(match.index,match.index+match[0].length+end.index);
 }
 const popLine=source.split(/\r?\n/).find(line=>line.includes("window.addEventListener('popstate',"));
+const roleRoutesSource=source.match(/^  const roleRoutes=.*$/m)[0];
 function fixture(initialBubbles=[]){
   const jobs=[],window=new EventTarget(),document=Object.assign(new EventTarget(),{activeElement:null});
   const entries=[{pipi:true,route:{name:'chat',arg:'alice'},stack:[]}];let index=0,nodes={},focuses=0,updates=0,menus=0,payments=0;
@@ -37,7 +38,11 @@ function fixture(initialBubbles=[]){
     showMenu(){menus++;},showPayment(){payments++;}});
   vm.runInContext(`
     let route={name:'chat',arg:'alice'},modalOpen=false,modalCloseCallback=null,modalSaveInProgress=false,modalReturnFocus=null,overlayBackPending=false,overlayCloseQueued=false,childDialog=null,childDialogSequence=0,queuedView=null,queuedBack=false;
-    const navStack=[],drafts=new Map(),chatScrolls=new Map(),overlayBackWaiters=[],composerHistories=new Map();
+    const navStack=[],drafts=new Map(),chatScrolls=new Map(),overlayBackWaiters=[],composerHistories=new Map(),pressTimers=new Set();
+    const chatDraftKey='pipi.chat-drafts',storage=new Map(),sessionStorage={setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)};
+    let bootStale=false;
+    ${roleRoutesSource}
+    function scheduleRender(){}function flushRender(){}
     const newChatMessageIds=new Set();let speechSession=null,slowReplyRole='',chatProgressSequence=0,composerPanelFrom=null,chatsReturn=0,contactsReturn=null;
     function stopSpeech(){}function syncChatProgress(){}function startPageTransition(){}function animateComposerPanel(){}
     let composeText='',composeImage='',composeStickerId='',quoteId='',panel='',composerSelection={start:0,end:0},composerScroll={input:0,emoji:0},morePage=0,emojiPage=0,emojiTab='all',emojiSearch='',emojiExpandedHeight=0;
@@ -50,7 +55,7 @@ function fixture(initialBubbles=[]){
     function renderComposer(){return {text:composeText,panel,selecting:!!chatSelection};}
     function refresh(){buildScreen(route.name,renderComposer());if(route.name==='chat'){bindChat();scrollChat();}}
     window.PipiFeatures={walletTransaction:showPayment};
-    ${['trackModalHistory','openChildDialog','closeChildDialog','closeModal','showView','goBack','captureChatLayout','restoreChatLayout','resizeComposeInput','paintComposer','syncComposerDraft','updateComposer','changeComposerMode','insertComposerText','scrollChat','startMessageSelection','finishMessageSelection','toggleSelectedMessage','handleAction','bindChat','bindComposer'].map(productFunction).join('\n')}
+    ${['trackModalHistory','openChildDialog','closeChildDialog','closeModal','showView','goBack','captureChatLayout','restoreChatLayout','persistChatDrafts','pressTimer','resizeComposeInput','paintComposer','syncComposerDraft','updateComposer','changeComposerMode','insertComposerText','scrollChat','startMessageSelection','finishMessageSelection','toggleSelectedMessage','handleAction','bindChat','bindComposer'].map(productFunction).join('\n')}
     ${popLine}
     refresh();
     globalThis.api={showView,goBack,handleAction,changeComposerMode,bindChat,startMessageSelection,finishMessageSelection,toggleSelectedMessage,selected:()=>chatSelection?[...chatSelection.ids]:null,setGlobalSearch:value=>{globalSearchTerm=value;},globalSearch:()=>globalSearchTerm,

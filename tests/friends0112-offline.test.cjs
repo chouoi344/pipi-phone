@@ -81,9 +81,9 @@ test('settings offer a direct usage route and both duplicate moments management 
 });
 function stickers(routeName='stickers'){
   const calls=[],notices=[],renders=[],file={files:[],disabled:false,isConnected:true,value:'selected'};
-  const scope=vm.createContext({calls,notices,renders});vm.runInContext(`let route={name:'${routeName}'},composeText='unfinished draft',composeImage='draft-image',quoteId='quote';
+  const scope=vm.createContext({calls,notices,renders});vm.runInContext(`const state={stickers:[]};let route={name:'${routeName}'},composeText='unfinished draft',composeImage='draft-image',quoteId='quote';
     let read=async file=>{if(file.error)throw new Error(file.error);return file.image;};async function readImage(file){return read(file);}
-    let save=async(type,payload)=>{calls.push({type,payload});};async function act(type,payload){await save(type,payload);}
+    let save=async(type,payload)=>{calls.push({type,payload});};async function act(type,payload){await save(type,payload);for(const image of payload.images)if(!state.stickers.some(sticker=>sticker.image===image))state.stickers.push({id:'sticker-'+state.stickers.length,image});}
     function toast(message){notices.push(message);}function refresh(){renders.push('page');}function updateComposer(){renders.push('composer');}
     ${productFunction('uploadStickers')}
     globalThis.ui={uploadStickers,readWith(fn){read=fn;},saveWith(fn){save=fn;},leave(){route={name:'about'};},draft:()=>({composeText,composeImage,quoteId})};`,scope);

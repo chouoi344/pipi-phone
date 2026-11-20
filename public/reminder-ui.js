@@ -178,7 +178,8 @@
     const date=`${parts.year}-${parts.month}-${parts.day}`;
     const time=plan.time||`${parts.hour}:${parts.minute}`;
     const selectedDays=plan.weekdays||[new Date(`${date}T12:00:00Z`).getUTCDay()];
-    const hours=plan.type==='interval'?plan.intervalMs/3600000:1;
+    const minHours=P().getState().settings.modules.scheduler?.minIntervalHours??1;
+    const hours=plan.type==='interval'?plan.intervalMs/3600000:minHours;
     const title=job?'编辑提醒':'新建提醒';
     let initialSchedule;
     const fields=`<div class="reminder-editor">
@@ -187,7 +188,7 @@
       <label class="form-field" data-repeat-field="once"><span class="field-label">日期</span><input name="date" type="date" value="${esc(date)}" required></label>
       <label class="form-field" data-repeat-field="once daily weekly"><span class="field-label">时间</span><input name="time" type="time" value="${esc(time)}" required></label>
       <fieldset class="reminder-repeat" data-repeat-field="weekly"><legend>星期</legend><div class="reminder-repeat-options reminder-weekdays">${weekdays.map((label,day)=>`<label><input type="checkbox" name="weekday" value="${day}" ${selectedDays.includes(day)?'checked':''}><span>${label}</span></label>`).join('')}</div></fieldset>
-      <label class="form-field" data-repeat-field="interval"><span class="field-label">每隔多少小时</span><input name="hours" type="number" value="${esc(hours)}" min="1" max="8784" step="any" required inputmode="decimal"></label>
+      <label class="form-field" data-repeat-field="interval"><span class="field-label">每隔多少小时</span><input name="hours" type="number" value="${esc(hours)}" min="${esc(minHours)}" max="8784" step="any" required inputmode="decimal"></label>
       <p class="small-note">按小手机时区 ${esc(timezone())} 执行。${job&&!job.userRequested?'AI 安排的提醒遵守全局免打扰。':'到点直接在这位好友的聊天里发送。'}</p>
     </div>`;
     P().openModal(title,fields,async form=>{

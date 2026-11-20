@@ -15,6 +15,7 @@ function productFunction(name){
   return source.slice(start,end)+"\n";
 }
 const popLine=source.match(/window\.addEventListener\('popstate',.*$/m)?.[0];
+const navigationContext="const state=null;let bootStale=false;function persistChatDrafts(){}";
 assert.ok(popLine,'product popstate registration exists');
 class Dialog extends EventTarget{
   isConnected=true;open=false;shows=0;closes=0;
@@ -35,6 +36,7 @@ function fixture(){
     let chatSelection=null,globalSearchTerm='';function syncVisibleChatRead(){}const restoredRolePage=null;let composeComposing=false,searchComposing=false,recordHeld=false,recordingSession=null,recording=false,composeText='',composeImage='',composeStickerId='',quoteId='',forceBottomRole=null,composerSelection={},composerScroll={input:0,emoji:0},panel='',searchOpen=false,searchTerm='',morePage=0,emojiPage=0,emojiTab='all',emojiSearch='',emojiExpandedHeight=0;
     const drafts=new Map(),chatScrolls=new Map(),view={querySelector:()=>null};
     let composerPanelFrom=null,slowReplyRole="",chatProgressSequence=0,contactsReturn=null,chatsReturn=0;const newChatMessageIds=new Set();function stopSpeech(){}function syncChatProgress(){}function startPageTransition(){}function resetComposerPointerState(){}function roleById(){return null;}function refresh(){events.push({...route});}
+    ${navigationContext}
     ${['trackModalHistory','openChildDialog','closeChildDialog','closeModal','bindSheetBackdrop','showView','goBack'].map(productFunction).join('\n')}
     ${popLine}
     trackModalHistory();
@@ -131,6 +133,7 @@ function htmlFixture(){
   vm.runInContext(`let modalOpen=false,modalCloseCallback=null,modalSaveInProgress=false,modalReturnFocus=null,overlayBackPending=false,overlayCloseQueued=false,childDialog=null,childDialogSequence=0,queuedView=null,queuedBack=false,chatSelection=null,globalSearchTerm='';const overlayBackWaiters=[],navStack=[];let route={name:'me'};
     const restoredRolePage=null;let composeComposing=false,searchComposing=false,recordHeld=false,recordingSession=null,recording=false,composeText='',composeImage='',composeStickerId='',quoteId='',forceBottomRole=null,composerSelection={},composerScroll={input:0,emoji:0},panel='',searchOpen=false,searchTerm='',morePage=0,emojiPage=0,emojiTab='all',emojiSearch='',emojiExpandedHeight=0,deleted=0;
     const drafts=new Map(),chatScrolls=new Map(),view={querySelector:()=>null};let composerPanelFrom=null,slowReplyRole="",chatProgressSequence=0,contactsReturn=null,chatsReturn=0;const newChatMessageIds=new Set();function stopSpeech(){}function syncChatProgress(){}function startPageTransition(){}function resetComposerPointerState(){}function roleById(){return null;}function syncVisibleChatRead(){}function refresh(){events.push(route.name);}function esc(value){return value;}function toast(value){events.push(value);}
+    ${navigationContext}
     ${['trackModalHistory','openChildDialog','closeChildDialog','closeModal','captureModalParent','mountModalParent','restoreModalParent','confirmDialog','showView','goBack'].map(productFunction).join('\n')}
     ${popLine}
     showView('favorites');events.length=0;

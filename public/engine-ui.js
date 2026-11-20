@@ -913,7 +913,7 @@
     const source=settings.sources.find(item=>item.id===model.sourceId);
     return Boolean(source?.baseUrl&&source.keySet);
   }
-  async function sync() {if(ui.syncing){ui.resync=true;return;}ui.syncing=true;try{do{ui.resync=false;const result=await P().api('/api/state');P().receiveState(result.state||result);}while(ui.resync);}catch(error){if(error.status!==401)console.debug('实时状态更新失败，将通过定时刷新重试');}finally{ui.syncing=false;}}
+  async function sync() {if(ui.syncing){ui.resync=true;return;}ui.syncing=true;try{do{ui.resync=false;const result=await P().api('/api/state?since='+P().getState().revision);if(!result.unchanged)P().receiveState(result.state||result);}while(ui.resync);}catch(error){if(error.status!==401)console.debug('实时状态更新失败，将通过定时刷新重试');}finally{ui.syncing=false;}}
   function setChatProgress({roleId,typing,slow}){
     if(typing)ui.typing.add(roleId);else ui.typing.delete(roleId);
     P().updateTyping(roleId,slow);

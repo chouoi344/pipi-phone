@@ -32,7 +32,8 @@ function fixture({enabled=['voiceUnderstanding','stt'], microphone, recognize=as
     toast:text=>notices.push(text)
   });
   vm.runInContext(
-    "let recordingSession=null,dictationBusy=false,sending=false,composeComposing=false,composeText='已有草稿',composeImage='',quoteId='q1',forceBottomRole='',pendingRender=false;let route={name:'chat',arg:'alice'};"+
+    "let recordingSession=null,dictationBusy=false,sending=false,composeComposing=false,composeText='已有草稿',composeImage='',quoteId='q1',forceBottomRole='',pendingRender=false;let route={name:'chat',arg:'alice'};const state={messages:[{id:'q1',roleId:'alice'}]};"+
+    source.match(/^  function quotedMessage.*$/m)[0]+'\n'+
     funcs.map(name=>{
       const begin=source.match(new RegExp('^  (?:async )?function '+name+'\\(','m')).index;
       const end=source.indexOf('\n  }',begin);

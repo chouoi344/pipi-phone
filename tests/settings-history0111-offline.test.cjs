@@ -17,12 +17,12 @@ function fixture(){
     pushState(next){entries.splice(++index);entries.push(structuredClone(next));},back(){this.go(-1);},
     go(delta){jobs.push(()=>{index=Math.max(0,Math.min(entries.length-1,index+delta));const event=new Event('popstate');event.state=history.state;window.dispatchEvent(event);});}};
   const scope=vm.createContext({window,history,settingsContent,view:{querySelector:selector=>selector==='.settings-content'?settingsContent:null}});
-  vm.runInContext(`let route={name:'me',arg:null},modalOpen=false,modalCloseCallback=null,modalReturnFocus=null,overlayBackPending=false,overlayCloseQueued=false,childDialog=null,childDialogSequence=0,queuedView=null,queuedBack=false;
+  vm.runInContext(`let state={roles:[]},bootStale=false;const sessionStorage={setItem(){},removeItem(){}};${source.match(/^  const roleRoutes=.*$/m)[0]}let route={name:'me',arg:null},modalOpen=false,modalCloseCallback=null,modalReturnFocus=null,overlayBackPending=false,overlayCloseQueued=false,childDialog=null,childDialogSequence=0,queuedView=null,queuedBack=false;
     const overlayBackWaiters=[],navStack=[],drafts=new Map(),chatScrolls=new Map();
     let chatSelection=null,globalSearchTerm='',composeComposing=false,searchComposing=false,recordHeld=false,recordingSession=null,recording=false,composeText='',composeImage='',quoteId='',forceBottomRole=null,composerSelection={},composerScroll={input:0,emoji:0},panel='',searchOpen=false,searchTerm='',morePage=0,emojiPage=0,emojiTab='all',emojiSearch='',emojiExpandedHeight=0;
     let modalSaveInProgress=false;function closeModal(){}let composerPanelFrom=null,slowReplyRole="",chatProgressSequence=0,contactsReturn=null,chatsReturn=0,composeStickerId="";const newChatMessageIds=new Set();function stopSpeech(){}function syncChatProgress(){}function startPageTransition(){}function resetComposerPointerState(){}function syncVisibleChatRead(){}
     function refresh(){if(route.name==='settings')settingsContent.scrollTop=route.scrollTop||0;}
-    ${productFunction('showView')}${productFunction('goBack')}${popLine}
+    ${productFunction('persistChatDrafts')}${productFunction('showView')}${productFunction('goBack')}${popLine}
     globalThis.ui={showView,goBack,route:()=>route};`,scope);
   return {ui:scope.ui,history,settingsContent,flush(){let count=0;while(jobs.length){assert.ok(++count<20,'history settles');jobs.shift()();}}};
 }

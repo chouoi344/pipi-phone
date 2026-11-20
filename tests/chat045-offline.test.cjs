@@ -26,14 +26,14 @@ function fixture(messages=[]){
     sendAction(type,payload){calls.push({type,payload:JSON.parse(JSON.stringify(payload))});return new Promise((resolve,reject)=>requests.push({resolve,reject}));},
     changeView(name,arg){navigation.push({name,arg});for(const el of avatars)el.isConnected=false;},countRefresh(){refreshes++;},countMenu(){menus++;},countPayment(){payments++;},
     captureReader(title,html){readers.push({title,html});},captureToast:text=>toasts.push(text)});
-  vm.runInContext(`let route={name:'chat',arg:'alice'},modalOpen=false,panel='',chatSelection=null,speechSession=null;const patRequests=new Set(),avatarTaps=new Map(),state={messages:${JSON.stringify(messages)}};
+  vm.runInContext(`let route={name:'chat',arg:'alice'},modalOpen=false,panel='',chatSelection=null,speechSession=null;const patRequests=new Set(),avatarTaps=new Map(),pressTimers=new Set(),state={messages:${JSON.stringify(messages)}};
     function bindComposer(){}function refresh(){countRefresh();}function showView(name,arg){route={name,arg};changeView(name,arg);}
     function act(type,payload){return sendAction(type,payload);}function toast(text){captureToast(text);}function messageMenu(){modalOpen=true;countMenu();}
     function safeImage(){return false;}function lightbox(){}function playAudio(){}function speakMessage(){}function changeComposerMode(){}
     function richText(text){return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
     function openPage(title,html){modalOpen=true;captureReader(title,html);}function closeModal(){modalOpen=false;}
     const window={PipiFeatures:{walletTransaction(){countPayment();}}};
-    ${['patChat','readTextMessage','cancelAvatarTaps','bindChat'].map(productFunction).join('\n')}
+    ${['patChat','readTextMessage','cancelAvatarTaps','pressTimer','bindChat'].map(productFunction).join('\n')}
     bindChat();globalThis.api={patChat,bindChat,cancelAvatarTaps,route:()=>route,modal:()=>modalOpen,closeModal};`,scope);
   const advance=ms=>{now+=ms;for(const [id,job]of [...jobs])if(job.at<=now){jobs.delete(id);job.callback();}};
   const event=(extra={})=>({button:0,clientX:20,clientY:20,detail:1,preventDefault(){this.prevented=true;},...extra});
@@ -158,7 +158,10 @@ function readFixture(hidden=false,name='chat'){
   const calls=[],pending=[],toasts=[],document={hidden},scope=vm.createContext({document,calls,pending,toasts});
   vm.runInContext(`let state=null,route={name:${JSON.stringify(name)},arg:'alice'},modalOpen=false,pendingRender=false,refreshes=0;const readRequests=new Set();function trackNewChatMessages(){}function roleById(id){return state?.roles.find(r=>r.id===id);}function refresh(){refreshes++;}
     function toast(text){toasts.push(text);}function act(type,payload){calls.push({type,...payload});return new Promise((resolve,reject)=>pending.push({resolve:()=>{state.roles.find(r=>r.id===payload.roleId).unread=0;resolve();},reject}));}
-    ${productFunction('setState')}${productFunction('syncVisibleChatRead')}
+    let composeComposing=false,searchComposing=false,recordingSession=null;
+    const view={querySelector:()=>null};function captureChatLayout(){}function restoreChatLayout(){}
+    ${source.match(/^  const roleRoutes=.*$/m)[0]}
+    ${productFunction('setState')}${productFunction('syncVisibleChatRead')}${productFunction('flushRender')}
     globalThis.api={setState,syncVisibleChatRead,state:()=>state,refreshes:()=>refreshes,pending:()=>pendingRender};`,scope);
   const deliver=()=>scope.api.setState({roles:[{id:'alice',unread:2},{id:'bob',unread:3}]});
   const settle=async(error)=>{if(error)pending.at(-1).reject(new Error(error));else pending.at(-1).resolve();await Promise.resolve();await Promise.resolve();await Promise.resolve();};
@@ -176,5 +179,5 @@ test('failed read sync exposes the error, keeps unread counts and permits the ne
 });
 test('a delayed read updates root badges after leaving chat without repainting an active editor',async()=>{
   const f=readFixture();f.deliver();vm.runInContext("route={name:'chats'}",f.scope);await f.settle();assert.equal(f.api.refreshes(),1);assert.deepEqual(f.toasts,[]);
-  const editing=readFixture();editing.deliver();vm.runInContext("route={name:'chats'}",editing.scope);editing.document.activeElement={matches:()=>true};await editing.settle();assert.equal(editing.api.refreshes(),0);assert.equal(editing.api.pending(),true);assert.deepEqual(editing.toasts,[]);
+  const editing=readFixture();editing.deliver();vm.runInContext("route={name:'chats'}",editing.scope);editing.document.activeElement={tagName:'INPUT'};await editing.settle();assert.equal(editing.api.refreshes(),0);assert.equal(editing.api.pending(),true);assert.deepEqual(editing.toasts,[]);
 });

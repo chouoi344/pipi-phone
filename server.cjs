@@ -49,8 +49,8 @@ function createApp(options={}){
     const initialState=options.initialState||S.initial;
     db.prepare('INSERT INTO app(id,json) VALUES(1,?)').run(JSON.stringify(initialState()));
   }
-  const read=()=>{
-    const state=JSON.parse(db.prepare('SELECT json FROM app WHERE id=1').get().json);
+  const parse=json=>{
+    const state=JSON.parse(json);
     state.profile.cover??='';
     state.stickers??=[];
     state.emojiRecents??=[];
@@ -64,6 +64,8 @@ function createApp(options={}){
     if(options.lifePreview)Object.defineProperty(defaults,Symbol.for('pipi.lifePreview'),{value:true});
     return defaults;
   };
+  const storedJson=()=>db.prepare('SELECT json FROM app WHERE id=1').get().json;
+  const read=()=>parse(storedJson());
   const clients=new Set();let runtime,stickerQueue;
   const migrated=read();Jobs.recover(migrated);
   const migratedJson=JSON.stringify(migrated);
@@ -78,6 +80,16 @@ function createApp(options={}){
     }
   }
   try{checkProviderUrls(read());}catch(error){db.close();throw error;}
+  // The chat model a background reply would use, in the same order as Models.resolveChat but without its network capacity lookup.
+  function chatModel(state,role){
+    const ai=Models.migrate(state),ids=ai.assign.chat?[...new Set([ai.assign.chat,...(ai.assign.chatFallbacks||[])])].filter(Boolean):[undefined];
+    let last;
+    for(const modelId of ids){
+      try{return Models.resolve(state,'chat',{role,modelId});}
+      catch(error){if(!['PROVIDER_UNCONFIGURED','PROVIDER_PROTOCOL_UNSUPPORTED'].includes(error.code))throw error;last=error;}
+    }
+    throw last;
+  }
   function transaction(fn){
     db.exec('BEGIN IMMEDIATE');
     try{
@@ -92,7 +104,7 @@ function createApp(options={}){
   }
   function mutate(fn){
     const result=transaction(()=>{
-      const state=read();
+      const json=storedJson(),state=S.limitBaseline(parse(json),Buffer.byteLength(json));
       const value=fn(state);
       checkProviderUrls(state);
       S.limit(state);
@@ -106,12 +118,15 @@ function createApp(options={}){
     return result;
   }
   // An interrupted upstream call is recoverable rather than left permanently pending.
-  if(read().messages.some(m=>m.status==='pending'))mutate(s=>{
-    for(const m of s.messages)if(m.status==='pending'){
-      m.status='error';
-      m.error='服务重启中断了请求，请重试';
-    }
-  });
+  // A failure here (for example a full data store) is logged and must not stop the service from starting.
+  try{
+    if(read().messages.some(m=>m.status==='pending'))mutate(s=>{
+      for(const m of s.messages)if(m.status==='pending'){
+        m.status='error';
+        m.error='服务重启中断了请求，请重试';
+      }
+    });
+  }catch(error){console.error('Unable to mark interrupted messages as failed during startup:',error?.stack||String(error));}
   let setupToken=getMeta('setupToken');
   if(!setupToken&&!getMeta('password')){
     setupToken=crypto.randomBytes(24).toString('hex');
@@ -128,10 +143,13 @@ function createApp(options={}){
     const now=Date.now();
     if(buckets.size>5000){
       for(const [k,v]of buckets)if(v.until<now)buckets.delete(k);
-      if(buckets.size>5000)S.fail('请求过多，请稍后重试',429,'RATE_LIMIT');
+      // Many distinct sources must not lock everyone out: drop the windows that started first.
+      for(const k of buckets.keys()){if(buckets.size<=5000)break;buckets.delete(k);}
     }
     const item=buckets.get(key);
     if(!item||item.until<now){
+      // Re-insert so the map stays ordered by window start.
+      buckets.delete(key);
       buckets.set(key,{
         n:1,until:now+window
       });
@@ -180,6 +198,8 @@ function createApp(options={}){
   }
   function json(res,status,value){
     if(res.destroyed||res.writableEnded)return;
+    // A failure after streaming started cannot change the status; end the partial response instead of throwing again.
+    if(res.headersSent){res.end();return;}
     res.writeHead(status,{
       'Content-Type':'application/json; charset=utf-8'
     });
@@ -296,7 +316,8 @@ function createApp(options={}){
       if(p==='/api/setup'){
         if(getMeta('password'))S.fail('已完成初始化',409,'SETUP_DONE');
         const directLocal=loopback(req.socket.remoteAddress)&&!req.headers.forwarded&&!req.headers['x-forwarded-for']&&!req.headers['x-real-ip']&&process.env.REQUIRE_SETUP_TOKEN!=='1';
-        if(!directLocal&&!safeEqual(b.setupToken,setupToken))S.fail('远程初始化需要 setupToken，请从服务器数据目录读取',403,'SETUP_TOKEN');
+        // An empty token (already used, or the password row removed while running) never authorizes remote setup.
+        if(!directLocal&&(!setupToken||!safeEqual(b.setupToken,setupToken)))S.fail('远程初始化需要 setupToken，请从服务器数据目录读取',403,'SETUP_TOKEN');
         if(password.length<8)S.fail('密码至少需要 8 个字符');
         const salt=crypto.randomBytes(24).toString('hex'),hash=await passwordHash(password,salt);
         transaction(()=>{
@@ -340,7 +361,15 @@ function createApp(options={}){
       return json(res,202,await updates.request(await body(req,4096)));
     }
     if(mutating&&p!=='/api/logout'&&await updateMaintenance())S.fail('小手机正在更新，请稍后再试',503,'UPDATE_IN_PROGRESS');
-    if(req.method==='GET'&&p==='/api/state')return json(res,200,S.publicState(read()));
+    if(req.method==='GET'&&p==='/api/state'){
+      // Background refresh sends the revision it already has; an unchanged revision skips re-sending the whole state.
+      const since=u.searchParams.get('since');
+      if(since!==null){
+        const revision=db.prepare("SELECT json_extract(json,'$.revision') AS revision FROM app WHERE id=1").get()?.revision;
+        if(revision!==null&&revision!==undefined&&String(revision)===since)return json(res,200,{revision,unchanged:true});
+      }
+      return json(res,200,S.publicState(read()));
+    }
     if(req.method==='GET'&&p==='/api/engine/chat-progress'){
       const role=S.role(read(),S.text(u.searchParams.get('roleId'),100));
       return json(res,200,runtime.chatProgress(role.id));
@@ -560,7 +589,9 @@ function createApp(options={}){
         return json(res,200,{accepted:true,messageId:m.id,state:S.publicState(read())});
       }
       case '/api/moments/generate':{
-        rate('ai:'+auth.hash,40);const r=S.role(read(),S.text(b.roleId,100));S.momentAllowed(r);
+        rate('ai:'+auth.hash,40);const s=read(),r=S.role(s,S.text(b.roleId,100));S.momentAllowed(r);
+        // Reject here what the background run would reject, so the page is never told an impossible post was accepted.
+        require('./lib/engine/modules/life-moments.cjs').eligible(s,r.id);chatModel(s,r);
         if(!runtime.initiate(r.id,{kind:'moment',instruction:'以你的角色身份写一条简短自然的朋友圈动态。只输出正文。'}))S.fail('该好友正在回复，请稍后再试',409,'CHAT_BUSY');
         return json(res,200,{accepted:true,state:S.publicState(read())});
       }
@@ -857,6 +888,9 @@ function createApp(options={}){
           });
         }finally{detach?.();}
         publish('revision',{revision:restored.revision});
+        // Restored stickers still waiting for analysis continue without a restart; the restore itself has already succeeded.
+        try{stickerQueue.recover();stickerQueue.idle().catch(error=>console.error('Sticker analysis failed after restore:',error?.stack||String(error)));}
+        catch(error){console.error('Unable to resume sticker analysis after restore:',error?.stack||String(error));}
         const previousAI=Models.sanitize(current.settings.ai),state=S.publicState(restored);
         const clearedModelKeys=state.settings.ai.sources.some(source=>
           !source.keySet&&previousAI.sources.some(previous=>previous.id===source.id&&previous.keySet));
@@ -908,19 +942,22 @@ function createApp(options={}){
   }
   const server=http.createServer((req,res)=>{
     route(req,res).catch(e=>{
-      json(res,e.status||500,{
-        error:e.status?e.message:'服务器处理失败',code:e.code||'SERVER_ERROR',...(e.keyRevisions?{keyRevisions:e.keyRevisions}:{}),...(e.includeState&&!closed?{
+      // Expected failures carry a status; anything else is a server bug that must leave a trace in the log.
+      if(!e?.status)console.error('Unexpected server error:',req.method,String(req.url||'').split('?')[0],e);
+      json(res,e?.status||500,{
+        error:e?.status?e.message:'服务器处理失败',code:e?.code||'SERVER_ERROR',...(e?.keyRevisions?{keyRevisions:e.keyRevisions}:{}),...(e?.includeState&&!closed?{
           state:S.publicState(read())
         }:{})
       });
     });
   });
-  server.requestTimeout=60000;
+  // Large backups and memory imports can take minutes to upload; headersTimeout still limits slow request headers.
+  server.requestTimeout=15*60*1000;
   server.headersTimeout=15000;
   server.keepAliveTimeout=5000;
   runtime=Runtime.create({getState:read,mutate,publish,isInitialized:async()=>Boolean(getMeta('password'))&&!await updateMaintenance(),externalBusy:()=>inFlight,demoModel:options.demoModel,dataDir});
   stickerQueue=Stickers.create({getState:read,mutate,dataDir,onUsage:runtime.onUsage});
-  stickerQueue.recover();
+  try{stickerQueue.recover();}catch(error){console.error('Unable to resume sticker analysis during startup:',error?.stack||String(error));}
   return {
     server,db,dataDir,listen(listenPort=port,listenHost=host){
       return new Promise((resolve,reject)=>{
@@ -948,9 +985,12 @@ module.exports={
   createApp
 };
 if(require.main===module){
+  // A failed background task is logged; it must not take the whole service down.
+  process.on('unhandledRejection',error=>console.error('Unhandled background error:',error?.stack||String(error)));
   const app=createApp();
-  app.listen().then(address=>console.log(`Pipi Phone ${VERSION} listening on ${address.address}:${address.port}`)).catch(()=>{
-    console.error('Unable to start Pipi Phone. Check port and data directory.');
+  app.listen().then(address=>console.log(`Pipi Phone ${VERSION} listening on ${address.address}:${address.port}`)).catch(error=>{
+    if(error?.code==='EADDRINUSE')console.error(`Port ${error.port??''} is already in use by another program.`);
+    else{console.error('Unable to start Pipi Phone. Check port and data directory.');if(error)console.error(String(error.message||error));}
     process.exitCode=1;
   });
   for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{

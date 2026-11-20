@@ -88,13 +88,14 @@
   let rolePanelAvailable=false;
   const restoredPage=history.state?.pipi&&typeof history.state.route?.name==='string'?history.state:null;
   let state = null, csrf = '', authEpoch = 0, route = restoredPage?{...restoredPage.route}:{name:initialView,arg:null}, authSetup = false, modalOpen = false, searchTerm = '', searchOpen = false;
-  let sourceUrl = '',binaryMedia=false,imageVariants=false;
+  let sourceUrl = '',binaryMedia=false,imageVariants=false,storageMaintenance=false;
   let composeText = '', composeImage = '', composeImageMeta=null, composeStickerId = '', quoteId = '', panel = '', sending = false, sendingRoleId = '', outgoing = null, avatarDraft = '', toastTimer, pendingRender = false, modalReturnFocus = null;
   let recordingSession=null,dictationBusy=false,composeComposing=false,searchComposing=false,deferredComposerUpdate=false;
   const routes = new Map();
   const navStack = restoredPage?.stack?.slice()||[], drafts = new Map(), chatScrolls = new Map();
   const newChatMessageIds=new Set();
-  let speechSession=null;
+  let speechSession=null,syncImageViewer=null;
+  const forwardDetails=new Map();
   let slowReplyRole='',chatProgressSequence=0;
   const composerHistories=new Map();
   const composerPointers=new Set();
@@ -185,7 +186,7 @@
     toastEl.classList.add('visible');
     toastTimer = setTimeout(() => toastEl.classList.remove('visible'), subtle ? 1800 : 3200);
   }
-  function setState(next) { if (next && typeof next === 'object') {if(state&&next.revision<state.revision)return;const foreign=state&&next.revision>state.revision+1;globalThis.window?.WaterdropChat?.observeState(state,next,view);trackNewChatMessages(state,next);state = next;globalThis.window?.PipiStickers?.syncDetail();syncVisibleChatRead();globalThis.window?.PipiEngine?.start();if(foreign)scheduleRender();} }
+  function setState(next) { if (next && typeof next === 'object') {if(state&&next.revision<state.revision)return;const foreign=state&&next.revision>state.revision+1;globalThis.window?.WaterdropChat?.observeState(state,next,view);trackNewChatMessages(state,next);state = next;globalThis.window?.PipiStickers?.syncDetail();globalThis.window?.PipiExpiry?.sync();syncVisibleChatRead();globalThis.window?.PipiEngine?.start();if(foreign)scheduleRender();} }
   function receiveState(next) {
     if(!state||next.revision<=state.revision)return;
     setState(next);pendingRender=true;flushRender(true);
@@ -325,7 +326,7 @@
   // the parent's existing DOM and consumes only the top layer.
   function closeModal(notifyClose=true,fromHistory=false) {
     if(modalSaveInProgress&&notifyClose!==false){if(fromHistory)trackModalHistory();return;}
-    const hadModal=modalOpen,callback=modalCloseCallback,childDepth=childDialog&&history.state?.childDialog===childDialog.id?1:0;closeChildDialog(true);modalCloseCallback=null;overlay.replaceChildren(); modalOpen = false; if(modalReturnFocus?.isConnected)modalReturnFocus.focus({preventScroll:true}); modalReturnFocus=null;if(hadModal&&!fromHistory&&history.state?.overlay){if(overlayBackPending)overlayCloseQueued=notifyClose===false?'all':true;else{overlayBackPending=true;const depth=(notifyClose===false?(history.state.overlayDepth||1):1)+childDepth;if(depth>1)history.go(-depth);else history.back();}}if(notifyClose!==false&&typeof callback==='function')callback();if(hadModal&&state)scheduleRender();
+    const hadModal=modalOpen,callback=modalCloseCallback,childDepth=childDialog&&history.state?.childDialog===childDialog.id?1:0;closeChildDialog(true);modalCloseCallback=null;overlay.replaceChildren(); modalOpen = false; if(modalReturnFocus?.isConnected)modalReturnFocus.focus({preventScroll:true}); modalReturnFocus=null;if(hadModal&&!fromHistory&&history.state?.overlay){if(overlayBackPending)overlayCloseQueued=notifyClose===false?'all':true;else{overlayBackPending=true;const depth=(notifyClose===false?(history.state.overlayDepth||1):1)+childDepth;if(depth>1)history.go(-depth);else history.back();}}if(notifyClose!==false&&typeof callback==='function')callback();if(hadModal&&state)scheduleRender();globalThis.window?.PipiExpiry?.sync();
   }
   function bindSheetBackdrop() {
     let pressedSheet=null;
@@ -491,6 +492,8 @@
   function showView(name, arg, fromBack=false) {
     if(modalSaveInProgress)return;
     if(name==='sticker-store')name='stickers';
+    if(name==='storage'&&!storageMaintenance)name='settings';
+    if(name==='storage'&&route.name!=='storage')window.PipiStorage.enter();
     if(state&&roleRoutes.has(name)&&!roleById(arg?.roleId||arg?.id||arg)){if(fromBack&&navStack.length){history.back();return;}const list=name==='chat'?'chats':'contacts';if(fromBack)history.replaceState({pipi:true,route:{name:list,arg:null},stack:[]},'');name=list;arg=undefined;navStack.length=0;}
     if(overlayBackPending){queuedView={name,arg,fromBack};return;}
     if(chatSelection&&(name!=='chat'||(arg?.roleId||arg?.id||arg)!==chatSelection.roleId)){finishMessageSelection();if(overlayBackPending){queuedView={name,arg,fromBack};return;}}
@@ -599,6 +602,7 @@
   async function restoreBrowserPage(){
     if(roleRoutes.has(route.name)&&!roleById(route.arg)){route={name:route.name==='chat'?'chats':'contacts',arg:null};navStack.length=0;history.replaceState({pipi:true,route:{...route},stack:[]},'');}
     restoreChatDrafts();
+    if(route.name==='storage'){if(storageMaintenance)window.PipiStorage.enter();else route={name:'settings',arg:null};}
     const saved=sessionStorage.getItem(browserPositionKey);
     sessionStorage.removeItem(browserPositionKey);
     const snapshot=saved?JSON.parse(saved):null;
@@ -671,6 +675,7 @@
   }
   function preview(message) {
     if (!message) return '点击开始聊天';
+    if(message.meta?.expired&&message.type!=='text')return message.meta.expired.kind==='voice'?'[语音已过期]':'[图片已过期]';
     const text = ({image:'[图片]',voice:'[语音]',forward:'[聊天记录]',transfer:'[转账]',redpacket:'[红包]'})[message.type] || String(message.content || '');
     return text;
   }
@@ -771,8 +776,9 @@
   }
   function renderSettings() {
     const group=(title,rows)=>`<p class="section-title settings-group-title">${title}</p><section class="section">${rows}</section>`;
-    return header('设置',{back:true})+`<div class="content page-content settings-content">${group('账号',plainCell('个人资料','edit-profile'))}${group('小手机',plainCell('小手机','engine-home',state.settings?.ai?.assign?.chat?'已选择模型':'未选择模型')+plainCell('用量与日志','engine-usage'))}${group('通用',plainCell('朋友权限','friend-permissions')+plainCell('聊天记录管理','backup'))}${group('关于',plainCell('关于屁屁机','about'))}<section class="section"><button class="cell centered-cell" data-action="logout">退出登录</button></section></div>`;
+    return header('设置',{back:true})+`<div class="content page-content settings-content">${group('账号',plainCell('个人资料','edit-profile'))}${group('小手机',plainCell('小手机','engine-home',state.settings?.ai?.assign?.chat?'已选择模型':'未选择模型')+plainCell('用量与日志','engine-usage'))}${group('通用',plainCell('朋友权限','friend-permissions')+plainCell('聊天记录管理','backup')+(storageMaintenance?plainCell('存储空间','storage'):''))}${group('关于',plainCell('关于屁屁机','about'))}<section class="section"><button class="cell centered-cell" data-action="logout">退出登录</button></section></div>`;
   }
+  routes.set('storage',()=>header('存储空间',{back:true})+window.PipiStorage.render());
   routes.set('friend-permissions',()=>header('朋友权限',{back:true})+`<div class="content page-content"><section class="section">${plainCell('通讯录黑名单','blacklist')}</section></div>`);
   routes.set('friend-profile',()=>{const r=roleById(route.arg);if(!r)return header('朋友资料',{back:true})+'<div class="empty">联系人不存在</div>';return header('朋友资料',{back:true})+`<div class="content page-content"><section class="section">${plainCell('备注',"contact-remark",r.remark||'')}${plainCell('标签','contact-remark',(r.tags||[]).join('、'))}${plainCell('电话','contact-remark',r.phone||'')}${plainCell('描述','contact-remark',r.description||'')}</section><p class="section-title">朋友权限</p><section class="section">${plainCell('朋友权限','contact-permissions',r.permissions?.onlyChat?'仅聊天':'聊天、朋友圈、微信运动等')}</section></div>`;});
   function renderContactMore(){const r=roleById(route.arg)||{};return header('更多信息',{back:true})+`<div class="content page-content"><section class="section contact-more-info">${[['地区',r.region],['个性签名',r.bio],['来源','由你添加']].map(([label,value])=>`<div class="info-line"><span>${label}</span><p>${esc(value||'未填写')}</p></div>`).join('')}</section></div>`;}
@@ -860,14 +866,15 @@
       if(m.sender==='system') return timeLabel+`<div class="system-message" data-message="${esc(m.id)}" ${m.meta?.kind==='pat'&&m.meta.author==='me'?'role="button" tabindex="0" data-bubble="'+esc(m.id)+'"':''}>${esc(m.content)}${m.meta?.kind==='recalled'&&m.meta.recalledText?` <button class="recall-edit" data-reedit="${esc(m.id)}">重新编辑</button>`:''}</div>`;
       const mine=m.sender==='user', entity=mine?state.profile:r;
       const voiceSeconds=Math.max(1,Math.round((Number(m.meta?.durationMs)||1000)/1000));
-      const voiceWidth=Math.min(190,67+voiceSeconds*2.2);
+      const voiceWidth=Math.min(190,Math.max(m.meta?.expired?.kind==='voice'?132:67,67+voiceSeconds*2.2));
       let bubble=richText(m.content), imageClass='', transferClass='', paymentLabel='';
       if(m.type==='image'){
         const sticker=Boolean(m.meta?.stickerId);
         imageClass=sticker?'image-bubble sticker-bubble':'image-bubble';
-        bubble=safeImage(m.content)?`<img class="message-image" src="${esc(m.content)}" alt="${sticker?'聊天表情':'聊天图片'}" loading="lazy">`:'[无法显示的图片]';
+        if(m.meta?.expired?.kind==='image')imageClass+=' expired-media-bubble';
+        bubble=m.meta?.expired?.kind==='image'?renderExpiredImage(m.meta.thumb):safeImage(m.content)?`<img class="message-image" src="${esc(m.content)}" alt="${sticker?'聊天表情':'聊天图片'}" loading="lazy">`:'[无法显示的图片]';
       }
-      if(m.type==='voice') bubble=`<span class="voice-message ${mine?'voice-mine':''}">${icons.voiceBubbleWave}<span>${voiceSeconds}″</span></span>`;
+      if(m.type==='voice') bubble=m.meta?.expired?.kind==='voice'?`<span class="voice-message expired-voice"><span>${voiceSeconds}″</span><small>语音已过期</small></span>`:`<span class="voice-message ${mine?'voice-mine':''}">${icons.voiceBubbleWave}<span>${voiceSeconds}″</span></span>`;
       if(m.type==='forward'){transferClass='forward-card';bubble=`<span class="forward-title">聊天记录</span><span class="forward-summary">${(m.meta?.entries||[]).slice(0,3).map(entry=>`<span>${esc(entry.senderName)}：${esc(preview(entry))}</span>`).join('')}</span><span class="forward-footer">聊天记录 · ${(m.meta?.entries||[]).length} 条</span>`;}
       if(m.type==='transfer'||m.type==='redpacket') {
         const transaction = state.wallet?.transactions?.find(item => item.id === m.meta?.transactionId);
@@ -914,8 +921,8 @@
       }
       const chunks=null;
       const bubbles=chunks&&chunks.length>1?chunks.map(chunk=>`<div class="message-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}" aria-label="${esc(chunk.slice(0,80))}，长按或右键操作">${richText(chunk)}</div>`).join(''):`<div class="message-bubble ${imageClass} ${transferClass}" role="button" tabindex="0" data-bubble="${esc(m.id)}" aria-label="${m.type==='image'?(m.meta?.stickerId?'表情':'图片'):m.type==='voice'?`语音消息，${voiceSeconds}秒`:m.type==='forward'?'聊天记录':paymentLabel?esc(paymentLabel):esc(String(m.content).slice(0,80))}，长按或右键操作">${bubble}</div>`;
-      const attachedImage=m.type==='text'&&safeImage(m.meta?.image)?`<div class="message-bubble image-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}"><img class="message-image" src="${esc(m.meta.image)}" alt="附带的聊天图片" loading="lazy"></div>`:'';
-      return timeLabel+`<div class="message-row ${mine?'mine':''} ${chatSelection?.ids.has(m.id)?'message-selected':''}" data-message="${esc(m.id)}">${chatSelection?`<button class="message-select" data-select-message="${esc(m.id)}" aria-label="选择消息" aria-pressed="${chatSelection.ids.has(m.id)}">${chatSelection.ids.has(m.id)?'✓':''}</button>`:''}<button class="message-avatar" data-chat-avatar="${mine?'self':'contact'}" aria-label="${mine?'我的头像':'朋友头像'}：单击查看资料，双击拍一拍">${avatar(entity,43)}</button><div class="message-body ${m.type==='voice'?'voice-body':''}" ${m.type==='voice'?`style="--voice-width:${voiceWidth}px"`:''}>${bubbles}${attachedImage}${m.type==='text'&&m.sender==='assistant'&&m.status!=='demo'&&!chatSelection?speechIndicator(m.id):''}${m.meta?.quote?renderMessageQuote(m.meta.quote,r):''}${m.type==='voice'?renderVoiceTranscript(m):''}${chatSelection?`<button class="message-range" data-select-range="${esc(m.id)}">选择到这里</button>`:''}${m.status==='error'?`<button class="message-failure" data-retry="${esc(m.id)}" aria-label="发送失败，点击重试">!</button>`:''}</div></div>`;
+      const attachedImage=m.type==='text'&&m.meta?.expired?.kind==='image'?`<div class="message-bubble image-bubble expired-media-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}">${renderExpiredImage(m.meta.thumb)}</div>`:m.type==='text'&&safeImage(m.meta?.image)?`<div class="message-bubble image-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}"><img class="message-image" src="${esc(m.meta.image)}" alt="附带的聊天图片" loading="lazy"></div>`:'';
+      return timeLabel+`<div class="message-row ${mine?'mine':''} ${chatSelection?.ids.has(m.id)?'message-selected':''}" data-message="${esc(m.id)}">${chatSelection?`<button class="message-select" data-select-message="${esc(m.id)}" aria-label="选择消息" aria-pressed="${chatSelection.ids.has(m.id)}">${chatSelection.ids.has(m.id)?'✓':''}</button>`:''}<button class="message-avatar" data-chat-avatar="${mine?'self':'contact'}" aria-label="${mine?'我的头像':'朋友头像'}：单击查看资料，双击拍一拍">${avatar(entity,43)}</button><div class="message-body ${m.type==='voice'?'voice-body':''}" ${m.type==='voice'?`style="--voice-width:${voiceWidth}px"`:''}>${bubbles}${attachedImage}${m.type==='text'&&m.meta?.expired?.kind==='voice'?'<p class="expired-voice-note">语音已过期</p>':''}${m.type==='text'&&m.sender==='assistant'&&m.status!=='demo'&&!chatSelection&&!m.meta?.expired?speechIndicator(m.id):''}${m.meta?.quote?renderMessageQuote(m.meta.quote,r):''}${m.type==='voice'?renderVoiceTranscript(m):''}${chatSelection?`<button class="message-range" data-select-range="${esc(m.id)}">选择到这里</button>`:''}${m.status==='error'?`<button class="message-failure" data-retry="${esc(m.id)}" aria-label="发送失败，点击重试">!</button>`:''}</div></div>`;
     }).join('');
     const pending=outgoing?.roleId===r.id?`<div class="message-row mine"><span>${avatar(state.profile,43)}</span><div class="message-body">${outgoing.image?`<div class="message-bubble image-bubble"><img class="message-image" src="${esc(outgoing.image)}" alt="正在发送的图片"></div>`:''}${outgoing.text?`<div class="message-bubble">${esc(outgoing.text)}</div>`:''}<div class="message-label" style="text-align:right;margin-top:5px">发送中…</div></div></div>`:'';
     return header(chatSelection?`已选择 ${chatSelection.ids.size} 条消息`:window.PipiEngine?.isTyping(r.id)?'对方正在输入…':roleName(r),{back:true,right:chatSelection?'':iconButton('more','chat-details','聊天信息')})+`<div class="chat-messages ${chatSelection?'chat-selecting':''}" id="chat-messages" ${safeImage(r.chatBackground)?`style="background-image:url('${esc(r.chatBackground)}')"`:''}>${messages.some(m=>m.status==='demo')?'<div class="system-message demo-notice">这里保留了用于介绍界面的示例对话，非模型生成。</div>':''}${body}${pending}</div>${chatSelection?'':'<div class="chat-notice-slot"><button type="button" class="chat-new-messages" hidden></button></div>'}${chatSelection?renderMessageSelection():renderComposer()}`;
@@ -923,12 +930,16 @@
   function speechIndicator(id){
     return `<button type="button" class="message-speech" data-message-speech="${esc(id)}" hidden>${icons.voiceWave}<span class="speech-spinner" aria-hidden="true"></span></button>`;
   }
+  function renderExpiredImage(thumb,quote=false){
+    const image=safeImage(thumb);return `<span class="expired-media-image${quote?' quote-expired-preview':''}${image?'':' is-placeholder'}">${image?`<img class="message-image expired-media-thumb" src="${esc(thumb)}" alt="已过期图片的模糊缩略图">`:''}${quote?'':'<span class="expired-media-label">图片已过期</span>'}</span>`;
+  }
   function renderMessageQuote(quote,r){
-    const original=quote.messageId&&(state.messages||[]).find(m=>m.id===quote.messageId),available=original&&original.meta?.kind!=='recalled'&&!quote.unavailable;
-    const name=quote.senderName||(quote.sender==='user'?state.profile?.name:roleName(r)),image=safeImage(quote.image)?quote.image:quote.type==='image'&&safeImage(quote.content)?quote.content:'';
-    const text=({image:image?'':'[图片]',voice:'[语音]',forward:'[聊天记录]',transfer:'[转账]',redpacket:'[红包]'})[quote.type]??quote.content;
+    const original=quote.messageId&&(state.messages||[]).find(m=>m.id===quote.messageId),available=original&&original.meta?.kind!=='recalled'&&!quote.unavailable,expired=quote.expired||original?.meta?.expired;
+    const name=quote.senderName||(quote.sender==='user'?state.profile?.name:roleName(r)),image=expired?'':safeImage(quote.image)?quote.image:quote.type==='image'&&safeImage(quote.content)?quote.content:'';
+    const label=expired?.kind==='voice'?'[语音已过期]':'[图片已过期]';
+    const text=expired?(quote.type==='text'&&quote.content?quote.content+' '+label:label):({image:image?'':'[图片]',voice:'[语音]',forward:'[聊天记录]',transfer:'[转账]',redpacket:'[红包]'})[quote.type]??quote.content;
     const unavailable=quote.unavailable==='recalled'?'原消息已撤回':quote.unavailable==='deleted'?'原消息已删除':'';
-    return `<button type="button" class="message-quote ${image?'quote-with-image':''} ${unavailable?'quote-unavailable':''}" data-quote-message="${available?esc(quote.messageId):''}" ${available?'':'disabled'} aria-label="${available?'定位被引用的消息':unavailable||(!quote.messageId?'引用快照':'原消息不可用')}"><span class="quote-copy">${esc(name)}：${richText(text)}</span>${image?`<img src="${esc(image)}" alt="引用的图片" class="quote-image">`:''}${unavailable?`<small class="quote-unavailable-note">${unavailable}</small>`:''}</button>`;
+    return `<button type="button" class="message-quote ${image||expired?.kind==='image'?'quote-with-image':''} ${unavailable?'quote-unavailable':''}" data-quote-message="${available?esc(quote.messageId):''}" ${available?'':'disabled'} aria-label="${available?'定位被引用的消息':unavailable||(!quote.messageId?'引用快照':'原消息不可用')}"><span class="quote-copy">${esc(name)}：${richText(text)}</span>${expired?.kind==='image'?renderExpiredImage(quote.thumb||original?.meta?.thumb,true):image?`<img src="${esc(image)}" alt="引用的图片" class="quote-image">`:''}${unavailable?`<small class="quote-unavailable-note">${unavailable}</small>`:''}</button>`;
   }
   function renderVoiceTranscript(message){
     const ui=transcriptViews.get(message.id),transcript=message.meta?.transcript;
@@ -937,6 +948,8 @@
     if(transcript){
       const demo=message.meta.transcriptSource==='demo'||ui.demo;
       body=`<span class="transcript-text">${esc(transcript)}</span>${demo?'<small class="transcript-demo">演示预设文字，非真实识别结果</small>':''}`;
+    }else if(message.meta?.expired){
+      body='<span class="transcript-error" role="alert">语音已过期，无法转文字。</span>';
     }else if(ui.phase==='loading'||(ui.phase==='waiting'&&message.status==='pending')){
       body='<span class="transcript-progress" role="status">正在识别…</span>';
     }else{
@@ -1106,6 +1119,7 @@
     view.querySelectorAll('[data-search-message]').forEach(el=>el.onclick=()=>{focusMessageId=el.dataset.searchMessage;showView('chat',route.arg);});
     view.querySelectorAll('[data-global-message]').forEach(el=>el.onclick=()=>{focusMessageId=el.dataset.globalMessage;showView('chat',el.dataset.searchRole);});
     view.querySelectorAll('[data-remove-sticker]').forEach(el=>el.onclick=()=>confirmDialog('移除这个表情？','移除后可重新添加，聊天记录中的图片不受影响。',()=>act('sticker.delete',{id:el.dataset.removeSticker}),'移除'));
+    if(route.name==='storage')window.PipiStorage.bind();
     if(route.name==='stickers'){window.PipiStickers.bind(view);const file=view.querySelector('#sticker-file');if(file)file.onchange=()=>uploadStickers(file);}
   }
   let openingRequest = 0;
@@ -1138,6 +1152,7 @@
       case 'status-history':{const origin=route,result=await api('/api/state');setState(result.state||result);if(route===origin)showView('status-history');break;}
       case 'cancel-status':statusDraft=null;showView('me');break;
       case 'end-status':confirmDialog('结束状态？','结束后将不再展示当前状态。',async isCurrent=>{await act('status.end');if(isCurrent())showView('me');},'结束状态');break;
+      case 'storage': showView('storage');break;
       case 'back': goBack(); break;
       case 'search': searchOpen=!searchOpen; searchTerm=''; refresh(); view.querySelector('#list-search')?.focus(); break;
       case 'global-search':globalSearchTerm='';showView('global-search');view.querySelector('#list-search').focus();break;
@@ -1208,7 +1223,7 @@
       case 'chat-transfer': showView('wallet',{roleId:r?.id,mode:'transfer'}); break;
       case 'chat-redpacket': showView('wallet',{roleId:r?.id,mode:'redpacket'}); break;
       case 'chat-pat': if(r)await patChat(r.id,'contact');break;
-      case 'logout': confirmDialog('退出登录？','数据会保留在服务器，输入密码即可重新登录。',async()=>{await api('/api/logout',{}); csrf=''; state=null;drafts.clear();composerHistories.clear();failedSends.clear();composeText='';composeImage='';composeImageMeta=null;composeStickerId='';quoteId='';sessionStorage.removeItem(chatDraftKey);window.PipiEngine?.stop(); renderAuth(false);},'退出登录'); break;
+      case 'logout': confirmDialog('退出登录？','数据会保留在服务器，输入密码即可重新登录。',async()=>{await api('/api/logout',{}); csrf=''; state=null;drafts.clear();composerHistories.clear();failedSends.clear();composeText='';composeImage='';composeImageMeta=null;composeStickerId='';quoteId='';sessionStorage.removeItem(chatDraftKey);window.PipiEngine?.stop();window.PipiStorage?.reset(); renderAuth(false);},'退出登录'); break;
       case 'download-backup': downloadBackup(); break;
       case 'restore-backup': pickBackup(); break;
     }
@@ -1269,6 +1284,7 @@
     if(ids.size>100){toast('每次最多选择 100 条消息');return;}chatSelection.ids=ids;refresh();
   }
   async function forwardMessages(ids){
+    if(ids.some(id=>state.messages.find(m=>m.id===id)?.meta?.expired)){toast('图片或语音已过期，无法转发；保留的文字可以复制。');return;}
     await afterOverlayBack();
     const recipients=(state.roles||[]).filter(r=>!r.permissions?.blocked).map(r=>`<label class="cell forward-recipient">${avatar(r,40)}<span class="cell-body cell-title">${esc(roleName(r))}</span><input type="radio" name="targetRoleId" value="${esc(r.id)}" required></label>`).join('');
     openModal('转发给朋友',`<p class="page-note">已选择 ${ids.length} 条消息，请选择接收的朋友并确认发送。</p><section class="section forward-mode"><label class="cell"><span class="cell-body">逐条转发</span><input type="radio" name="mode" value="individual" checked></label><label class="cell"><span class="cell-body">合并转发</span><input type="radio" name="mode" value="merged"></label></section><section class="section">${recipients||'<p class="page-note">暂无可接收转发的朋友</p>'}</section>`,async form=>{
@@ -1383,7 +1399,7 @@
       el.onpointerdown=event=>{if(event.button!==0)return;startX=event.clientX;startY=event.clientY;suppress=false;if(!chatSelection)timer=pressTimer(()=>{suppress=true;messageMenu(el.dataset.bubble,el);},500);};
       el.onpointermove=event=>{if(Math.abs(event.clientX-startX)>12||Math.abs(event.clientY-startY)>12){suppress=true;clearTimeout(timer);}};
       el.onpointerup=()=>clearTimeout(timer);el.onpointercancel=()=>{suppress=true;clearTimeout(timer);};el.onpointerleave=()=>clearTimeout(timer);
-      el.onclick=()=>{if(suppress){suppress=false;return;}if(chatSelection){if(state.messages.find(x=>x.id===el.dataset.bubble)?.sender!=='system')toggleSelectedMessage(el.dataset.bubble);return;}const m=state.messages.find(x=>x.id===el.dataset.bubble);if(!m)return;if(m.type==='voice'){playAudio(m.meta?.audio,m.id);return;}if(['transfer','redpacket'].includes(m.type)){if(m.meta?.transactionId)window.PipiFeatures?.walletTransaction?.(m.meta.transactionId, undefined, { fromChat: true });else toast('未找到这笔交易的详情');return;}if(m.type==='forward'){openForwardDetails(m);return;}if(el.classList.contains('sticker-bubble'))return;if(el.classList.contains('image-bubble')){const src=m.type==='image'?m.content:m.meta?.image;if(safeImage(src)){const images=state.messages.filter(message=>message.roleId===m.roleId&&!(message.type==='image'&&message.meta?.stickerId)).map(message=>({id:message.id,src:message.type==='image'?message.content:message.meta?.image})).filter(item=>safeImage(item.src));lightbox(src,'聊天图片',{images:images.map(item=>item.src),messageIds:images.map(item=>item.id),index:images.findIndex(item=>item.id===m.id)});}}};
+      el.onclick=()=>{if(suppress){suppress=false;return;}if(chatSelection){if(state.messages.find(x=>x.id===el.dataset.bubble)?.sender!=='system')toggleSelectedMessage(el.dataset.bubble);return;}const m=state.messages.find(x=>x.id===el.dataset.bubble);if(!m)return;if(m.type==='voice'){if(m.meta?.expired){toast('语音已过期');return;}playAudio(m.meta?.audio,m.id);return;}if(['transfer','redpacket'].includes(m.type)){if(m.meta?.transactionId)window.PipiFeatures?.walletTransaction?.(m.meta.transactionId, undefined, { fromChat: true });else toast('未找到这笔交易的详情');return;}if(m.type==='forward'){openForwardDetails(m);return;}if(el.classList.contains('sticker-bubble'))return;if(el.classList.contains('image-bubble')){if(m.meta?.expired){toast('图片已过期');return;}const src=m.type==='image'?m.content:m.meta?.image;if(safeImage(src)){const images=state.messages.filter(message=>message.roleId===m.roleId&&!(message.type==='image'&&message.meta?.stickerId)).map(message=>({id:message.id,src:message.type==='image'?message.content:message.meta?.image})).filter(item=>safeImage(item.src));lightbox(src,'聊天图片',{images:images.map(item=>item.src),messageIds:images.map(item=>item.id),index:images.findIndex(item=>item.id===m.id)});}}};
       el.ondblclick=event=>{const m=state.messages.find(x=>x.id===el.dataset.bubble);if(suppress||modalOpen||chatSelection||m.sender==='system'||m.type!=='text'||el.classList.contains('image-bubble'))return;event.preventDefault();readTextMessage(m.content);};
       el.onkeydown=event=>{if(chatSelection){if(['Enter',' '].includes(event.key)){event.preventDefault();toggleSelectedMessage(el.dataset.bubble);}else if(event.key==='ContextMenu'||(event.shiftKey&&event.key==='F10'))event.preventDefault();return;}if((event.key==='Enter'||event.key===' ')&&(el.classList.contains('payment-card')||state.messages.find(m=>m.id===el.dataset.bubble)?.type==='voice')){event.preventDefault();el.click();return;}if(event.key==='Enter'||event.key===' '||event.key==='ContextMenu'||(event.shiftKey&&event.key==='F10')){event.preventDefault();messageMenu(el.dataset.bubble,el);}};
     });
@@ -1492,7 +1508,7 @@
     try{const image=await uploadImageData(sticker.image);const result=await api('/api/chat',{roleId:r.id,text:'',image,stickerId:sticker.id,requestId:crypto.randomUUID()});receiveState(result.state);}catch(err){toast(err.message);}
   }
   async function retryMessage(messageId) {
-    if(sending)return; sending=true;sendingRoleId=state.messages?.find(m=>m.id===messageId)?.roleId||'';refresh();
+    if(sending)return;const message=state.messages?.find(m=>m.id===messageId);if(message?.meta?.expired&&message.type!=='text'){toast('图片或语音已过期，无法重新发送。');return;}sending=true;sendingRoleId=message?.roleId||'';refresh();
     try {const result=await api('/api/chat/retry',{messageId});setState(result.state);}catch(err){toast(err.message);if(!err.state){try{const latest=await api('/api/state');setState(latest.state||latest);}catch{}}}finally{sending=false;sendingRoleId='';refresh();}
   }
   function measureSafeInsets(shell){const probe=document.createElement('span');probe.style.cssText='position:absolute;visibility:hidden;pointer-events:none;box-sizing:content-box;width:0;height:0;padding:var(--safe-top,0px) var(--safe-right,0px) var(--safe-bottom,0px) var(--safe-left,0px)';shell.append(probe);const style=getComputedStyle(probe),insets={top:parseFloat(style.paddingTop)||0,right:parseFloat(style.paddingRight)||0,bottom:parseFloat(style.paddingBottom)||0,left:parseFloat(style.paddingLeft)||0};probe.remove();return insets;}
@@ -1504,7 +1520,7 @@
     if(ordinary&&['text','image','voice','forward'].includes(m.type))actions.push({label:'引用',icon:icons.quote,run:()=>{quoteId=id;panel='';updateComposer();view.querySelector('#compose-text')?.focus();}});
     if(ordinary&&m.type==='text')actions.push({label:'复制',icon:icons.copy,run:()=>copyText(m.content)});
     if(ordinary&&m.status==='sent'&&['text','image','voice','forward'].includes(m.type))actions.push({label:'转发',run:()=>forwardMessages([id])});
-    if(ordinary&&['text','image','voice'].includes(m.type))actions.push({label:'收藏',icon:icons.messageFavorites,run:async()=>{await act('message.favorite',{id});toast('已加入收藏');}});
+    if(ordinary&&['text','image','voice'].includes(m.type))actions.push({label:'收藏',icon:icons.messageFavorites,run:async()=>{if(state.messages.find(item=>item.id===id)?.meta?.expired){toast('图片或语音已过期，无法收藏；保留的文字可以复制。');return;}await act('message.favorite',{id});toast('已加入收藏');}});
     if(m.type==='image'&&m.meta?.stickerId&&safeImage(m.content))actions.push({label:'添加到表情',run:async()=>{await act('sticker.add',{image:m.content});toast('已添加到表情');}});
     if(ordinary)actions.push({label:'多选',run:()=>startMessageSelection(id)});
     if(m.type==='voice'){
@@ -1560,6 +1576,7 @@
     const ui=transcriptViews.get(id)||{};
     transcriptViews.set(id,ui);ui.expanded=expanded;
     if(!expanded||message.meta?.transcript||ui.phase==='loading'){paintTranscript(message);return;}
+    if(message.meta?.expired){ui.phase='error';ui.error='语音已过期，无法转文字。';paintTranscript(message);return;}
     if(message.sender==='user'&&message.status==='pending'){
       // The reply engine is already responsible for understanding this recording.
       ui.phase='waiting';delete ui.error;paintTranscript(message);return;
@@ -1573,12 +1590,31 @@
     }catch(err){ui.phase='error';ui.error=err.message;}
     paintTranscript(state.messages.find(m=>m.id===id));
   }
-  function openForwardDetails(message){
-    const entries=message.meta?.entries||[];
-    openNestedPage('聊天记录',`<div class="forward-detail">${entries.map((entry,index)=>`<article class="forward-entry"><div class="forward-entry-author">${esc(entry.senderName)}</div>${entry.type==='image'&&safeImage(entry.content)?`<button type="button" class="forward-entry-image" data-forward-image="${index}"><img src="${esc(entry.content)}" alt="转发的图片"></button>`:entry.type==='voice'?`<button type="button" class="forward-entry-voice" data-forward-voice="${index}">${icons.voiceWave} ${Math.max(1,Math.round((entry.meta?.durationMs||1000)/1000))}″</button>${entry.meta?.transcript?`<p>${esc(entry.meta.transcript)}</p>${entry.meta.transcriptSource==='demo'?'<small class="transcript-demo">演示预设文字，非真实识别结果</small>':''}`:''}`:entry.type==='forward'?`<button type="button" class="forward-entry-nested" data-forward-nested="${index}">聊天记录 · ${entry.meta?.entries?.length||0} 条 ${icons.chevron}</button>`:`<p>${richText(entry.content)}</p>${safeImage(entry.meta?.image)?`<button type="button" class="forward-entry-image" data-forward-image="${index}"><img src="${esc(entry.meta.image)}" alt="转发的附图"></button>`:''}`}${entry.meta?.quote?renderMessageQuote({...entry.meta.quote,messageId:''},{}):''}</article>`).join('')}</div>`,null);
-    overlay.querySelectorAll('[data-forward-image]').forEach(el=>el.onclick=()=>{const selectedIndex=Number(el.dataset.forwardImage),entry=entries[selectedIndex],images=entries.map((item,entryIndex)=>({entryIndex,src:item.type==='image'?item.content:item.meta?.image})).filter(item=>safeImage(item.src)),src=entry.type==='image'?entry.content:entry.meta.image;lightbox(src,'转发的图片',{images:images.map(item=>item.src),index:images.findIndex(item=>item.entryIndex===selectedIndex)});});
-    overlay.querySelectorAll('[data-forward-voice]').forEach(el=>el.onclick=()=>playAudio(entries[Number(el.dataset.forwardVoice)].meta?.audio));
-    overlay.querySelectorAll('[data-forward-nested]').forEach(el=>el.onclick=()=>openForwardDetails(entries[Number(el.dataset.forwardNested)]));
+  function forwardEntries(originId,path,fallback){
+    let message=state.messages.find(item=>item.id===originId);for(const index of path)message=message?.meta?.entries?.[index];return message?.meta?.entries||fallback;
+  }
+  function renderForwardEntries(entries){
+    return entries.map((entry,index)=>{
+      const expired=entry.meta?.expired,src=entry.type==='image'?entry.content:entry.meta?.image;
+      const image=expired?.kind==='image'?`<button type="button" class="forward-entry-image" data-forward-image="${index}">${renderExpiredImage(entry.meta.thumb)}</button>`:safeImage(src)?`<button type="button" class="forward-entry-image" data-forward-image="${index}"><img src="${esc(src)}" alt="转发的图片"></button>`:'';
+      const body=entry.type==='voice'?`<button type="button" class="forward-entry-voice" data-forward-voice="${index}">${expired?'语音已过期':icons.voiceWave} ${Math.max(1,Math.round((entry.meta?.durationMs||1000)/1000))}″</button>${entry.meta?.transcript?`<p>${esc(entry.meta.transcript)}</p>${entry.meta.transcriptSource==='demo'?'<small class="transcript-demo">演示预设文字，非真实识别结果</small>':''}`:''}`:entry.type==='forward'?`<button type="button" class="forward-entry-nested" data-forward-nested="${index}">聊天记录 · ${entry.meta?.entries?.length||0} 条 ${icons.chevron}</button>`:entry.type==='image'?image:`<p>${richText(entry.content)}</p>${image}${expired?.kind==='voice'?'<p class="expired-voice-note">语音已过期</p>':''}`;
+      return `<article class="forward-entry"><div class="forward-entry-author">${esc(entry.senderName)}</div>${body}${entry.meta?.quote?renderMessageQuote({...entry.meta.quote,messageId:''},{}):''}</article>`;
+    }).join('');
+  }
+  function bindForwardDetails(root,getEntries,originId,path){
+    root.querySelectorAll('[data-forward-image]').forEach(el=>el.onclick=()=>{const entries=getEntries(),selectedIndex=Number(el.dataset.forwardImage),entry=entries[selectedIndex];if(entry.meta?.expired){toast('图片已过期');return;}const images=entries.map((item,entryIndex)=>({entryIndex,src:item.type==='image'?item.content:item.meta?.image})).filter(item=>safeImage(item.src)),src=entry.type==='image'?entry.content:entry.meta.image;lightbox(src,'转发的图片',{images:images.map(item=>item.src),index:images.findIndex(item=>item.entryIndex===selectedIndex),getMedia:index=>getEntries()[images[index].entryIndex]});});
+    root.querySelectorAll('[data-forward-voice]').forEach(el=>el.onclick=()=>{const entry=getEntries()[Number(el.dataset.forwardVoice)];if(entry.meta?.expired){toast('语音已过期');return;}playAudio(entry.meta?.audio,undefined,()=>getEntries()[Number(el.dataset.forwardVoice)]);});
+    root.querySelectorAll('[data-forward-nested]').forEach(el=>el.onclick=()=>{const index=Number(el.dataset.forwardNested);openForwardDetails(getEntries()[index],originId,[...path,index]);});
+  }
+  function openForwardDetails(message,originId=message.id,path=[]){
+    const getEntries=()=>forwardEntries(originId,path,message.meta?.entries||[]),entries=getEntries();
+    openNestedPage('聊天记录',`<div class="forward-detail">${renderForwardEntries(entries)}</div>`,null);
+    const root=overlay.querySelector(':scope > .page-editor .forward-detail');bindForwardDetails(root,getEntries,originId,path);
+    let previous=JSON.stringify(entries);forwardDetails.set(root,()=>{const next=getEntries(),encoded=JSON.stringify(next);if(encoded===previous)return;previous=encoded;const body=root.closest('.modal-body'),top=body.scrollTop;root.innerHTML=renderForwardEntries(next);bindForwardDetails(root,getEntries,originId,path);body.scrollTop=top;});
+  }
+  function syncExpiredMedia(){
+    if(!state)return;if((speechSession?.id?state.messages.find(message=>message.id===speechSession.id):speechSession?.getSource?.())?.meta?.expired?.kind==='voice')stopSpeech();
+    syncImageViewer?.();for(const [root,update]of forwardDetails){if(!root.isConnected)forwardDetails.delete(root);else if(!root.closest('[inert]'))update();}
   }
   function lightbox(src,alt='图片',options={}) {
     if(!safeImage(src))return;
@@ -1589,15 +1625,16 @@
     mountModalParent(parent);
     const box=overlay.querySelector(':scope > .image-viewer'),stage=box.querySelector('.image-stage'),img=stage.querySelector('img'),reset=box.querySelector('[data-image-reset]'),save=box.querySelector('.image-save');
     const menu=box.querySelector('.image-actions'),more=box.querySelector('.image-more'),forward=box.querySelector('[data-image-forward]'),favorite=box.querySelector('[data-image-favorite]');
+    const currentMedia=()=>options.getMedia?options.getMedia(index):state.messages?.find(m=>m.id===options.messageIds?.[index]);
     const hideMenu=()=>{menu.hidden=true;more.setAttribute('aria-expanded','false');};
     more.onclick=()=>{menu.hidden=!menu.hidden;more.setAttribute('aria-expanded',String(!menu.hidden));if(!menu.hidden)menu.querySelector('button:not([hidden])').focus({preventScroll:true});};
     box.querySelector('[data-image-menu-cancel]').onclick=()=>{hideMenu();more.focus({preventScroll:true});};stage.onclick=hideMenu;
     const transform=()=>{img.style.transform=`translate(${x}px,${y}px) scale(${scale})`;reset.textContent=Math.round(scale*100)+'%';};
-    const zoom=value=>{scale=Math.max(1,Math.min(4,value));if(scale===1){x=0;y=0;}transform();};
-    const paint=()=>{scale=1;x=0;y=0;hideMenu();img.src=images[index];box.querySelector('.image-counter').textContent=images.length>1?`${index+1} / ${images.length}`:'';box.querySelector('[data-image-prev]').disabled=index===0;box.querySelector('[data-image-next]').disabled=index===images.length-1;const message=state.messages?.find(m=>m.id===options.messageIds?.[index]);forward.hidden=!message||message.sender==='system'||message.status!=='sent';favorite.hidden=!message||message.sender==='system';const extMatch=/^data:image\/([^;]+)/.exec(images[index])||/\.([a-z0-9]+)$/i.exec(images[index]);downloadName=`pipi-image-${index+1}.${({png:'png',jpeg:'jpg',jpg:'jpg',webp:'webp',gif:'gif'})[extMatch?.[1]?.toLowerCase()]||'png'}`;transform();};
-    save.onclick=async()=>{hideMenu();const data=images[index];let blob;if(data.startsWith('data:')){const comma=data.indexOf(','),binary=atob(data.slice(comma+1)),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);blob=new Blob([bytes],{type:data.slice(5,data.indexOf(';'))});}else{const resp=await fetch(data,{credentials:'same-origin'});blob=await resp.blob();}const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=downloadName;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+    const zoom=value=>{if(stage.classList.contains('media-expired'))return;scale=Math.max(1,Math.min(4,value));if(scale===1){x=0;y=0;}transform();};
+    const paint=()=>{scale=1;x=0;y=0;hideMenu();const media=currentMedia(),expired=Boolean(media?.meta?.expired),source=expired?media.meta.thumb:images[index];stage.classList.toggle('media-expired',expired);img.hidden=!source;if(source)img.src=source;else img.removeAttribute('src');let label=stage.querySelector('.expired-viewer-label');if(expired&&!label){label=document.createElement('span');label.className='expired-viewer-label';label.textContent='图片已过期';stage.append(label);}if(label)label.hidden=!expired;more.hidden=expired;save.disabled=expired;box.querySelectorAll('.image-zoom-controls button').forEach(button=>button.disabled=expired);box.querySelector('.image-counter').textContent=images.length>1?`${index+1} / ${images.length}`:'';box.querySelector('[data-image-prev]').disabled=index===0;box.querySelector('[data-image-next]').disabled=index===images.length-1;const message=currentMedia(),messageId=options.messageIds?.[index];forward.hidden=expired||!messageId||!message||message.sender==='system'||message.status!=='sent';favorite.hidden=expired||!messageId||!message||message.sender==='system';const extMatch=/^data:image\/([^;]+)/.exec(images[index])||/\.([a-z0-9]+)$/i.exec(images[index]);downloadName=`pipi-image-${index+1}.${({png:'png',jpeg:'jpg',jpg:'jpg',webp:'webp',gif:'gif'})[extMatch?.[1]?.toLowerCase()]||'png'}`;transform();};
+    save.onclick=async()=>{if(currentMedia()?.meta?.expired){toast('图片已过期');return;}hideMenu();const data=images[index];let blob;if(data.startsWith('data:')){const comma=data.indexOf(','),binary=atob(data.slice(comma+1)),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);blob=new Blob([bytes],{type:data.slice(5,data.indexOf(';'))});}else{const resp=await fetch(data,{credentials:'same-origin'});blob=await resp.blob();}const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=downloadName;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);};
     forward.onclick=async()=>{const id=options.messageIds[index];closeModal(false);await afterOverlayBack();await forwardMessages([id]);};
-    favorite.onclick=async()=>{hideMenu();try{await act('message.favorite',{id:options.messageIds[index]});toast('已加入收藏');}catch(err){toast(err.message);}};
+    favorite.onclick=async()=>{if(currentMedia()?.meta?.expired){toast('图片已过期，无法收藏。');return;}hideMenu();try{await act('message.favorite',{id:options.messageIds[index]});toast('已加入收藏');}catch(err){toast(err.message);}};
     const move=step=>{const next=index+step;if(next>=0&&next<images.length){index=next;paint();}};
     box.querySelector('.lightbox-close').onclick=closeModal;box.querySelector('[data-image-prev]').onclick=()=>move(-1);box.querySelector('[data-image-next]').onclick=()=>move(1);box.querySelector('[data-image-in]').onclick=()=>zoom(scale+.5);box.querySelector('[data-image-out]').onclick=()=>zoom(scale-.5);reset.onclick=()=>zoom(1);
     stage.ondblclick=()=>zoom(scale>1?1:2);
@@ -1607,6 +1644,7 @@
     stage.onpointerdown=event=>{if(event.button!==0)return;stage.setPointerCapture(event.pointerId);pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});if(pointers.size===1){startX=event.clientX;startY=event.clientY;startPanX=x;startPanY=y;pinched=false;}else if(pointers.size===2){pinchStart=distance();pinchScale=scale;pinched=true;}};
     stage.onpointermove=event=>{if(!pointers.has(event.pointerId))return;pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});if(pointers.size===2){zoom(pinchScale*distance()/pinchStart);}else if(scale>1){x=startPanX+event.clientX-startX;y=startPanY+event.clientY-startY;transform();}};
     stage.onpointerup=event=>{pointers.delete(event.pointerId);if(pointers.size===1){const remaining=[...pointers.values()][0];startX=remaining.x;startY=remaining.y;startPanX=x;startPanY=y;}if(!pointers.size&&!pinched&&scale===1&&Math.abs(event.clientX-startX)>45&&Math.abs(event.clientY-startY)<70)move(event.clientX>startX?-1:1);};
+    syncImageViewer=()=>{if(!box.isConnected){syncImageViewer=null;return;}if(!box.closest('[inert]')&&currentMedia()?.meta?.expired&&!stage.classList.contains('media-expired'))paint();};
     stage.onpointercancel=()=>pointers.clear();paint();box.querySelector('.lightbox-close').focus({preventScroll:true});
   }
   async function readImage(file,convertSticker=false,asBlob=false) {
@@ -1738,6 +1776,7 @@
   }
   async function speakMessage(id) {
     const m=state.messages?.find(x=>x.id===id);if(!m)return;
+    if(m.meta?.expired?.kind==='voice'){toast('语音已过期，可以查看或复制原文字。');return;}
     if(speechSession?.id===id){stopSpeech();return;}
     if(!m.meta?.audio&&!window.PipiEngine?.serviceReady('tts')){toast('请先在「设置 → 小手机 → 模型」配置文字转语音');return;}
     stopSpeech();
@@ -1752,11 +1791,12 @@
       await startSpeechAudio(session);
     }catch(error){if(speechSession===session){stopSpeech();toast(error.message);}}
   }
-  function playAudio(data,id) {
+  function playAudio(data,id,getSource) {
+    if(id&&state.messages.find(message=>message.id===id)?.meta?.expired){toast('语音已过期');return;}
     if(!safeAudio(data)){toast('这条语音没有可播放的音频');return;}
     if(speechSession?.voice&&speechSession.id===id&&speechSession.data===data){stopSpeech();return;}
     stopSpeech();
-    const session={id,data,voice:true};speechSession=session;
+    const session={id,data,voice:true,getSource};speechSession=session;
     return startSpeechAudio(session);
   }
   function syncDictationState(){
@@ -2067,9 +2107,10 @@
     };
   }
   async function boot() {
-    try{const status=await api('/api/status');sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;imageVariants=binaryMedia&&status.imageVariants===true;rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
+    try{const status=await api('/api/status');sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;imageVariants=binaryMedia&&status.imageVariants===true;storageMaintenance=status.storageMaintenance===true;rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
     catch(err){renderAuth(false,`暂时无法连接这部小手机。${err.message}`);}
   }
+  window.PipiExpiry={sync:syncExpiredMedia};
   window.Pipi={getState:()=>state,api,apiRaw,act,receiveState,updateTyping,syncChatProgress,readImage,readProfileImage,uploadMedia,uploadImage,uploadImageData,uploadProfileImage,showView,goBack,openWhenReady,openChatMessage:(roleId,messageId)=>{focusMessageId=messageId;showView('chat',roleId);},preserveChatLayout:callback=>{const snapshot=captureChatLayout();callback();restoreChatLayout(snapshot);},scrollChatToBottom:(roleId)=>{forceBottomRole=roleId;chatScrolls.delete(roleId);if(route.name==='chat'&&route.arg===roleId)scrollChat();},openModal,closeModal,openPage,openNestedPage,openChildDialog,closeChildDialog,closePage:closeModal,openPhoto:lightbox,actionSheet,confirmDialog,toast,esc,avatar,icons,refresh,setState,registerRoute:(name,renderer)=>routes.set(name,renderer)};
   document.addEventListener('keydown', event => {
     if (event.isComposing || composeComposing) return;

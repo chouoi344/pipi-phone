@@ -116,7 +116,7 @@ function createApp(options={}){
     publish('revision',{revision:result.state.revision});
     return result;
   }
-  const {migrateLegacy}=require('./lib/media-migration.cjs');
+  const {migrateLegacy,diskSpace}=require('./lib/media-migration.cjs');
   const migrationKey='mediaMigration',retentionStartKey='mediaRetentionStartedAt';
   const readMigration=()=>JSON.parse(getMeta(migrationKey)||'null');
   migrateLegacy({
@@ -144,6 +144,82 @@ function createApp(options={}){
   const migrated=read();Jobs.recover(migrated);
   const migratedJson=JSON.stringify(migrated);
   if(migratedJson!==storedJson())db.prepare('UPDATE app SET json=? WHERE id=1').run(migratedJson);
+  const Retention=require('./lib/media-retention.cjs'),mediaClock=options.mediaClock||Date.now;
+  const mediaSpace=options.mediaDiskSpace||diskSpace;
+  const cleanupKey='lastMediaCleanup',pressureKey='lastEarlyMediaCleanup';
+  const lastCleanup=key=>JSON.parse(getMeta(key)||'null');
+  const retentionStartedAt=()=>getMeta(retentionStartKey)===undefined?Infinity:Number(getMeta(retentionStartKey));
+  let mediaTimer,storageOperation=null,storageUsage=null,usageAt=0,measuring=null;
+  const disk=()=>mediaSpace(dataDir);
+  const memoryMedia=state=>require('./lib/engine/memory-store.cjs').exportBackup(dataDir,state);
+  const mediaFile=ref=>{const name=Retention.storedFilename(ref);return name?Media.describeMediaFile(dataDir,name):null;};
+  const mediaBytes=ref=>mediaFile(ref)?.size||0;
+  function measureStorage(){
+    if(measuring||(storageUsage&&mediaClock()-usageAt<30000))return;
+    measuring=Retention.mediaUsage(dataDir).then(mediaBytes=>{
+      if(closed)return;
+      const space=disk(),textBytes=db.prepare('SELECT length(CAST(json AS BLOB)) AS size FROM app WHERE id=1').get().size;
+      storageUsage={mediaBytes,textBytes,diskFreeBytes:space.available,diskTotalBytes:space.size};
+      usageAt=mediaClock();
+    }).catch(error=>console.error('读取存储空间失败',error)).finally(()=>{measuring=null;});
+  }
+  function storageView(state=read()){
+    measureStorage();
+    const {status,detail,startedAt,completedAt,beforeBytes,afterBytes,migratedCount,backupName}=readMigration();
+    return {
+      retention:state.settings.mediaRetentionDays??7,usage:storageUsage,calculating:Boolean(measuring),
+      lastCleanup:lastCleanup(cleanupKey),lastEarlyCleanup:lastCleanup(pressureKey),
+      migration:{status,detail,startedAt,completedAt,beforeBytes,afterBytes,migratedCount,backupName}
+    };
+  }
+  function scanOrphans(state,at){
+    const removed=Retention.cleanOrphans(dataDir,Retention.mediaReferences(state,memoryMedia(state)),at);
+    if(removed.count)usageAt=-Infinity;
+    return removed;
+  }
+  function expireMedia(state,items,days,at,pressure){
+    const ids=Retention.expire(state,items,at);
+    const cutoff=pressure||days==='forever'?-Infinity:at-days*Retention.day;
+    if(pressure||retentionStartedAt()<=cutoff)Retention.pruneRoleMedia(state,cutoff,ids);
+  }
+  function recordCleanup(key,items,state,at){
+    const affected=Retention.affected(items,mediaBytes),removed=scanOrphans(state,at);
+    setMeta(key,JSON.stringify({at,...affected,files:removed.count,releasedBytes:removed.bytes}));
+    usageAt=-Infinity;
+  }
+  function requireMediaSpace(bytes){
+    const enough=()=>{const space=disk();return space.available>=space.reserve+bytes;};
+    if(enough())return;
+    if(!storageOperation&&!db.isTransaction&&!closed){
+      const at=mediaClock(),state=read(),extra=memoryMedia(state);
+      scanOrphans(state,at);
+      if(enough())return;
+      const space=disk(),items=Retention.candidates(state,{days:7,startedAt:retentionStartedAt(),now:at,pressure:true});
+      const selected=Retention.pressuredCandidates(state,extra,items,ref=>{
+        const file=mediaFile(ref);
+        return file&&file.mtimeMs<=at-Retention.day?file.size:0;
+      },space.reserve+bytes-space.available);
+      if(selected.length){
+        const next=mutate(s=>expireMedia(s,selected,s.settings.mediaRetentionDays??7,at,true)).state;
+        recordCleanup(pressureKey,selected,next,at);
+      }
+      if(enough())return;
+    }
+    S.fail('服务器硬盘空间不足，请清理服务器上的其他文件，或在设置里缩短图片保存时长',507,'DISK_SPACE');
+  }
+  const removeSpaceCheck=Media.installSpaceCheck(dataDir,requireMediaSpace);
+  async function periodicMediaCleanup(){
+    try{
+      if(closed||storageOperation||await updateMaintenance()||closed||storageOperation)return;
+      const state=read(),days=state.settings.mediaRetentionDays??7,at=mediaClock();
+      const items=Retention.candidates(state,{days,startedAt:retentionStartedAt(),now:at});
+      const oldRoleMedia=days!=='forever'&&retentionStartedAt()<=at-days*Retention.day&&state.engine.data.actions?.roleMedia?.some(item=>item.createdAt<=at-days*Retention.day);
+      const next=items.length||oldRoleMedia?mutate(s=>expireMedia(s,items,days,at,false)).state:state;
+      if(items.length||oldRoleMedia||at-(lastCleanup(cleanupKey)?.at||0)>=Retention.day)recordCleanup(cleanupKey,items,next,at);
+    }catch(error){console.error('清理聊天媒体失败',error);}
+    finally{if(!closed){mediaTimer=setTimeout(periodicMediaCleanup,3600000);mediaTimer.unref();}}
+  }
+  if(options.mediaTimers!==false){mediaTimer=setTimeout(periodicMediaCleanup,120000);mediaTimer.unref();}
   // An interrupted upstream call is recoverable rather than left permanently pending.
   // A failure here (for example a full data store) is logged and must not stop the service from starting.
   try{
@@ -243,9 +319,17 @@ function createApp(options={}){
     return payload;
   }
   function downloadBackup(res,includeModelKeys=false){
-    const payload=buildLegacyBackup(read(),includeModelKeys);
-    res.setHeader('Content-Disposition',`attachment; filename="pipi-backup-${payload.exportedAt.slice(0,10)}.json"`);
-    return json(res,200,payload);
+    if(storageOperation)S.fail('资料正在备份或恢复，请稍后重试',409,'BUSY');
+    const operation=Symbol('backup');
+    storageOperation=operation;
+    const unlock=()=>{if(storageOperation===operation)storageOperation=null;};
+    try{
+      const payload=buildLegacyBackup(read(),includeModelKeys);
+      res.once('finish',unlock);
+      res.once('close',unlock);
+      res.setHeader('Content-Disposition',`attachment; filename="pipi-backup-${payload.exportedAt.slice(0,10)}.json"`);
+      return json(res,200,payload);
+    }catch(error){unlock();throw error;}
   }
   async function rawBody(req,max=128*1024*1024){
     const ct=String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase();
@@ -337,7 +421,7 @@ function createApp(options={}){
       return json(res,200,{
         setupRequired:!getMeta('password'),authenticated:!!auth,...(auth?{
           csrfToken:auth.csrf
-        }:{}),version:VERSION,sourceUrl,rolePanel:true,softwareUpdates:true,binaryMedia:true,imageVariants:true
+        }:{}),version:VERSION,sourceUrl,rolePanel:true,softwareUpdates:true,binaryMedia:true,imageVariants:true,storageMaintenance:true
       });
     }
     if(req.method==='POST'&&(p==='/api/setup'||p==='/api/login')){
@@ -393,8 +477,7 @@ function createApp(options={}){
     }
     if(mutating&&p!=='/api/logout'&&await updateMaintenance())S.fail('小手机正在更新，请稍后再试',503,'UPDATE_IN_PROGRESS');
     if(req.method==='GET'&&p==='/api/storage'){
-      const {status,detail,startedAt,completedAt,beforeBytes,afterBytes,migratedCount,backupName}=readMigration();
-      return json(res,200,{migration:{status,detail,startedAt,completedAt,beforeBytes,afterBytes,migratedCount,backupName}});
+      return json(res,200,storageView());
     }
     if(req.method==='GET'&&p==='/api/state'){
       // Background refresh sends the revision it already has; an unchanged revision skips re-sending the whole state.
@@ -542,6 +625,24 @@ function createApp(options={}){
     if(p!=='/api/restore')Media.externalize(dataDir,b,{image:(value,field)=>S.image(value,false,field==='avatar'?'头像':field==='cover'?'朋友圈背景图':'')});
     rate('api:'+auth.hash,180,60000);
     switch(p){
+      case '/api/storage/retention':{
+        const retention=b.retention;
+        if(!Retention.retentionChoices.includes(retention))S.fail('请选择有效的保存时长');
+        if(storageOperation)S.fail('资料正在备份或恢复，请稍后重试',409,'BUSY');
+        const current=read(),before=current.settings.mediaRetentionDays??7,at=mediaClock();
+        const shorter=retention!=='forever'&&(before==='forever'||retention<before);
+        const items=shorter?Retention.candidates(current,{days:retention,startedAt:retentionStartedAt(),now:at}):[];
+        const confirmationToken=shorter?digest(JSON.stringify([auth.hash,before,retention,items.map(item=>item.id)])):undefined;
+        if(b.preview===true||shorter&&b.confirmationToken!==confirmationToken){
+          return json(res,200,{requiresConfirmation:shorter,affected:Retention.affected(items,mediaBytes),confirmationToken});
+        }
+        const next=before===retention?current:mutate(state=>{
+          state.settings.mediaRetentionDays=retention;
+          if(shorter)expireMedia(state,items,retention,at,false);
+        }).state;
+        if(shorter)recordCleanup(cleanupKey,items,next,at);
+        return json(res,200,{storage:storageView(next),state:S.publicState(next)});
+      }
       case '/api/backup':{
         if(typeof b.includeModelKeys!=='boolean')S.fail('是否包含模型密钥必须明确指定');
         return downloadBackup(res,b.includeModelKeys);
@@ -669,6 +770,7 @@ function createApp(options={}){
       case '/api/chat/retry':{
         rate('ai:'+auth.hash,40);
         const m=S.find(read().messages,b.messageId,'消息');
+        if(m.meta?.expired)S.fail('聊天媒体已过期，请重新发送',409,'MEDIA_EXPIRED');
         S.chatAllowed(S.role(read(),m.roleId));
         if(m.sender!=='user'||m.status!=='error')S.fail('只有失败的用户消息可以重试');
         mutate(s=>{
@@ -919,6 +1021,7 @@ function createApp(options={}){
         if(b.audio!==undefined)S.fail('消息转文字不能另传音频');
         const m=S.find(s.messages,S.text(b.messageId,100),'语音消息');
         S.chatAllowed(S.role(s,m.roleId));
+        if(m.meta?.expired)S.fail('语音已过期，无法转文字',409,'MEDIA_EXPIRED');
         if(m.type!=='voice'||!m.meta?.audio)S.fail('只有语音消息可以转文字');
         if(m.meta.transcript?.trim())return json(res,200,{text:m.meta.transcript,state:S.publicState(s),...(m.meta.transcriptSource==='demo'?{demo:true}:{})});
         const understanding=await AI.understandVoice(s,m.meta.audio,{onUsage:runtime.onUsage,dataDir});
@@ -941,6 +1044,7 @@ function createApp(options={}){
         try{
         const s=read(),m=S.find(s.messages,b.messageId),r=S.role(s,m.roleId);
         S.chatAllowed(r);
+        if(m.meta?.expired?.kind==='voice')S.fail('语音已过期，无法播放',409,'MEDIA_EXPIRED');
         if(m.sender==='system')S.fail('系统提示不能朗读');
         if(m.type!=='text'||!m.content.trim())S.fail('只有文本消息可朗读');
         const voiceMod=require('./lib/engine/modules/voice.cjs');
@@ -951,6 +1055,7 @@ function createApp(options={}){
           const message=latest.messages.find(x=>x.id===m.id);
           if(message){
             if(message.content!==m.content||message.type!==m.type)S.fail('消息在朗读期间已更改，请重试',409,'CONFLICT');
+            if(message.meta?.expired?.kind==='voice')S.fail('语音已过期，无法播放',409,'MEDIA_EXPIRED');
             message.meta={
               ...(message.meta||{}),audio
             };
@@ -963,7 +1068,10 @@ function createApp(options={}){
       }
       case '/api/restore':{
         if(b.confirm!==true)S.fail('恢复需要 confirm: true');
+        if(storageOperation)S.fail('资料正在备份或恢复，请稍后重试',409,'BUSY');
         if(inFlight||runtime.typingState().length)S.fail('模型请求进行中，请完成后再恢复',409,'BUSY');
+        storageOperation='restore';
+        try{
         const current=read(),restored=S.validateBackup(b.backup,current);
         const modelKeyCounts=Models.restoreBackupKeys(restored.settings.ai,b.backup.modelKeys);
         checkProviderUrls(restored);
@@ -990,6 +1098,7 @@ function createApp(options={}){
         const clearedModelKeys=state.settings.ai.sources.some(source=>
           !source.keySet&&previousAI.sources.some(previous=>previous.id===source.id&&previous.keySet));
         return json(res,200,{state,clearedModelKeys,...modelKeyCounts});
+        }finally{storageOperation=null;}
       }
       default:S.fail('接口不存在',404,'NOT_FOUND');
     }
@@ -1064,6 +1173,8 @@ function createApp(options={}){
       });
     },async close(){
       closed=true;
+      clearTimeout(mediaTimer);
+      removeSpaceCheck();
       await stickerQueue.close();
       for(const client of clients)client.res.end();clients.clear();
       await runtime.close();

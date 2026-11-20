@@ -72,7 +72,7 @@ test('new-friends list shows actual saved details and a decorative header mark',
   assert.match(html,/data-action="add-role">创建新朋友/);assert.doesNotMatch(html,/请求|申请|昨天|今天|2026/);
 });
 test('settings offer a direct usage route and both duplicate moments management entries are absent',async()=>{
-  const navigations=[],scope=vm.createContext({navigations});vm.runInContext(`const state={settings:{}},routes=new Map(),route={};const window={PipiUsage:{open:async()=>showView('engine-usage')}};
+  const navigations=[],scope=vm.createContext({navigations,storageMaintenance:false});vm.runInContext(`const state={settings:{}},routes=new Map(),route={};const window={PipiUsage:{open:async()=>showView('engine-usage')}};
     function header(){return '';}function plainCell(title,action){return '<button data-action="'+action+'">'+title+'</button>';}function roleById(){}function showView(name){navigations.push(name);}
     ${productFunction('renderSettings')}${productFunction('handleAction')}globalThis.ui={renderSettings,handleAction};`,scope);
   const html=scope.ui.renderSettings();assert.match(html,/data-action="engine-usage">用量/);assert.doesNotMatch(html,/朋友圈管理|moments-settings/);

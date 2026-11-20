@@ -1,0 +1,430 @@
+{
+  "repository": "https://github.com/LiangNiang/fake-world",
+  "revision": "de336cfc469772bccdf00ef1f91bfbf8d3953d08",
+  "license": "GPL-3.0-only",
+  "files": [
+    {
+      "name": "add-friend-outlined.svg",
+      "path": "packages/web/src/assets/add-friend-outlined.svg",
+      "gitBlobSha": "f3f524eb53a8b1dc9a27b37a22fd42f89e970196",
+      "bytes": 1161
+    },
+    {
+      "name": "add-outlined.svg",
+      "path": "packages/web/src/assets/add-outlined.svg",
+      "gitBlobSha": "4cea2171e07fc503d29df724d4a7d8b7fcd37bdb",
+      "bytes": 267
+    },
+    {
+      "name": "add2-outlined.svg",
+      "path": "packages/web/src/assets/add2-outlined.svg",
+      "gitBlobSha": "2fe55df7ff5d71ffab45c2c31743a177851f8306",
+      "bytes": 611
+    },
+    {
+      "name": "address-book-filled.svg",
+      "path": "packages/web/src/assets/address-book-filled.svg",
+      "gitBlobSha": "04bc96d0db6f7602d05a0fb4ff5dd38f51193062",
+      "bytes": 720
+    },
+    {
+      "name": "address-book-outlined.svg",
+      "path": "packages/web/src/assets/address-book-outlined.svg",
+      "gitBlobSha": "902b04919de7db8fe1821d9946d809617ab9e7d7",
+      "bytes": 1152
+    },
+    {
+      "name": "album-filled.svg",
+      "path": "packages/web/src/assets/album-filled.svg",
+      "gitBlobSha": "bd8c80ce4d803747e0c29a97a8180509397bf1c8",
+      "bytes": 519
+    },
+    {
+      "name": "album-outlined.svg",
+      "path": "packages/web/src/assets/album-outlined.svg",
+      "gitBlobSha": "150dc567b1b034384222aca3bddf89beacf439df",
+      "bytes": 626
+    },
+    {
+      "name": "apple-watch-outlined.svg",
+      "path": "packages/web/src/assets/apple-watch-outlined.svg",
+      "gitBlobSha": "56ad494b4c8f7ca5b40831b94d15ca189dc9d497",
+      "bytes": 1827
+    },
+    {
+      "name": "arrow-outlined.svg",
+      "path": "packages/web/src/assets/arrow-outlined.svg",
+      "gitBlobSha": "22b22ef1c0ae5f6c1d64d3ef1bb1a7a61832d00e",
+      "bytes": 318
+    },
+    {
+      "name": "back-filled.svg",
+      "path": "packages/web/src/assets/back-filled.svg",
+      "gitBlobSha": "fd5f1388d088b3d0a42805076e29a8b9b8090ad0",
+      "bytes": 302
+    },
+    {
+      "name": "backspace.svg",
+      "path": "packages/web/src/assets/backspace.svg",
+      "gitBlobSha": "22b544db92c085fcf4fa41ac149597024d5843da",
+      "bytes": 1119
+    },
+    {
+      "name": "camera-filled.svg",
+      "path": "packages/web/src/assets/camera-filled.svg",
+      "gitBlobSha": "2da2d4604c032f32574ca8de72c5175fba69b198",
+      "bytes": 535
+    },
+    {
+      "name": "camera-outlined.svg",
+      "path": "packages/web/src/assets/camera-outlined.svg",
+      "gitBlobSha": "39c7b16af9fd610da41eadc97e26e3cb9a4be3b7",
+      "bytes": 716
+    },
+    {
+      "name": "cards.svg",
+      "path": "packages/web/src/assets/cards.svg",
+      "gitBlobSha": "bad5fc9bd6b7631fee63dedf9a9973f216ed0e9a",
+      "bytes": 632
+    },
+    {
+      "name": "close-outlined.svg",
+      "path": "packages/web/src/assets/close-outlined.svg",
+      "gitBlobSha": "476dbf7f0ea49d81e27ab1393f78d6bede7fbbbc",
+      "bytes": 321
+    },
+    {
+      "name": "coin-filled.svg",
+      "path": "packages/web/src/assets/coin-filled.svg",
+      "gitBlobSha": "c93250f53fa2223b083e6e16426ea95e930e4369",
+      "bytes": 399
+    },
+    {
+      "name": "coin-outlined.svg",
+      "path": "packages/web/src/assets/coin-outlined.svg",
+      "gitBlobSha": "dab0b05b1e53b951803949b8c7b8ca5b64fc08df",
+      "bytes": 547
+    },
+    {
+      "name": "comment-outlined.svg",
+      "path": "packages/web/src/assets/comment-outlined.svg",
+      "gitBlobSha": "a5443c00b81ae44c4829c0b0b0ab61a356a322f9",
+      "bytes": 592
+    },
+    {
+      "name": "discover-filled.svg",
+      "path": "packages/web/src/assets/discover-filled.svg",
+      "gitBlobSha": "9e7de5e349e20d1060c869e95917a406f49303ad",
+      "bytes": 360
+    },
+    {
+      "name": "discover-outlined.svg",
+      "path": "packages/web/src/assets/discover-outlined.svg",
+      "gitBlobSha": "a3b823c7ae9b2cb3818eb1b4d0ebd1dcb9dbb541",
+      "bytes": 763
+    },
+    {
+      "name": "display-mobile-outlined.svg",
+      "path": "packages/web/src/assets/display-mobile-outlined.svg",
+      "gitBlobSha": "30892f7a07b80a825fe0a0a8c959a8b232352644",
+      "bytes": 592
+    },
+    {
+      "name": "display-outlined.svg",
+      "path": "packages/web/src/assets/display-outlined.svg",
+      "gitBlobSha": "a6273d2e202c6e0c578b5a4613f004cf0b688b86",
+      "bytes": 389
+    },
+    {
+      "name": "done-filled.svg",
+      "path": "packages/web/src/assets/done-filled.svg",
+      "gitBlobSha": "37c9482352c37d44a9c4964f9ba9a2476283ad9c",
+      "bytes": 302
+    },
+    {
+      "name": "done2-outlined.svg",
+      "path": "packages/web/src/assets/done2-outlined.svg",
+      "gitBlobSha": "af45e7563939c6b9f2864d7cb7e7fa9ec63c9d3c",
+      "bytes": 556
+    },
+    {
+      "name": "error-filled.svg",
+      "path": "packages/web/src/assets/error-filled.svg",
+      "gitBlobSha": "ddc158f75316790087180ed65b2cb7358fc1c23c",
+      "bytes": 532
+    },
+    {
+      "name": "error-outlined.svg",
+      "path": "packages/web/src/assets/error-outlined.svg",
+      "gitBlobSha": "fb8aab447a4513006288606603ea451035dd86ad",
+      "bytes": 663
+    },
+    {
+      "name": "favorites.svg",
+      "path": "packages/web/src/assets/favorites.svg",
+      "gitBlobSha": "dbc5f678e5b93d3ad39228494f4e0d6ff2edf6de",
+      "bytes": 1318
+    },
+    {
+      "name": "float-window-on-outlined.svg",
+      "path": "packages/web/src/assets/float-window-on-outlined.svg",
+      "gitBlobSha": "6935a0da7f84ca0f12f9f97a9d45dd916342f7e0",
+      "bytes": 657
+    },
+    {
+      "name": "games.svg",
+      "path": "packages/web/src/assets/games.svg",
+      "gitBlobSha": "1a531ae4816225ab762573c43f73a58e38f4d608",
+      "bytes": 1537
+    },
+    {
+      "name": "help-outlined.svg",
+      "path": "packages/web/src/assets/help-outlined.svg",
+      "gitBlobSha": "0f52bb57a55b6d5d3a36fb8b1de1af4eae9a04f5",
+      "bytes": 988
+    },
+    {
+      "name": "imac-outlined.svg",
+      "path": "packages/web/src/assets/imac-outlined.svg",
+      "gitBlobSha": "d79b3d7458bd37c6b96f96ed18f4c8ca0a8276c5",
+      "bytes": 644
+    },
+    {
+      "name": "keyboard-outlined.svg",
+      "path": "packages/web/src/assets/keyboard-outlined.svg",
+      "gitBlobSha": "215658cf992ed33740eb7fb06cbb855553ce25a8",
+      "bytes": 609
+    },
+    {
+      "name": "like-filled.svg",
+      "path": "packages/web/src/assets/like-filled.svg",
+      "gitBlobSha": "ee8023c4a96d49d3d51791df9b692ac89e085245",
+      "bytes": 540
+    },
+    {
+      "name": "like-outlined.svg",
+      "path": "packages/web/src/assets/like-outlined.svg",
+      "gitBlobSha": "c6f88744dfe3698dd2648f8ae400758a6c86b199",
+      "bytes": 899
+    },
+    {
+      "name": "mini-program-2-outlined.svg",
+      "path": "packages/web/src/assets/mini-program-2-outlined.svg",
+      "gitBlobSha": "447538e86d43c37db8d527da399ab79fbe69ad0f",
+      "bytes": 1272
+    },
+    {
+      "name": "moment.svg",
+      "path": "packages/web/src/assets/moment.svg",
+      "gitBlobSha": "cdff5f546588cc38686eacdf5e39653e28a967bc",
+      "bytes": 2484
+    },
+    {
+      "name": "more-2-outlined.svg",
+      "path": "packages/web/src/assets/more-2-outlined.svg",
+      "gitBlobSha": "7c6b070775835b8b6abbb396d4b2f508fe6a8779",
+      "bytes": 464
+    },
+    {
+      "name": "more-filled.svg",
+      "path": "packages/web/src/assets/more-filled.svg",
+      "gitBlobSha": "cd0a19dfec54594d47851ccc1895333472877f32",
+      "bytes": 501
+    },
+    {
+      "name": "muted.svg",
+      "path": "packages/web/src/assets/muted.svg",
+      "gitBlobSha": "33cb1ec8884acbc0688cb6b77c5658fea780c52c",
+      "bytes": 1330
+    },
+    {
+      "name": "news-outlined.svg",
+      "path": "packages/web/src/assets/news-outlined.svg",
+      "gitBlobSha": "7460ecf0b352ed9b430d06dc543446e7b188a767",
+      "bytes": 2183
+    },
+    {
+      "name": "pad-outlined.svg",
+      "path": "packages/web/src/assets/pad-outlined.svg",
+      "gitBlobSha": "75c7068391e7647193c218a530b8da77b558fec1",
+      "bytes": 477
+    },
+    {
+      "name": "pay-cards-outlined.svg",
+      "path": "packages/web/src/assets/pay-cards-outlined.svg",
+      "gitBlobSha": "1a0d6852dbc2b060a626ba4d52b1182ec07b9cbd",
+      "bytes": 367
+    },
+    {
+      "name": "pay-mini-fund-outlined.svg",
+      "path": "packages/web/src/assets/pay-mini-fund-outlined.svg",
+      "gitBlobSha": "7620fb95b0ff940a553b3cf0d539c174af6fe307",
+      "bytes": 825
+    },
+    {
+      "name": "pay-relative-cards.svg",
+      "path": "packages/web/src/assets/pay-relative-cards.svg",
+      "gitBlobSha": "17bed301b54505739cc3fef66b1cd958f9812a1c",
+      "bytes": 1339
+    },
+    {
+      "name": "pay-reward-outlined.svg",
+      "path": "packages/web/src/assets/pay-reward-outlined.svg",
+      "gitBlobSha": "5763f8f660f998b9200b633c7038b00e89bbcd56",
+      "bytes": 1973
+    },
+    {
+      "name": "pay-vendor.svg",
+      "path": "packages/web/src/assets/pay-vendor.svg",
+      "gitBlobSha": "10e28c47486adf044d73b69a94f054e63b579f55",
+      "bytes": 526
+    },
+    {
+      "name": "paylogo-outlined.svg",
+      "path": "packages/web/src/assets/paylogo-outlined.svg",
+      "gitBlobSha": "ab3ceec43951c41c1d967be96a87ded7a1fc829f",
+      "bytes": 1222
+    },
+    {
+      "name": "people-filled.svg",
+      "path": "packages/web/src/assets/people-filled.svg",
+      "gitBlobSha": "4e60bfda478beaa6e3e8f16a111d9bf7d5bdb0e5",
+      "bytes": 639
+    },
+    {
+      "name": "people-outlined.svg",
+      "path": "packages/web/src/assets/people-outlined.svg",
+      "gitBlobSha": "211ada84f1668f9b5e22d4daae28c340cc86989f",
+      "bytes": 1213
+    },
+    {
+      "name": "play-filled.svg",
+      "path": "packages/web/src/assets/play-filled.svg",
+      "gitBlobSha": "e2873fb0f801602bc6067c660a9317b9019b6a21",
+      "bytes": 409
+    },
+    {
+      "name": "play2-filled.svg",
+      "path": "packages/web/src/assets/play2-filled.svg",
+      "gitBlobSha": "40222a0b3270ac7013865a62a656f7b1275e409a",
+      "bytes": 607
+    },
+    {
+      "name": "play2-outlined.svg",
+      "path": "packages/web/src/assets/play2-outlined.svg",
+      "gitBlobSha": "6dafd9d78deb5eb6da5b0f91ab22062a4cd20fc0",
+      "bytes": 771
+    },
+    {
+      "name": "plus-circle.svg",
+      "path": "packages/web/src/assets/plus-circle.svg",
+      "gitBlobSha": "a2a5c1fc8641c79a746d5d4ab88a141cc6f9f37f",
+      "bytes": 513
+    },
+    {
+      "name": "previous2-outlined.svg",
+      "path": "packages/web/src/assets/previous2-outlined.svg",
+      "gitBlobSha": "b72832529e679db6d426262ac1757149df674419",
+      "bytes": 724
+    },
+    {
+      "name": "qrcode-outlined.svg",
+      "path": "packages/web/src/assets/qrcode-outlined.svg",
+      "gitBlobSha": "94639cdeb69039ddea6eafccc75c0fc76c774a15",
+      "bytes": 851
+    },
+    {
+      "name": "scan-outlined.svg",
+      "path": "packages/web/src/assets/scan-outlined.svg",
+      "gitBlobSha": "6e28bffeb05d598cd3f7e22f5ceb8301dab7fbcf",
+      "bytes": 3683
+    },
+    {
+      "name": "search-gray.svg",
+      "path": "packages/web/src/assets/search-gray.svg",
+      "gitBlobSha": "66d7235be5a025d0fd80c3b3b188651ffaaebd94",
+      "bytes": 821
+    },
+    {
+      "name": "search-logo-outlined.svg",
+      "path": "packages/web/src/assets/search-logo-outlined.svg",
+      "gitBlobSha": "e040f753b8ccec093dc24f5975739d2bd68363e0",
+      "bytes": 1480
+    },
+    {
+      "name": "search-outlined.svg",
+      "path": "packages/web/src/assets/search-outlined.svg",
+      "gitBlobSha": "079e1aefec6dc7c2539c21d02b170da19ae1240b",
+      "bytes": 584
+    },
+    {
+      "name": "setting-outlined.svg",
+      "path": "packages/web/src/assets/setting-outlined.svg",
+      "gitBlobSha": "590e3ca8c754652e91766d4abda662a7bc6de8b0",
+      "bytes": 2815
+    },
+    {
+      "name": "sticker-outlined.svg",
+      "path": "packages/web/src/assets/sticker-outlined.svg",
+      "gitBlobSha": "196cd951243f97287996aa29b04ba3d2a6dfb415",
+      "bytes": 1098
+    },
+    {
+      "name": "transfer2-outlined.svg",
+      "path": "packages/web/src/assets/transfer2-outlined.svg",
+      "gitBlobSha": "ca9feceee9b5bb9364e3f047be8fa52141f0154f",
+      "bytes": 914
+    },
+    {
+      "name": "video-call-outlined.svg",
+      "path": "packages/web/src/assets/video-call-outlined.svg",
+      "gitBlobSha": "2baf0abc2d797a522c81ad77f2b1940b36dfebfb",
+      "bytes": 593
+    },
+    {
+      "name": "voice-outlined.svg",
+      "path": "packages/web/src/assets/voice-outlined.svg",
+      "gitBlobSha": "098a49580bb5d7494694fe949366e81a00831680",
+      "bytes": 1098
+    },
+    {
+      "name": "voice.svg",
+      "path": "packages/web/src/assets/voice.svg",
+      "gitBlobSha": "ad39a97188b1a43513af88ad0ed1d0ff1ddcb024",
+      "bytes": 720
+    },
+    {
+      "name": "wallet-outlined.svg",
+      "path": "packages/web/src/assets/wallet-outlined.svg",
+      "gitBlobSha": "db2426eb9e67b65e4130931836357e5c4ff0e19f",
+      "bytes": 674
+    },
+    {
+      "name": "wechat.svg",
+      "path": "packages/web/src/assets/wechat.svg",
+      "gitBlobSha": "a0ca54b5354356e70242cedea6131817e57024f8",
+      "bytes": 526
+    },
+    {
+      "name": "signal.svg",
+      "path": "packages/web/src/components/StatusBar/assets/signal.svg",
+      "gitBlobSha": "8e9f658643c678faab62caa262383a9e43910157",
+      "bytes": 709,
+      "purpose": "Desktop phone preview only; fixed illustrative system symbols"
+    },
+    {
+      "name": "wifi.svg",
+      "path": "packages/web/src/components/StatusBar/assets/wifi.svg",
+      "gitBlobSha": "8497d355f74c8f74d60ab663d51be150db47d686",
+      "bytes": 1518,
+      "purpose": "Desktop phone preview only; fixed illustrative system symbols"
+    },
+    {
+      "name": "battery.svg",
+      "path": "packages/web/src/components/StatusBar/assets/battery.svg",
+      "gitBlobSha": "fe495efd0cb73313c0e9120993294d6699166f73",
+      "bytes": 405,
+      "purpose": "Desktop phone preview only; fixed illustrative system symbols"
+    }
+  ]
+}

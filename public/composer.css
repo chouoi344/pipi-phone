@@ -1,0 +1,8 @@
+/* The editing surface owns both text and inline pictures, so native caret and
+   line wrapping use the same geometry. Existing licensed sprite rules apply. */
+.compose-field .compose-input[contenteditable]{display:block;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;outline:0;cursor:text;user-select:text;-webkit-user-select:text;caret-color:#111}
+.compose-input [data-compose-token]{user-select:all;-webkit-user-select:all;white-space:nowrap;cursor:default}
+.compose-input[aria-disabled="true"]{opacity:.65;cursor:default}
+
+
+.composer-extras{overflow:hidden}

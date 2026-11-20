@@ -1,0 +1,41 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+#overlay .wardrobe-import-dialog{position:absolute;inset:auto 0 0;height:85%;max-height:calc(100% - 24px);border-radius:12px 12px 0 0;box-shadow:0 0 0 100vmax #0005;animation:none;background:#fff}
+.wardrobe-import-dialog .modal-header{background:#fff;border-color:#ededed}
+.wardrobe-import-dialog .modal-header h3{color:#252525;font-weight:400}
+.wardrobe-import-dialog .modal-body{padding:10px 16px 18px;overscroll-behavior:contain}
+.wardrobe-import-dialog .modal-submit:disabled{opacity:.4}
+.wardrobe-import-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:38px}
+.wardrobe-import-toolbar>button{min-height:36px;padding:0 12px;border:0;border-radius:5px;background:#edf7f0;color:#177549;font:inherit;font-size:14px}
+.wardrobe-import-toolbar>span{color:#737373;font-size:13px;text-align:right}
+.wardrobe-import-toolbar>button:disabled{opacity:.45}
+.wardrobe-import-note,.wardrobe-import-empty{margin:9px 0 14px;color:#737373;font-size:12px;line-height:1.65}
+.wardrobe-import-empty{padding:45px 0;text-align:center;font-size:14px}
+.wardrobe-import-selection-error{margin:8px 0;color:#bb3d36;font-size:13px;line-height:1.5}
+.wardrobe-import-row{display:grid;grid-template-columns:66px minmax(0,1fr);gap:11px;padding:12px 0;border-top:1px solid #ededed;color:#252525}
+.wardrobe-import-thumb{display:grid;place-items:center;align-self:start;width:66px;height:88px;border-radius:5px;overflow:hidden;background:#f3f3f3;color:#999}
+.wardrobe-import-thumb img{display:block;width:100%;height:100%;object-fit:cover}
+.wardrobe-import-thumb .icon{width:24px;height:24px}
+.wardrobe-import-row-main{min-width:0}
+.wardrobe-import-row-heading{display:flex;align-items:center;gap:8px;min-height:22px;margin-bottom:5px;color:#737373;font-size:12px}
+.wardrobe-import-row-heading>span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wardrobe-import-row-heading button,.wardrobe-import-row-footer button{border:0;padding:2px 0;background:none;color:#576b95;font:inherit;font-size:12px;white-space:nowrap}
+.wardrobe-import-row fieldset{margin:0;padding:0;border:0;min-width:0}
+.wardrobe-import-label{display:block;color:#737373;font-size:12px;line-height:1.5}
+.wardrobe-import-description>span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.wardrobe-import-description textarea{display:block;box-sizing:border-box;resize:vertical;width:100%;min-height:54px;max-height:110px;margin:0;padding:6px 8px;border:1px solid #e7e7e7;border-radius:5px;background:#f7f7f7;color:#252525;font:inherit;font-size:13px;line-height:1.5}
+.wardrobe-import-row textarea:focus,.wardrobe-import-row select:focus{outline:0;border-color:#b6b6b6;box-shadow:none}
+.wardrobe-import-classification{display:flex;align-items:end;gap:10px;margin-top:8px}
+.wardrobe-import-classification>label{flex:0 0 66px}
+.wardrobe-import-classification select{box-sizing:border-box;width:100%;height:31px;margin-top:3px;padding:2px 5px;border:1px solid #e7e7e7;border-radius:5px;background:#f7f7f7;color:#252525;font:inherit;font-size:13px}
+.wardrobe-import-seasons{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));flex:1;gap:3px;min-width:0;height:31px}
+.wardrobe-import-seasons label{position:relative;display:grid;place-items:center;cursor:pointer}
+.wardrobe-import-seasons input{position:absolute;opacity:0;width:1px;height:1px}
+.wardrobe-import-seasons span{box-sizing:border-box;display:grid;place-items:center;width:100%;height:31px;border:1px solid #e7e7e7;border-radius:4px;background:#f7f7f7;color:#737373;font-size:12px}
+.wardrobe-import-seasons input:checked+span{border-color:#b6c8bc;background:#edf5ef;color:#315c41}
+.wardrobe-import-seasons input:focus-visible+span{outline:2px solid #b6b6b6;outline-offset:1px}
+.wardrobe-import-row fieldset:disabled{opacity:.5}
+.wardrobe-import-row-footer{display:flex;align-items:start;gap:7px;margin-top:7px;min-height:17px;font-size:11px;line-height:1.5;color:#737373}
+.wardrobe-import-row-footer [data-wardrobe-status]{overflow-wrap:anywhere;flex:1}
+.wardrobe-import-row-footer [data-wardrobe-size]{white-space:nowrap;margin-left:auto;text-align:right}
+.wardrobe-import-row-footer .has-error{color:#bb3d36}
+@media(min-width:700px){#overlay .wardrobe-import-dialog{inset:50% auto auto 50%;transform:translate(-50%,-50%);width:min(500px,calc(100% - 32px));height:82%;border-radius:12px}}

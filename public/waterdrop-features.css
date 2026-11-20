@@ -1,0 +1,73 @@
+/* The service pages keep their own content and status colors on the waterdrop surfaces. */
+html[data-skin="waterdrop"] :is(.services-page,.ledger-page,.farm-page,.favorites-page,.moment-media-album) {
+  background: var(--wd-canvas);
+  color: var(--wd-ink);
+}
+html[data-skin="waterdrop"] :is(.services-wallet,.services-group,.ledger-summary,.farm-info,.farm-board,.farm-friends,.favorite-card,.status-current) {
+  margin: 10px 12px;
+  border: 1px solid rgba(255,255,255,.94);
+  border-radius: 22px;
+  background: var(--wd-panel);
+  box-shadow: var(--pt-group-shadow);
+}
+html[data-skin="waterdrop"] body.wechat-classic .services-page:has(.services-wallet),
+html[data-skin="waterdrop"] body.wechat-classic :is(#view,.navigation-snapshot)[data-route="wallet"] .feature-content {background:var(--wd-canvas);}
+html[data-skin="waterdrop"] .services-wallet {
+  background:radial-gradient(ellipse at 15% 16%,#fffdfdcc,transparent 63%),linear-gradient(132deg,#d8f2ef,#dcedf8 62%,#eee6f2);
+  box-shadow:inset 0 1.5px 2px #fff,inset 0 -3px 5px #ffffffa6,0 5px 16px #253c5412;
+}
+html[data-skin="waterdrop"] .services-wallet > button {color:#213e45;}
+html[data-skin="waterdrop"] .services-wallet .services-pay-icon {color:#235d60;}
+html[data-skin="waterdrop"] .services-wallet small {color:#445e64;}
+html[data-skin="waterdrop"] .services-group h3 { font-weight:600; color:#555c67; }
+html[data-skin="waterdrop"] .service-entry strong { color:var(--wd-ink); font-weight:500; }
+html[data-skin="waterdrop"] :is(.ledger-summary,.farm-info,.status-current) {
+  background: radial-gradient(ellipse at 10% 8%,#eaf4fb,transparent 68%), linear-gradient(150deg,#fff,#fff8fb);
+}
+html[data-skin="waterdrop"] .ledger-entries {margin-inline:12px;border-radius:20px;overflow:hidden;}
+html[data-skin="waterdrop"] .ledger-quick-actions {margin-inline:12px;gap:8px;background:transparent;}
+html[data-skin="waterdrop"] .ledger-quick-actions button,
+html[data-skin="waterdrop"] .farm-friend button,
+html[data-skin="waterdrop"] .favorites-search > label {
+  min-height:44px;border:var(--wd-rim);border-radius:24px;background:var(--wd-pill);box-shadow:var(--wd-shadow);
+}
+html[data-skin="waterdrop"] .ledger-filter {gap:8px;background:transparent;}
+html[data-skin="waterdrop"] .ledger-filter select {border-radius:20px;background:white;padding-inline:10px;max-width:40%;}
+html[data-skin="waterdrop"] :is(.month-picker input,.rp-search input,.usage-search,.moment-picker-search) {min-height:44px;}
+html[data-skin="waterdrop"] :is(.ledger-category-icon,.farm-friend .avatar,.status-current .avatar,.favorite-source .avatar) {border-radius:50%;}
+html[data-skin="waterdrop"] .farm-board {padding:12px;gap:9px;}
+html[data-skin="waterdrop"] :is(.farm-plot,.farm-seed-options label) {
+  border-radius:16px;background:linear-gradient(155deg,#fff,#f4f7f6);border-color:#e0e8e6;
+}
+html[data-skin="waterdrop"] :is(.farm-plot.is-ready,.farm-seed-options label:has(input:checked)) {
+  border-color:#64c995;background:#edf9f1;
+}
+html[data-skin="waterdrop"] .farm-help-note {margin-inline:12px;border-radius:14px;background:#ffffffc7;color:#626d68;}
+html[data-skin="waterdrop"] .favorites-search {padding:8px 12px;background:transparent;}
+html[data-skin="waterdrop"] .favorites-tabs {
+  margin:0 12px;padding:3px;gap:2px;border-radius:24px;background:#e6ebf0;justify-content:space-between;
+}
+html[data-skin="waterdrop"] .favorites-tabs button {flex:1;min-width:0;padding-inline:2px;border-radius:22px;}
+html[data-skin="waterdrop"] .favorites-tabs button[aria-pressed="true"] {background:white;color:#166d47;box-shadow:0 1px 4px #273f4d15;}
+html[data-skin="waterdrop"] .favorites-tabs button[aria-pressed="true"]::after {display:none;}
+html[data-skin="waterdrop"] .favorite-card.is-selected {background:#effaf3;border-color:#6acb96;}
+html[data-skin="waterdrop"] :is(.favorite-voice,.note-editor-tools button,.note-editor-tools label) {border-radius:16px;background:#eef3f6;}
+html[data-skin="waterdrop"] :is(.moment-media-grid img,.note-image-item,.sticker-semantic-preview img) {border-radius:12px;}
+html[data-skin="waterdrop"] .moment-status-current {width:calc(100% - 24px);margin:10px 12px;border-radius:22px;background:var(--wd-panel);}
+html[data-skin="waterdrop"] :is(.sticker-library-item,.sticker-semantic-fields) {border:var(--wd-rim);border-radius:16px;background:#fff;box-shadow:var(--pt-group-shadow);}
+html[data-skin="waterdrop"] .sticker-library-tools button {border-radius:22px;}
+html[data-skin="waterdrop"] :is(.status-dismiss,.status-selected,.status-save,.status-history-entry) {
+  border-radius:24px;box-shadow:inset 0 1px 2px #ffffff80,0 2px 8px #15223618;
+}
+html[data-skin="waterdrop"] .status-tile {border-radius:18px;background:#ffffff16;border:1px solid #ffffff2e;}
+html[data-skin="waterdrop"] .status-current {padding-block:28px;}
+html[data-skin="waterdrop"] :is(.auth-content,.boot-screen) {
+  background: radial-gradient(ellipse at 45% 0%,#e1effb,transparent 45%),linear-gradient(160deg,#f8fafc,#f8f3f7);
+}
+html[data-skin="waterdrop"] :is(.auth-logo,.boot-logo) {
+  border-radius:22px;box-shadow:inset 0 1.5px 2px #ffffffa6,inset 0 -2px 4px #ffffff40,0 6px 18px #243d3520;
+}
+html[data-skin="waterdrop"] .auth-content form {padding:6px 18px 18px;border-radius:22px;background:var(--wd-panel);box-shadow:var(--pt-group-shadow);}
+html[data-skin="waterdrop"] .auth-content .form-field {border-bottom-color:#dfe5e8;}
+html[data-skin="waterdrop"] .auth-content button.primary-btn {border-radius:24px;box-shadow:var(--wd-shadow);}
+html[data-skin="waterdrop"] .toast {border:1px solid #ffffff40;border-radius:16px;background:#28303aed;color:white;}

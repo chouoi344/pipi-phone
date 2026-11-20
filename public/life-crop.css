@@ -1,0 +1,21 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+.life-crop-dialog{box-sizing:border-box;width:calc(100% - 32px);max-width:380px;max-height:calc(100dvh - 32px);margin:auto;padding:0;border:0;border-radius:12px;background:#fff;color:#191919;box-shadow:0 12px 48px #0003;overflow:auto;overscroll-behavior:contain;pointer-events:auto}
+.life-crop-dialog::backdrop{background:#0006}
+.life-crop-header{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:52px;border-bottom:1px solid #eee;padding:0 12px}
+.life-crop-header h3{margin:0;font-size:16px;font-weight:500}
+.life-crop-header button{min-height:40px;padding:6px 4px;border:0;background:transparent;font:inherit;font-size:14px;color:#666;cursor:pointer}
+.life-crop-header [data-crop-confirm]{color:#07a855}
+.life-crop{margin:16px;color:#191919}
+.life-crop-frame{position:relative;max-width:min(100%,40dvh);margin:auto;background:#ededed}
+.life-crop-frame canvas{display:block;width:100%;height:auto;touch-action:none;cursor:grab}
+.life-crop-frame canvas:active{cursor:grabbing}
+.life-crop-frame canvas:focus-visible{outline:2px solid #07a855;outline-offset:3px}
+.life-crop-cover{max-width:min(100%,46dvh)}
+/* The compact profile card shows the middle 2.4:1 band of the 6:5 cover. */
+.life-crop-card-guide::after{content:"";position:absolute;inset:25% 0;border-block:1px dashed #fff;box-shadow:0 -1px #0005,0 1px #0005;pointer-events:none}
+.life-crop p{color:#737373;font-size:12px;line-height:1.6;margin:12px 0}
+.life-crop-zoom{display:flex;align-items:center;gap:14px;padding:10px 0;font-size:15px}
+.life-crop-zoom input{flex:1;min-width:0;width:auto;accent-color:#07b75b;cursor:pointer}
+.life-crop-zoom output{min-width:3.1em;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:#555}
+.life-crop-animation{margin-top:16px;font-size:13px;color:#737373}
+.life-crop-animation button{color:#576b95;background:none;border:0;padding:8px 0 8px 6px;font:inherit}

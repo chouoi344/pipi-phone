@@ -1,0 +1,36 @@
+/* Scoped to the schedule panel; native phone metrics stay unchanged. */
+.schedule-panel .schedule-tabs{display:flex;overflow-x:auto;background:#fff;border-bottom:1px solid #eee;position:sticky;top:0;z-index:2;scrollbar-width:none;flex-shrink:0}
+.schedule-panel .schedule-tabs button{flex:1 0 auto;border:0;background:none;padding:12px 11px;color:#777;font:inherit;font-size:14px;white-space:nowrap;border-bottom:2px solid transparent}
+.schedule-panel .schedule-tabs button.active{color:#07a857;border-bottom-color:#07c160}
+.schedule-panel .schedule-slot.past{color:#8a8a8a}.schedule-panel .schedule-slot.current{background:#f0faf3}
+.schedule-panel .schedule-time{font-size:13px;color:#777;line-height:1.8;min-width:48px;align-self:flex-start}
+.schedule-panel .schedule-badge{font-size:11px;color:#999;white-space:nowrap;margin-left:8px}.schedule-panel .current .schedule-badge{color:#07a857}
+.schedule-panel .schedule-slot .cell-desc,.schedule-panel .schedule-outfit .cell-desc{white-space:normal;overflow-wrap:anywhere}
+.schedule-panel .schedule-inline{display:flex;gap:12px;margin-top:8px;flex-wrap:wrap}.schedule-panel .schedule-inline button{width:auto;flex:none;padding:3px 0;margin:0;min-height:0;font-size:13px;background:none;color:#576b95;border:0}
+.schedule-panel .schedule-outfit{gap:12px;align-items:flex-start}.schedule-outfit-image{width:64px;height:80px;object-fit:cover;flex-shrink:0;border-radius:4px}
+.schedule-editor .schedule-outfit-image{width:auto;max-width:100%;height:180px;object-fit:contain}
+.schedule-panel .schedule-outfit>.secondary-btn{width:auto;flex:none;align-self:center;font-size:12px;white-space:nowrap;padding:5px 8px;min-height:0;margin:0}
+.schedule-panel .schedule-segment{display:flex;justify-content:center;gap:0;margin:16px}.schedule-panel .schedule-segment button{flex:1;margin:0;min-height:32px;border-radius:0;padding:6px;font-size:13px}.schedule-panel .schedule-segment [aria-pressed=true]{background:#07c160;color:#fff;border-color:#07c160}
+.schedule-panel .schedule-dates{display:flex;overflow:auto;gap:8px;padding:0 16px}.schedule-panel .schedule-dates button{white-space:nowrap;font-size:13px}
+.schedule-panel .schedule-error{margin:12px 16px;padding:12px;background:#fff3f2;color:#b83930;border-radius:5px;overflow-wrap:anywhere}.schedule-panel .schedule-error button{display:block;margin-top:8px}
+.schedule-panel details>summary{padding:14px 0;cursor:pointer}.schedule-panel .check-row{justify-content:space-between;gap:12px}.schedule-panel .form-section>.secondary-btn{margin-top:8px}
+.schedule-editor .schedule-seasons{display:flex;gap:18px;flex-wrap:wrap;padding:12px 0;border:0;font-size:14px}.schedule-editor .schedule-seasons legend{font-size:14px;padding:0;margin-bottom:10px}.schedule-editor .schedule-seasons label{display:flex;gap:5px;align-items:center}.schedule-editor input[type=checkbox]{accent-color:#07c160}
+.schedule-panel .section .cell-body{min-width:0}.schedule-panel .cell-title{overflow-wrap:anywhere}.schedule-panel .form-field textarea{min-height:72px}
+.schedule-wardrobe-dialog{width:min(360px,calc(100% - 32px));max-height:84dvh;margin:auto;padding:0;border:0;border-radius:10px;background:#fff;color:#252525;font:inherit;overflow:hidden;pointer-events:auto}
+.schedule-wardrobe-dialog::backdrop{background:rgba(0,0,0,.3)}
+.schedule-wardrobe-form{display:flex;flex-direction:column;max-height:84dvh;min-height:0}
+.schedule-wardrobe-form>header{display:grid;grid-template-columns:48px minmax(0,1fr) 48px;align-items:center;flex:none;padding:12px 16px;border-bottom:1px solid #ededed;gap:8px}
+.schedule-wardrobe-form>header h3{margin:0;text-align:center;font-size:16px;line-height:24px;font-weight:400}
+.schedule-wardrobe-form>header button{padding:5px 0;border:0;background:none;font:inherit;font-size:14px;color:#737373;cursor:pointer}
+.schedule-wardrobe-form>header [type=submit]{color:#07964b}
+.schedule-wardrobe-form>header button:disabled{opacity:.45}
+.schedule-wardrobe-fields{overflow:auto;min-height:0;padding:0 18px 12px;overscroll-behavior:contain}
+.schedule-wardrobe-fields .form-field{padding:12px 0;margin:0;border-bottom:1px solid #ededed}
+.schedule-wardrobe-fields .field-label,.schedule-wardrobe-fields .schedule-seasons legend{font-size:13px;font-weight:400;color:#737373}
+.schedule-wardrobe-fields .form-field input,.schedule-wardrobe-fields .form-field textarea,.schedule-wardrobe-fields .form-field select{font-size:14px;font-weight:400;color:#252525}
+.schedule-wardrobe-fields .schedule-seasons{gap:14px;color:#252525;margin:0}
+.schedule-wardrobe-fields .secondary-btn{font-size:14px;font-weight:400;margin:8px 0 0;min-height:36px}
+.schedule-wardrobe-fields .page-note{padding:10px 0 0;margin:0;font-size:12px;line-height:1.6;color:#737373}
+.schedule-wardrobe-fields .schedule-outfit-image{height:130px;display:block;margin:8px auto}
+.schedule-wardrobe-error{margin:0;padding:0 18px 12px;color:#bb3d36;font-size:13px;line-height:1.5}
+.schedule-wardrobe-error:empty{display:none}

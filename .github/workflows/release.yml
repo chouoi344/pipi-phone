@@ -1,0 +1,181 @@
+name: Publish stable release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOCKER_BUILD_SUMMARY: 'false'
+  DOCKER_BUILD_RECORD_UPLOAD: 'false'
+
+jobs:
+  test:
+    name: Check version, source and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      image: ${{ steps.version.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Require a matching stable version and public repository
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          REPOSITORY_VISIBILITY: ${{ github.event.repository.visibility }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const tag = process.env.RELEASE_TAG;
+          const version = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
+          if (!/^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(tag)) {
+            throw new Error('Release tags must be stable versions such as v0.12.1.');
+          }
+          if (tag !== `v${version}`) {
+            throw new Error(`Tag ${tag} does not match package.json version ${version}.`);
+          }
+          if (process.env.REPOSITORY_VISIBILITY !== 'public') {
+            throw new Error('The stable update channel requires a public GitHub repository.');
+          }
+          const image = `ghcr.io/${process.env.GITHUB_REPOSITORY.toLowerCase()}`;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\nimage=${image}\n`);
+          NODE
+      - name: Reject tracked private data and generated artifacts
+        run: |
+          node <<'NODE'
+          const {execFileSync} = require('node:child_process');
+          const files = execFileSync('git', ['ls-files', '-z'], {encoding: 'utf8'}).split('\0').filter(Boolean);
+          const forbidden = /^(?:data|runtime|node_modules|\.codex|\.docker|artifacts|test-results|coverage)(?:\/|$)|(?:^|\/)\.env(?:\.|$)|\.(?:sqlite(?:3)?(?:-(?:shm|wal))?|log|zip|bak|backup)$/i;
+          const leaked = files.filter(file => forbidden.test(file));
+          if (leaked.length) throw new Error(`Remove private data or generated artifacts from the release commit:\n${leaked.join('\n')}`);
+          NODE
+      # This job receives no provider keys, registry credentials or publishing permissions.
+      - name: Run the application test suite
+        run: npm test
+      - name: Run the additional life module tests
+        run: node --test test/*.test.cjs
+
+  compose-smoke:
+    name: Exercise real Compose upgrade and rollback
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Verify real image replacement, retained data and failure recovery
+        run: node tests/compose-updater-docker.cjs
+
+  image:
+    name: Build the two server architectures
+    needs: [test, compose-smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ needs.test.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push the versioned image
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ needs.test.outputs.image }}:${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.test.outputs.version }}
+          provenance: mode=min
+      - name: Require a public image with both architectures
+        env:
+          IMAGE: ${{ needs.test.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo '::error::The build did not return an immutable SHA-256 image digest.'
+            exit 1
+          fi
+          repository="${IMAGE#ghcr.io/}"
+          if ! pull_token=$(curl --fail --silent --show-error --retry 3 --get \
+            --data-urlencode "scope=repository:${repository}:pull" \
+            --data-urlencode 'service=ghcr.io' https://ghcr.io/token | jq --exit-status --raw-output '.token'); then
+            echo '::error::Anonymous GHCR access failed. Set this container package visibility to Public in GitHub package settings, then rerun the failed jobs.'
+            exit 1
+          fi
+          echo "::add-mask::$pull_token"
+          if ! curl --fail --silent --show-error --retry 3 \
+            --header "Authorization: Bearer $pull_token" \
+            --header 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
+            "https://ghcr.io/v2/${repository}/manifests/${DIGEST}" \
+            --output "$RUNNER_TEMP/public-image.json"; then
+            echo '::error::The published image cannot be pulled anonymously. Make the GHCR package Public before publishing the release.'
+            exit 1
+          fi
+          jq --exit-status '
+            any(.manifests[]; .platform.os == "linux" and .platform.architecture == "amd64") and
+            any(.manifests[]; .platform.os == "linux" and .platform.architecture == "arm64")
+          ' "$RUNNER_TEMP/public-image.json"
+
+  release:
+    name: Publish the update manifest and release notes
+    needs: [test, image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      VERSION: ${{ needs.test.outputs.version }}
+      IMAGE: ${{ needs.image.outputs.image }}
+      DIGEST: ${{ needs.image.outputs.digest }}
+    steps:
+      # No checkout or repository script runs with the release-writing token.
+      - name: Create the manifest and publish the prepared draft
+        run: |
+          set -euo pipefail
+          jq --null-input --arg version "$VERSION" --arg image "$IMAGE@$DIGEST" \
+            '{version: $version, image: $image}' > update.json
+          sha256sum update.json > update.json.sha256
+          gh release create "$RELEASE_TAG" update.json update.json.sha256 \
+            --verify-tag --draft --title "$RELEASE_TAG" --generate-notes
+          gh release edit "$RELEASE_TAG" --draft=false --latest

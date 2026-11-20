@@ -1,0 +1,113 @@
+[
+  {
+    "name": "location",
+    "repository": "weui/weui-icon",
+    "path": "dist/outlined/location.svg",
+    "gitBlobSha": "543ad6dc2bc70573da26ca35741bde90d90dc719"
+  },
+  {
+    "name": "file",
+    "repository": "weui/weui-icon",
+    "path": "dist/outlined/folder.svg",
+    "gitBlobSha": "7dabd948bf73b14972b3dfb1c2346c20b7edcdf0"
+  },
+  {
+    "name": "music",
+    "repository": "weui/weui-icon",
+    "path": "dist/outlined/music.svg",
+    "gitBlobSha": "db33cce6f4761cea9cf3af7ff1fe70cd42fd5804"
+  },
+  {
+    "name": "contact-card",
+    "repository": "weui/weui-icon",
+    "path": "dist/outlined/mobile-contacts.svg",
+    "gitBlobSha": "db29ae5cd788d2f63213e518a66de4f61197a638"
+  },
+  {
+    "name": "shopping",
+    "repository": "weui/weui-icon",
+    "path": "dist/outlined/shop.svg",
+    "gitBlobSha": "b6d8a79e6aecf69bed3c036b114c78910f895658"
+  },
+  {
+    "name": "group",
+    "repository": "weui/weui-icon",
+    "path": "dist/outlined/group-detail.svg",
+    "gitBlobSha": "7b7327222cf299d37fc9b0fec3c3df074dba59de"
+  },
+  {
+    "name": "tag",
+    "repository": "weui/weui-icon",
+    "path": "dist/outlined/tag.svg",
+    "gitBlobSha": "1f52e43d8050b87f5a685111f776598acaa8652e"
+  },
+  {
+    "name": "mute",
+    "repository": "weui/weui-icon",
+    "path": "dist/outlined/bellring-off.svg",
+    "gitBlobSha": "8d7e1e090fe0d3841fdb3c503660b852e562a450"
+  },
+  {
+    "name": "gift",
+    "repository": "Templarian/MaterialDesign",
+    "path": "svg/gift-outline.svg",
+    "gitBlobSha": "8c987d5a22526f3679c238bbd9b4b8b75fe0bbdb"
+  },
+  {
+    "name": "shake",
+    "repository": "Templarian/MaterialDesign",
+    "path": "svg/vibrate.svg",
+    "gitBlobSha": "ed02104b7c004beea99a58f3af5c7686427e1e92"
+  },
+  {
+    "name": "nearby",
+    "repository": "Templarian/MaterialDesign",
+    "path": "svg/map-marker-multiple-outline.svg",
+    "gitBlobSha": "af76288288d4b14a0520b3a0e3405eabc59ae887"
+  },
+  {
+    "name": "tool-location-filled",
+    "repository": "weui/weui-icon",
+    "revision": "c9dc64ea1a9c4ba87c018bed214eb8731e6e2e04",
+    "path": "dist/filled/location.svg",
+    "gitBlobSha": "a6fac1c09898cd7d46776ff7d5ccb6e17da1d1f1",
+    "original": "originals/tool-location-filled.svg",
+    "derivative": "Only root fill=\"black\" added for CSS mask rendering"
+  },
+  {
+    "name": "tool-folder-filled",
+    "repository": "weui/weui-icon",
+    "revision": "c9dc64ea1a9c4ba87c018bed214eb8731e6e2e04",
+    "path": "dist/filled/folder.svg",
+    "gitBlobSha": "68127665791879c8f10500080ddc2eb87bc29da9",
+    "original": "originals/tool-folder-filled.svg",
+    "derivative": "Only root fill=\"black\" added for CSS mask rendering"
+  },
+  {
+    "name": "tool-mike-filled",
+    "repository": "weui/weui-icon",
+    "revision": "c9dc64ea1a9c4ba87c018bed214eb8731e6e2e04",
+    "path": "dist/filled/mike.svg",
+    "gitBlobSha": "7c7911a3678e00f7d6d0a9c92b7f7ba77a119d17",
+    "original": "originals/tool-mike-filled.svg",
+    "derivative": "Only root fill=\"black\" added for CSS mask rendering"
+  },
+  {
+    "name": "tool-video-call-filled",
+    "repository": "weui/weui-icon",
+    "revision": "c9dc64ea1a9c4ba87c018bed214eb8731e6e2e04",
+    "path": "dist/filled/video-call.svg",
+    "gitBlobSha": "7c4532bbea638852b6f0d296322514f904660d38",
+    "original": "originals/tool-video-call-filled.svg",
+    "derivative": "Only root fill=\"black\" added for CSS mask rendering"
+  },
+  {
+    "name": "tool-me-filled",
+    "repository": "weui/weui-icon",
+    "revision": "c9dc64ea1a9c4ba87c018bed214eb8731e6e2e04",
+    "path": "dist/filled/me.svg",
+    "gitBlobSha": "bfc969d037c252d723650be7a52cdbe43ba7716e",
+    "original": "originals/tool-me-filled.svg",
+    "derivative": "Only root fill=\"black\" added for CSS mask rendering"
+  }
+]

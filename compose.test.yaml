@@ -1,0 +1,16 @@
+services:
+  tests:
+    image: node:24-bookworm-slim
+    user: node
+    working_dir: /app
+    command: ["sh", "-c", "node --test tests/*.test.cjs"]
+    volumes:
+      - .:/app:ro
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

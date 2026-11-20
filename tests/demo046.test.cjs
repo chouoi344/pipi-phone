@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: MIT
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const {createDemo}=require('../scripts/demo.cjs');
+test('demo samples exercise saved voice transcription and native-style quote snapshots through real APIs',async t=>{
+  const demo=await createDemo({appPort:0,providerPort:0});t.after(()=>demo.close());
+  const control=async(route,body,origin=demo.controlUrl)=>{const response=await fetch(demo.controlUrl+route,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return {status:response.status,body:await response.json()};};
+  const before=(await demo.request('/api/state')).body;
+  assert.equal((await control('/demo/samples',undefined,'http://elsewhere.invalid')).status,403);
+  let result=await control('/demo/samples');assert.equal(result.status,200);assert.equal(result.body.alreadyPrepared,false);
+  const prepared=(await demo.request('/api/state')).body;
+  assert.deepEqual(prepared.messages.slice(0,before.messages.length),before.messages);
+  assert.equal(prepared.messages.length,before.messages.length+9);
+  assert.equal(demo.provider.requests.length,0,'preparing samples must not pretend to generate model output');
+  assert.equal((await control('/demo/samples')).body.alreadyPrepared,true);
+  assert.equal((await demo.request('/api/state')).body.messages.length,prepared.messages.length);
+  const sample=id=>prepared.messages.find(m=>m.id==='demo046-'+id);
+  assert.match(sample('voice-fresh').meta.audio,/^data:audio\/mpeg;base64,/);
+  assert.equal(sample('voice-fresh').meta.transcript,undefined);
+  assert.equal(sample('voice-cached').meta.transcriptSource,'demo');
+  assert.equal(sample('reply-demo046-photo').meta.quote.image,sample('photo').content);
+  assert.equal(sample('reply-demo046-link').meta.quote.senderName,prepared.profile.name);
+  await control('/demo/mode',{mode:'http'});
+  result=await demo.request('/api/voice/transcribe',{messageId:'demo046-voice-fresh'});assert.equal(result.status,502);
+  assert.equal((await demo.request('/api/state')).body.messages.find(m=>m.id==='demo046-voice-fresh').meta.transcript,undefined);
+  await control('/demo/mode',{mode:'success'});
+  result=await demo.request('/api/voice/transcribe',{messageId:'demo046-voice-fresh'});assert.equal(result.status,200,JSON.stringify(result.body));
+  const saved=(await demo.request('/api/state')).body.messages.find(m=>m.id==='demo046-voice-fresh');
+  assert.equal(saved.meta.transcriptSource,'demo');assert.match(saved.meta.transcript,/固定文字/);
+  assert.equal(demo.provider.requests.at(-1).multipart,true);
+});

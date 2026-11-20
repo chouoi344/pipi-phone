@@ -1,0 +1,59 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+.software-update {
+  padding: 16px;
+  color: #191c21;
+}
+
+.software-update h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.software-update-status {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.software-update-detail {
+  margin: 8px 0 0;
+  color: #526070;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.software-update-notes {
+  max-height: 176px;
+  margin: 12px 0 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f0f3f6;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.software-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.software-update-actions button {
+  min-height: 44px;
+  margin: 0;
+}
+
+.software-update [hidden] {
+  display: none;
+}
+
+.update-badge {
+  color: #147542;
+  font-weight: 600;
+}

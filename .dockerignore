@@ -1,0 +1,15 @@
+data
+runtime
+node_modules
+.git
+.env*
+*.zip
+*.log
+test-results
+coverage
+.docker
+.codex
+.pipi-updater
+.pipi-update-channel
+artifacts
+qa-*

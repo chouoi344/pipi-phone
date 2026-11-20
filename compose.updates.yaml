@@ -1,0 +1,11 @@
+services:
+  pipi-phone:
+    environment:
+      PIPI_UPDATE_REPOSITORY: "${PIPI_UPDATE_REPOSITORY:?Set PIPI_UPDATE_REPOSITORY in the update environment}"
+      PIPI_UPDATE_DIR: /app/update-channel
+    volumes:
+      - type: bind
+        source: "${PIPI_UPDATE_DIR:?Set an absolute PIPI_UPDATE_DIR on the host}"
+        target: /app/update-channel
+        bind:
+          create_host_path: false

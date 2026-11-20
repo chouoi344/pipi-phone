@@ -1,0 +1,313 @@
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Final layer: measurements taken from the owner's iPhone WeChat 8.0.80 screenshots
+ * (1125px wide = 375pt @3x). Earlier layers were calibrated on a rescaled image and
+ * ended up 4-7% oversized; the values here are the authoritative ones.
+ * Apple devices render their own system font (the real WeChat look); other devices
+ * fall back to the bundled OFL fonts, which are only downloaded when needed.
+ */
+:root{--ui-font:-apple-system,"PingFang SC","Inter","Noto Sans SC","Helvetica Neue",sans-serif;--ink:#191919;--hair:rgba(0,0,0,.1);--fg1:rgba(0,0,0,.5);--fg2:rgba(0,0,0,.3);--link:#576b95}
+body,.phone-shell{font-family:var(--ui-font)}
+.phone-shell{-webkit-font-smoothing:antialiased}
+
+/* ---------- Navigation bar: 44pt, 17pt medium title ---------- */
+:is(#view,.navigation-snapshot)>.topbar{height:44px;min-height:44px;padding:0 8px;grid-template-columns:88px minmax(0,1fr) 88px;border-bottom:.5px solid var(--hair);background:var(--bg)}
+:is(#view,.navigation-snapshot)>.topbar h2{font-size:17px;line-height:1.4117647;font-weight:500;color:#181818;letter-spacing:0}
+:is(#view,.navigation-snapshot):is([data-route=chats],[data-route=contacts],[data-route=discover])>.topbar{height:auto;border-bottom:0}
+:is(#view,.navigation-snapshot)>.topbar .icon-btn{min-width:40px;min-height:44px;padding:0 8px}
+:is(#view,.navigation-snapshot)>.topbar .back-btn{min-height:44px;padding:0 0 0 8px;gap:6px;max-width:88px}
+.nav-back-mark{width:10px!important;height:18px!important;color:#181818}
+.nav-more-mark{width:18px!important;height:18px!important;color:#181818}
+:is(#view,.navigation-snapshot)>.topbar [data-action=new-menu]>.icon,:is(#view,.navigation-snapshot)>.topbar [data-action=add-friend]>.icon{width:22px;height:22px;background-color:#181818}
+:is(#view,.navigation-snapshot)>.topbar .nav-text{font-size:17px;color:#181818;padding:0 8px;white-space:nowrap}
+.chat-back-count{min-width:24px;height:24px;padding:0 7px;margin-left:0;border-radius:12px;background:#d5d5d5;color:#181818;font-size:15px;line-height:24px}
+
+/* ---------- Search field under the root titles: 36pt, 8pt margins ---------- */
+:is(#view,.navigation-snapshot)>.search-bar{padding:8px}
+:is(#view,.navigation-snapshot)>.search-bar .search-input-wrap{height:36px;min-height:36px;border-radius:8px;gap:6px;padding:0 10px}
+:is(#view,.navigation-snapshot)>.search-bar .search-input-wrap>.icon{width:20px;height:20px;background-color:#b2b2b2}
+:is(#view,.navigation-snapshot)>.search-bar .search-input-wrap>input{height:36px;min-height:36px;padding:0;font-size:17px;line-height:24px;color:#191919}
+:is(#view,.navigation-snapshot)>.search-bar .search-input-wrap>input::placeholder{color:#b2b2b2}
+
+/* ---------- Tab bar: 56pt above the home indicator ---------- */
+:is(#view,.navigation-snapshot)>.bottom-tabs{min-height:calc(56px + var(--safe-bottom));padding:7px 0 calc(5px + var(--safe-bottom));background:#f7f7f7;border-top:.5px solid rgba(0,0,0,.12)}
+:is(#view,.navigation-snapshot)>.bottom-tabs .tab{min-height:44px;gap:2px;font-size:10px;line-height:14px;justify-content:flex-start;color:#191919}
+:is(#view,.navigation-snapshot)>.bottom-tabs .tab.active{color:#07c160}
+:is(#view,.navigation-snapshot)>.bottom-tabs .tab .icon{width:28px;height:28px}
+:is(#view,.navigation-snapshot)>.bottom-tabs .tab-label{font-size:10px;line-height:1.4;font-weight:400}
+:is(#view,.navigation-snapshot)>.bottom-tabs .tab .chat-mark{fill:#f7f7f7}
+:is(#view,.navigation-snapshot)>.bottom-tabs .tab.active .chat-mark{fill:currentColor}
+.tab-dot{top:-6px;margin-left:22px;min-width:18px;height:18px;border-radius:9px;border:0;padding:0 5px;font-size:12px;line-height:18px;font-weight:500}
+
+/* ---------- Conversation list: 72pt rows ---------- */
+:is(#view,.navigation-snapshot) .conversation{height:72px;padding:0 16px;gap:12px;align-items:flex-start}
+:is(#view,.navigation-snapshot) .conversation.pinned{background:#ededed}
+:is(#view,.navigation-snapshot) .conversation:after{left:76px;background:rgba(0,0,0,.1);height:1px;transform:scaleY(.5)}
+:is(#view,.navigation-snapshot) .conversation-avatar{margin-top:12px}
+:is(#view,.navigation-snapshot) .conversation-copy{align-self:auto;justify-content:flex-start;gap:1.5px;padding-top:13px}
+:is(#view,.navigation-snapshot) .conversation-line{align-items:flex-start;gap:8px}
+:is(#view,.navigation-snapshot) .conversation-name{font-size:17px;line-height:24px;color:#191919}
+:is(#view,.navigation-snapshot) .conversation-time{font-size:12px;line-height:17px;color:rgba(0,0,0,.2);margin-top:3px}
+:is(#view,.navigation-snapshot) .conversation-preview{font-size:14px;line-height:20px;height:20px;color:#b2b2b2}
+:is(#view,.navigation-snapshot) .conversation-muted{right:16px;bottom:14px;width:16px;height:16px;color:#c9c9c9}
+.unread-badge{right:-8px;top:-8px;min-width:18px;height:18px;border-radius:9px;border:0;padding:0 5px;font-size:12px;line-height:18px;font-weight:500}
+:is(#view,.navigation-snapshot) .conversation-actions button{width:74px;font-size:17px}
+
+/* ---------- Chat: 40pt avatars, 17pt text, 58pt pitch ---------- */
+:is(#view,.navigation-snapshot) .chat-messages{padding:16px 12px 16px}
+:is(#view,.navigation-snapshot) .chat-messages .message-row{gap:13px;margin-bottom:18px}
+:is(#view,.navigation-snapshot) .chat-messages .message-row:last-child{margin-bottom:0}
+:is(#view,.navigation-snapshot) .message-row .avatar{--avatar-size:40px;border-radius:4px}
+:is(#view,.navigation-snapshot) .chat-messages .message-bubble:not(.image-bubble):not(.payment-card){font-size:17px;line-height:24px;padding:8px 12px;min-height:40px;border-radius:4px;color:#191919}
+:is(#view,.navigation-snapshot) .chat-messages .message-bubble:not(.image-bubble):not(.payment-card)::before{top:15px;width:9px;height:9px;border-radius:1.5px}
+:is(#view,.navigation-snapshot) .chat-messages .message-row:not(.mine) .message-bubble:not(.image-bubble):not(.payment-card)::before{left:-4px}
+:is(#view,.navigation-snapshot) .chat-messages .mine .message-bubble:not(.image-bubble):not(.payment-card)::before{right:-4px}
+:is(#view,.navigation-snapshot) .message-date{font-size:14px;line-height:20px;color:var(--fg2);margin:7px 0 17px}
+:is(#view,.navigation-snapshot) .message-date:first-child{margin-top:0}
+:is(#view,.navigation-snapshot) .system-message{font-size:14px;line-height:20px;color:var(--fg2);margin:7px 30px 17px}
+:is(#view,.navigation-snapshot) .message-quote{font-size:14px;line-height:20px;color:rgba(0,0,0,.5);background:#e1e1e1;padding:7px 12px;margin-top:4px;border-radius:4px}
+
+:is(#view,.navigation-snapshot) .voice-body>.message-bubble{max-width:100%;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;font-variant-numeric:tabular-nums}
+:is(#view,.navigation-snapshot) .voice-body .voice-signal{display:block;width:17px;height:20px;flex:none}
+:is(#view,.navigation-snapshot) .voice-mine>.voice-signal{transform:scaleX(-1)}
+:is(#view,.navigation-snapshot) .voice-playing .wave-middle{animation:bubble-wave-middle .86s steps(1,end) infinite}
+:is(#view,.navigation-snapshot) .voice-playing .wave-far{animation:bubble-wave-far .86s steps(1,end) infinite}
+@keyframes bubble-wave-middle{0%,100%{opacity:0}33%{opacity:1}}
+@keyframes bubble-wave-far{0%,100%{opacity:0}66%{opacity:1}}
+@media(prefers-reduced-motion:reduce){:is(#view,.navigation-snapshot) .voice-playing .voice-signal path{animation:none}}
+:is(#view,.navigation-snapshot) .voice-transcript{margin-top:7px;padding:9px 12px;border-radius:5px;line-height:1.45}
+
+/* ---------- Composer: 56pt bar, 40pt field, 27pt glyphs ---------- */
+:is(#view,.navigation-snapshot)>.chat-composer{background:#f6f6f6;border-top:.5px solid rgba(0,0,0,.1);padding:0 0 var(--safe-bottom)}
+:is(#view,.navigation-snapshot)>.chat-composer.emoji-open{padding-bottom:0}
+:is(#view,.navigation-snapshot) .compose-row{min-height:56px;padding:8px 10.5px;gap:10.5px;align-items:flex-end}
+:is(#view,.navigation-snapshot) .compose-row .icon-btn{width:27px;min-width:27px;height:40px;min-height:40px;padding:0}
+:is(#view,.navigation-snapshot) .compose-row .icon-btn{overflow:visible}
+:is(#view,.navigation-snapshot) .compose-row .icon-btn>.icon{width:32px;height:32px;flex:none;margin:0 -2.5px}
+:is(#view,.navigation-snapshot) .compose-row .compose-trailing{margin-left:3px;height:40px;min-height:0;display:flex;align-items:center}
+:is(#view,.navigation-snapshot) .compose-row .compose-trailing>*{height:40px;min-height:0}
+:is(#view,.navigation-snapshot) .compose-field{border-radius:4px}
+:is(#view,.navigation-snapshot) .compose-field .compose-input{min-height:40px;max-height:112px;padding:8px 36px 8px 10px;font-size:17px;line-height:24px}
+:is(#view,.navigation-snapshot) .compose-dictation{right:7px;bottom:4px;width:28px;height:32px;color:#7d7d7d}
+:is(#view,.navigation-snapshot) .compose-dictation .icon{width:20px;height:22px}
+:is(#view,.navigation-snapshot) .voice-record{height:40px;border-radius:4px;font-size:17px;font-weight:500;background:#fff;border:0;color:#191919}
+:is(#view,.navigation-snapshot) .chat-messages .message-image{width:auto;max-width:150px;max-height:186px;min-width:0;border-radius:6px}
+
+/* ---------- Grouped lists (Me, Discover, Settings and every sub page) ---------- */
+:is(#view,.navigation-snapshot) .section{margin-top:8px}
+:is(#view,.navigation-snapshot) .discover .section:first-child{margin-top:0}
+:is(#view,.navigation-snapshot) .cell{min-height:56px;font-size:17px}
+:is(#view,.navigation-snapshot) .cell:after{background:rgba(0,0,0,.1);height:1px;transform:scaleY(.5);transform-origin:bottom}
+:is(#view,.navigation-snapshot) .cell-title{font-size:17px;line-height:24px;color:#191919}
+:is(#view,.navigation-snapshot) .cell-value{font-size:17px;color:rgba(0,0,0,.5);max-width:60%}
+:is(#view,.navigation-snapshot) .cell .chevron{width:16px;height:16px;margin-left:4px;background-color:rgba(0,0,0,.3)}
+:is(#view,.navigation-snapshot) .cell-desc{font-size:14px;line-height:20px;color:rgba(0,0,0,.5);white-space:normal}
+:is(#view,.navigation-snapshot) .section-title{font-size:14px;line-height:20px;color:rgba(0,0,0,.5);padding:14px 16px 6px;margin:0}
+:is(#view,.navigation-snapshot) .settings-group-title{padding:8px 16px 6px}
+:is(#view,.navigation-snapshot) .settings-group-title+.section{margin-top:0}
+:is(#view,.navigation-snapshot) .settings-content>.section:has(>.centered-cell){margin-top:8px}
+:is(#view,.navigation-snapshot) .centered-cell{font-size:17px;font-weight:500;color:#191919}
+:is(#view,.navigation-snapshot) .link-cell{color:#576b95;font-weight:500}
+:is(#view,.navigation-snapshot)[data-route=settings]>.search-bar{padding-bottom:0}
+:is(#view,.navigation-snapshot) .friend-profile-cell{padding-top:14px;padding-bottom:14px;align-items:center}
+:is(#view,.navigation-snapshot) .friend-profile-cell .cell-desc{margin-top:2px}
+
+/* ---------- Me ---------- */
+:is(#view,.navigation-snapshot) .me-content .profile-card{padding:14px 16px 0 24px;min-height:0;gap:20px;align-items:flex-start}
+:is(#view,.navigation-snapshot) .me-content .profile-card .avatar{--avatar-size:64px;border-radius:6px}
+:is(#view,.navigation-snapshot) .me-content .profile-card h3{font-size:20px;line-height:1.4;font-weight:600;margin:2px 0 6px}
+:is(#view,.navigation-snapshot) .me-content .profile-card p{font-size:17px;line-height:1.4117647;color:rgba(0,0,0,.5)}
+:is(#view,.navigation-snapshot) .me-content .profile-qr{margin-top:38px}
+:is(#view,.navigation-snapshot) .me-content .profile-qr .icon{width:18px;height:18px;background-color:rgba(0,0,0,.5)}
+:is(#view,.navigation-snapshot) .me-content .profile-card>.chevron{margin-top:39px;width:16px;height:16px;background-color:rgba(0,0,0,.3)}
+:is(#view,.navigation-snapshot) .me-status-row{display:flex;align-items:center;gap:8px;padding:8px 16px 34px 108px;min-height:0;height:auto}
+:is(#view,.navigation-snapshot) .me-status-button{position:static;height:auto;min-height:max(26px,calc(1lh + 2px));padding:0 10px;border:.5px solid rgba(0,0,0,.2);border-radius:13px;font-size:14px;color:rgba(0,0,0,.5);background:#fff;margin:0}
+:is(#view,.navigation-snapshot) .me-status-button>span{font-size:14px;line-height:24px}
+:is(#view,.navigation-snapshot) .me-status-button .status-plus{font-size:16px;line-height:24px;width:auto;height:auto}
+.me-status-friends{width:26px;height:26px;border:.5px solid rgba(0,0,0,.2);border-radius:50%;position:relative;flex:none}
+.me-status-friends:after{content:"";position:absolute;inset:6px;border:1.5px solid rgba(0,0,0,.45);border-radius:50%}
+
+/* ---------- Contacts ---------- */
+:is(#view,.navigation-snapshot) .contacts .cell{min-height:56px;padding:8px 16px;gap:12px}
+:is(#view,.navigation-snapshot) .contacts .cell:after{left:68px;display:block}
+:is(#view,.navigation-snapshot) .contacts .cell:has(+.contacts-index):after,:is(#view,.navigation-snapshot) .contacts .cell:has(+.contacts-count):after{display:none}
+:is(#view,.navigation-snapshot) .contact-tool{width:40px;height:40px;border-radius:4px}
+:is(#view,.navigation-snapshot) .contacts-index{padding:6px 16px;font-size:14px;line-height:20px;color:rgba(0,0,0,.5);background:#ededed}
+:is(#view,.navigation-snapshot) .contacts-count{font-size:16px;line-height:24px;color:rgba(0,0,0,.5);padding:14px 0 24px;background:#fff;border-top:.5px solid rgba(0,0,0,.1)}
+
+/* ---------- Friend profile ---------- */
+:is(#view,.navigation-snapshot) .role-hero{padding:8px 24px 28px;gap:20px;align-items:flex-start}
+:is(#view,.navigation-snapshot) .role-hero .avatar{--avatar-size:64px;border-radius:6px}
+:is(#view,.navigation-snapshot) .role-hero h3{font-size:20px;line-height:28px;font-weight:600;margin:0 0 4px}
+:is(#view,.navigation-snapshot) .role-hero p{font-size:14px;line-height:21px;color:rgba(0,0,0,.5)}
+:is(#view,.navigation-snapshot)[data-route=role] .section:has(.link-cell) .cell{min-height:56px}
+
+/* ---------- Transfer / red packet cards: 233 x 86pt ---------- */
+:is(#view,.navigation-snapshot) .chat-messages .payment-card.message-transfer{width:233px;height:86px;max-width:100%;padding:0!important;border-radius:4px;background:#fa9d3b!important;color:#fff;overflow:visible;display:block}
+:is(#view,.navigation-snapshot) .chat-messages .payment-card.message-transfer.payment-resolved{background:#f9cfa0!important;opacity:1}
+:is(#view,.navigation-snapshot) .payment-card.message-transfer::before{top:15px;width:9px;height:9px;border-radius:1.5px}
+:is(#view,.navigation-snapshot) .message-row:not(.mine) .payment-card.message-transfer::before{left:-4px}
+:is(#view,.navigation-snapshot) .mine .payment-card.message-transfer::before{right:-4px}
+:is(#view,.navigation-snapshot) .payment-main,:is(#view,.navigation-snapshot) .payment-transfer .payment-main{display:flex;align-items:center;gap:10px;height:58px;min-height:0;padding:3px 10px 0}
+:is(#view,.navigation-snapshot) .payment-main>.payment-mark{width:42px;height:42px;flex:none}
+:is(#view,.navigation-snapshot) .payment-redpacket .payment-main>.payment-mark{width:34px;height:42px;margin:0 4px}
+:is(#view,.navigation-snapshot) .payment-copy{gap:0;min-width:0;flex:1}
+:is(#view,.navigation-snapshot) .payment-title{font-size:17px;line-height:23px;font-weight:500;color:#fff}
+:is(#view,.navigation-snapshot) .payment-note{font-size:14px;line-height:19px;color:#fff;opacity:1}
+:is(#view,.navigation-snapshot) .payment-footer{display:block;margin:0 10px;border-top:.5px solid rgba(255,255,255,.3);padding:4px 0 0;font-size:12px;line-height:16px;color:rgba(255,255,255,.9)}
+
+/* ---------- "+" tool panel: 64pt tiles, 87pt pitch, 240pt tall ---------- */
+:is(#view,.navigation-snapshot) .more-pages{border-top:.5px solid rgba(0,0,0,.1);height:auto}
+:is(#view,.navigation-snapshot) .compose-panel{display:grid;grid-template-columns:repeat(4,64px);grid-template-rows:repeat(2,88px);justify-content:space-between;gap:8px 0;padding:16px 25px 0;height:auto;min-height:200px;align-content:start}
+:is(#view,.navigation-snapshot) .compose-panel button{display:flex;flex-direction:column;align-items:center;width:64px;height:88px;padding:0;gap:8px}
+:is(#view,.navigation-snapshot) .compose-panel .panel-icon{width:64px;height:64px;border-radius:16px;background:#fff;display:flex;align-items:center;justify-content:center;color:#4c4c4c}
+:is(#view,.navigation-snapshot) .compose-panel .panel-icon .icon{width:36px;height:36px}
+:is(#view,.navigation-snapshot) .compose-panel .panel-icon .mask-icon{background-color:#4c4c4c}
+:is(#view,.navigation-snapshot) .compose-panel button>span:last-child{font-size:12px;line-height:16px;color:#6f6f6f;white-space:nowrap}
+:is(#view,.navigation-snapshot) .panel-dots{display:flex;justify-content:center;gap:9px;height:40px;padding:12px 0 0;align-items:flex-start}
+:is(#view,.navigation-snapshot) .panel-dots button{width:7px;height:7px;min-width:0;padding:0;border-radius:50%;background:#ddd}
+:is(#view,.navigation-snapshot) .panel-dots button.active{background:#7b7b7b}
+
+/* ---------- Emoji panel: 56pt tab strip, 30pt glyphs in 7 columns ---------- */
+:is(#view,.navigation-snapshot) .emoji-toolbar{height:56px;padding:6px 8px;gap:8px;background:#f6f6f6}
+:is(#view,.navigation-snapshot) .emoji-toolbar button{width:44px;height:44px;border-radius:8px;padding:0}
+:is(#view,.navigation-snapshot) .emoji-toolbar .icon,:is(#view,.navigation-snapshot) .emoji-toolbar [data-emoji-tab] .icon{width:29px;height:29px}
+:is(#view,.navigation-snapshot) .emoji-toolbar img{width:24px;height:26px}
+:is(#view,.navigation-snapshot) .emoji-board{height:calc(max(120px,min(296px,var(--app-height,100vh)*.42 - 113px)) + var(--safe-bottom));max-height:none}
+:is(#view,.navigation-snapshot) .emoji-drag-handle{height:28px}
+:is(#view,.navigation-snapshot) .emoji-drag-handle>span{width:44px;height:4px;border-radius:2px;background:#d4d4d4}
+:is(#view,.navigation-snapshot) .emoji-scroll{padding:0 17px 96px}
+:is(#view,.navigation-snapshot) .emoji-scroll h3,:is(#view,.navigation-snapshot) .emoji-scroll h3:not(.recent-emoji-heading){font-size:14px;line-height:20px;color:rgba(0,0,0,.55);font-weight:400;margin:0 0 6px;transform:none}
+:is(#view,.navigation-snapshot) .emoji-grid{grid-template-columns:repeat(7,30px);justify-content:space-between;gap:0;margin:0 0 9px}
+:is(#view,.navigation-snapshot) .emoji-grid button{width:30px;height:47.5px;padding:0;border-radius:6px;overflow:visible}
+:is(#view,.navigation-snapshot) .emoji-grid .wechat-emoji{transform:scale(1.24)}
+:is(#view,.navigation-snapshot) .emoji-action-backdrop{left:auto;right:0;width:150px;height:calc(60px + var(--safe-bottom));background:linear-gradient(to right,transparent,#ececec 18%)}
+:is(#view,.navigation-snapshot) .emoji-floating{right:14px;bottom:var(--safe-bottom);gap:15px}
+:is(#view,.navigation-snapshot) .emoji-floating button{width:53px;height:44px;border-radius:6px;box-shadow:none;font-size:17px}
+:is(#view,.navigation-snapshot) .emoji-floating button:disabled{background:#e0e0e0;color:#bfbfbf}
+:is(#view,.navigation-snapshot) .emoji-floating [data-action=emoji-delete] .icon{width:24px;height:24px;transform:none}
+:is(#view,.navigation-snapshot)[data-route=role]>.topbar,:is(#view,.navigation-snapshot)[data-route=me]>.topbar{border-bottom:0;background:#fff}
+
+/* ---------- Transfer page and WeChat's numeric keypad (measured on IMG_0468) ---------- */
+.page-editor:has(.wallet-pay-page.is-transfer) .modal-header{background:#ededed;border-bottom:0}
+.page-editor:has(.wallet-pay-page.is-transfer) .modal-header :is(h2,h3){visibility:hidden}
+.page-editor:has(.wallet-pay-page) .modal-body{padding:0;background:#f7f7f7;display:flex;flex-direction:column}
+.page-editor:has(.wallet-pay-page) .modal-form{flex:1;display:flex;flex-direction:column;min-height:0}
+#overlay .wallet-pay-page{flex:1;margin:0;padding:0;min-height:0;display:flex;flex-direction:column;background:#ededed}
+.transfer-head{display:flex;align-items:flex-start;gap:16px;padding:14px 32px;background:#ededed}
+.transfer-to{flex:1;min-width:0}
+.transfer-to strong{display:block;font-size:17px;line-height:20px;font-weight:500;color:#181818;overflow-wrap:anywhere}
+.transfer-to span{display:block;margin-top:4px;font-size:14px;line-height:20px;color:rgba(0,0,0,.55)}
+.transfer-head>.avatar{margin-top:10px;border-radius:5px}
+.transfer-sheet{flex:1;background:#fff;border-radius:12px 12px 0 0;padding:22px 32px 0;min-height:160px}
+.transfer-label{display:block;font-size:14px;line-height:20px;color:#191919}
+.pay-amount{display:flex;align-items:baseline;gap:14px;min-width:0}
+.transfer-sheet .pay-amount{margin-top:19px;height:66px;padding-bottom:4px;border-bottom:.5px solid rgba(0,0,0,.1);line-height:62px}
+.transfer-sheet .pay-amount b{font-size:36px;font-weight:600;color:#191919}
+.transfer-sheet .pay-amount-text{font-size:48px;font-weight:500;color:#191919;white-space:nowrap}
+.pay-caret{align-self:center;width:2px;height:62px;border-radius:1px;background:#07c160;margin-left:-12px;animation:pay-caret 1.1s steps(1) infinite}
+.pay-amount:not(.is-empty) .pay-caret{margin-left:-10px}
+@keyframes pay-caret{50%{opacity:0}}
+#overlay .wallet-pay-note#transfer-note-editor{display:block;width:auto;min-height:0;margin-top:22px;padding:0;font-size:14px;line-height:20px;color:#576b95;text-align:left}
+#overlay .wallet-pay-note#transfer-note-editor.has-note{color:#191919}
+.pay-keypad{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(4,48px);gap:8px;padding:8px;background:#f7f7f7;border-top:.5px solid rgba(0,0,0,.08);flex:none;margin-top:auto}
+.pay-keypad[hidden]{display:none}
+.pay-key{display:flex;align-items:center;justify-content:center;border-radius:5px;background:#fff;color:#1a1a1a;font-size:24px;font-weight:500;line-height:1;padding:0;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.pay-key:active{background:#e5e5e5}
+.pay-key-zero{grid-column:1/3}
+#overlay .pay-key-action{grid-column:4;grid-row:2/5;width:auto;min-height:0;margin:0;background:#07c160;color:#fff;font-size:17px;font-weight:500;opacity:1;border-radius:5px}
+#overlay .pay-key-action:disabled{background:#07c160;color:#fff;opacity:1}
+#overlay .pay-key-action:active{background:#06ad56}
+#overlay .wallet-pay-page.is-redpacket{padding:16px 16px 0}
+#overlay .wallet-pay-page.is-redpacket .pay-keypad{margin:auto -16px 0}
+.redpacket-amount-row .pay-amount{justify-content:flex-end;align-items:center;gap:2px;font-size:17px}
+.redpacket-amount-row .pay-amount.is-empty .pay-amount-text{color:rgba(0,0,0,.3)}
+.redpacket-amount-row .pay-caret{height:22px;margin-left:1px;background:#fa9d3b;display:none}
+.keypad-open .redpacket-amount-row .pay-caret{display:block}
+#overlay .wallet-pay-page.is-redpacket .wallet-pay-disclosure{margin:16px 0 0;padding:0;font-size:14px;color:rgba(0,0,0,.3)}
+
+/* ---------- Full-screen sub pages opened as overlays share the 44pt navigation bar ---------- */
+#overlay .page-editor .modal-header{height:44px;min-height:44px;padding:0 8px;grid-template-columns:88px minmax(0,1fr) 88px;gap:0;border-bottom:.5px solid rgba(0,0,0,.1);background:#ededed}
+#overlay .page-editor .modal-header h3{font-size:17px;line-height:24px;font-weight:500;color:#181818}
+#overlay .page-editor .modal-back{width:40px;min-width:40px;min-height:44px;padding:0 0 0 8px}
+#overlay .page-editor .modal-back .icon{width:10px;height:18px}
+#overlay .page-editor .modal-header>.modal-submit{font-size:17px;min-height:32px;padding:4px 12px;border-radius:4px}
+.page-editor:has(.wallet-pay-page.is-redpacket) .modal-body{background:#ededed}
+.page-editor:has(form.keypad-open .is-redpacket) .modal-body{background:#f7f7f7}
+.page-editor:has(.wallet-pay-page.is-redpacket) .modal-header{border-bottom:0}
+
+/* ---------- Conversation swipe actions ---------- */
+:is(#view,.navigation-snapshot) .conversation-actions button{width:auto;padding:0 16px;font-size:17px;white-space:nowrap}
+:is(#view,.navigation-snapshot) .conversation-actions button.unread-action{width:100px;background:#10aeff}
+:is(#view,.navigation-snapshot) .conversation-actions button.hide-action{width:83px;background:#fa9d3b}
+:is(#view,.navigation-snapshot) .conversation-actions button.delete-action{width:66px;background:#fa5151}
+:is(#view,.navigation-snapshot) .conversation.swiped{transform:translateX(-249px)}
+
+/* ---------- Moments keeps its transparent bar over the cover ---------- */
+:is(#view,.navigation-snapshot)>.topbar.moments-topbar{top:0;left:0;right:0;z-index:6;height:calc(44px + var(--safe-top,0px));min-height:calc(44px + var(--safe-top,0px));padding:var(--safe-top,0px) calc(8px + var(--safe-right,0px)) 0 calc(8px + var(--safe-left,0px));background:transparent;border-bottom:0}
+:is(#view,.navigation-snapshot)>.topbar.moments-topbar.is-scrolled{background:#ededed;border-bottom:.5px solid rgba(0,0,0,.1);z-index:6}
+
+/* ---------- Search chat history ---------- */
+:is(#view,.navigation-snapshot) .chat-search-filters{display:block;padding:24px 24px 8px;background:transparent;border:0;position:relative}
+:is(#view,.navigation-snapshot) .chat-search-caption{margin:0 0 20px;text-align:center;font-size:14px;line-height:20px;color:rgba(0,0,0,.3)}
+:is(#view,.navigation-snapshot) .chat-search-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px 0}
+:is(#view,.navigation-snapshot) .chat-search-grid button{font-size:15px;line-height:22px;color:#576b95;padding:0 4px;background:none;border-radius:0;border-right:.5px solid rgba(0,0,0,.1);white-space:nowrap}
+:is(#view,.navigation-snapshot) .chat-search-grid button:nth-child(3n),:is(#view,.navigation-snapshot) .chat-search-grid button:last-child{border-right:0}
+:is(#view,.navigation-snapshot) .chat-search-grid button[aria-pressed=true]{color:#07c160;font-weight:500}
+:is(#view,.navigation-snapshot) .chat-search-date{position:absolute;left:24px;top:64px;width:1px;height:1px;opacity:0;border:0;padding:0;pointer-events:none}
+:is(#view,.navigation-snapshot) .chat-search-reset{display:block;margin:20px auto 0;font-size:14px;color:rgba(0,0,0,.5)}
+
+/* ---------- New friends ---------- */
+:is(#view,.navigation-snapshot) .new-friends-search{display:block;width:100%;padding:8px;background:#ededed}
+:is(#view,.navigation-snapshot) .new-friends-search .search-input-wrap{height:36px;border-radius:8px;gap:6px;font-size:17px;color:#b2b2b2}
+:is(#view,.navigation-snapshot) .new-friends-search .search-input-wrap .icon{width:20px;height:20px;background-color:#b2b2b2}
+:is(#view,.navigation-snapshot) .new-friend-row{min-height:64px;padding:8px 16px;gap:12px}
+:is(#view,.navigation-snapshot) .new-friend-row .contact-tool{width:44px;height:44px;border-radius:4px}
+:is(#view,.navigation-snapshot) .new-friend-row .contact-tool .icon{background-color:#fff}
+:is(#view,.navigation-snapshot) .new-friend-accept{flex:none;min-width:56px;height:32px;padding:0 12px;border-radius:4px;background:#f2f2f2;color:#07c160;font-size:15px;font-weight:500;line-height:32px;text-align:center}
+
+/* ---------- Personal info ---------- */
+:is(#view,.navigation-snapshot)[data-route=profile] .cell:has(.avatar){min-height:88px}
+
+/* ---------- Message long-press menu: icon over label, five per row ---------- */
+#overlay .bubble-menu{grid-template-columns:repeat(var(--menu-columns,5),minmax(0,1fr));background:#4c4c4c;border-radius:8px;padding:6px 8px;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+#overlay .bubble-menu:after{background:#4c4c4c;width:12px;height:12px;left:var(--bubble-tip,50%);bottom:-5px;border-radius:2px}
+#overlay .bubble-menu[data-placement=below]:after{top:-5px;bottom:auto}
+#overlay .bubble-menu button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-height:60px;padding:6px 0;font-size:12px;line-height:16px;color:#fff;border-radius:6px;white-space:nowrap}
+#overlay .bubble-menu button svg{width:22px;height:22px}
+#overlay .bubble-menu button:active{background:#5e5e5e}
+
+/* ---------- Alerts and action sheets ---------- */
+#overlay .alert-dialog{border-radius:12px;width:min(320px,calc(100% - 55px))}
+#overlay .alert-dialog h3{font-size:17px;line-height:24px;font-weight:600;margin:32px 24px 8px;text-align:center;color:#191919}
+#overlay .alert-dialog p{font-size:17px;line-height:24px;color:rgba(0,0,0,.5);margin:0 24px 32px;text-align:center}
+#overlay .alert-actions{border-top:.5px solid rgba(0,0,0,.1)}
+#overlay .alert-actions button{min-height:56px;font-size:17px;font-weight:500;color:#576b95}
+#overlay .alert-actions button:first-child{color:#191919;border-right:.5px solid rgba(0,0,0,.1)}
+#overlay .alert-actions button.danger{color:#fa5151}
+#overlay .sheet-actions{border-radius:12px 12px 0 0;background:#f7f7f7;overflow:hidden}
+#overlay .sheet-action{min-height:56px;font-size:17px;color:#191919;background:#fff;justify-content:center;border-top:.5px solid rgba(0,0,0,.1)}
+#overlay .sheet-action.danger{color:#fa5151}
+#overlay .sheet-action[data-close]{margin-top:8px;border-top:0}
+#overlay .sheet-caption{font-size:12px;line-height:17px;color:rgba(0,0,0,.5);padding:16px 24px;background:#fff;text-align:center}
+
+.unread-dot{position:absolute;right:-5px;top:-5px;width:10px;height:10px;border-radius:50%;background:#fa5151}
+
+
+/* Match tap feedback across native buttons without changing their hit areas. */
+:is(#view,.navigation-snapshot,#overlay) :is(.cell,.conversation,.tab,.contact,.contact-row,.choice-row,.sheet-action):active:not(:disabled){
+  background-color:#ececec;
+}
+:is(#view,.navigation-snapshot,#overlay) button:not(:disabled):active:where(.nav-text,.modal-close,.form-button,.panel-item,.emoji-tab,.role-tool){
+  background-color:#ececec;
+}
+:is(#view,.navigation-snapshot,#overlay) :is(.primary,.primary-btn,.life-save,.compose-send,.send-button,.pay-key-action,.bubble-menu button):active:not(:disabled){
+  filter:brightness(.88);
+}
+:is(#view,.navigation-snapshot,#overlay) :is(.icon-btn,.back-btn,.modal-back,.model-action,.message-avatar,.image-more,.lightbox-close,.lightbox-controls button):active:not(:disabled){
+  opacity:.5;
+}
+:is(#view,.navigation-snapshot) .compose-panel button:active:not(:disabled) .panel-icon{background-color:#ececec}
+
+
+:is(#view,.navigation-snapshot) .chat-messages .sticker-bubble{border-radius:0;overflow:visible}
+:is(#view,.navigation-snapshot) .chat-messages .sticker-bubble .message-image{max-width:112px;max-height:112px;border-radius:0;object-fit:contain}

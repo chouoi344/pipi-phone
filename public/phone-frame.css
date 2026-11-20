@@ -1,0 +1,23 @@
+/* SPDX-License-Identifier: GPL-3.0-only — Safe-area layout with empty desktop preview space. */
+.phone-safe-probe{position:fixed;left:0;top:0;width:0;height:0;box-sizing:content-box;padding:var(--safe-top,0px) var(--safe-right,0px) var(--safe-bottom,0px) var(--safe-left,0px);visibility:hidden;pointer-events:none}
+.view{background:var(--frame-top-bg,var(--bg))}
+.view[data-route=moments]{padding-top:0}
+.moments-topbar{left:0;right:0}
+.view.phone-frame-leaf{padding-bottom:var(--safe-bottom)}
+.view.phone-frame-leaf:after{content:"";position:absolute;bottom:0;left:0;right:0;height:var(--safe-bottom);background:var(--frame-bottom-bg,var(--bg));pointer-events:none}
+.view:has(>.status-picker-surface){background:linear-gradient(145deg,#283a4c 0%,#3e2b35 48%,#31251c 100%)}
+.view:has(>.status-editor-surface){background:linear-gradient(140deg,var(--frame-status-theme,#56796a),#78998c)}
+.view>.status-picker-surface,.view>.status-editor-surface{background:transparent}
+.view.phone-frame-leaf:has(>.status-picker-surface):after{background:transparent}
+.view>.feature-content>.feature-page{padding-bottom:max(20px,var(--safe-bottom))}
+.page-editor .feature-page{padding-bottom:20px}
+.page-editor{background-image:linear-gradient(to top,var(--frame-editor-bottom-bg,#fff) 0,var(--frame-editor-bottom-bg,#fff) var(--safe-bottom),transparent var(--safe-bottom))}
+.page-editor .modal-header{grid-template-columns:84px minmax(0,1fr) 84px;gap:6px}
+.page-editor .modal-header>.modal-submit{justify-self:end;min-width:0;max-width:100%;padding-left:10px;padding-right:10px;white-space:nowrap;line-height:20px}
+.modal-parent-underlay .page-editor{animation:none}
+.sheet-actions{max-height:min(92%,calc(100% - var(--safe-top) - 8px))}
+.alert-dialog{top:calc(50% + (var(--safe-top) - var(--safe-bottom)) / 2);max-height:calc(100% - var(--safe-top) - var(--safe-bottom) - 24px);overflow-y:auto;overscroll-behavior:contain}
+.bubble-menu[data-placement=below]:after{top:-5px;bottom:auto}
+.lightbox{padding:var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left)}
+.lightbox button{top:calc(var(--safe-top) + 12px);right:calc(var(--safe-right) + 12px)}
+@media(prefers-reduced-motion:reduce){.modal-parent-underlay .page-editor{animation:none}}

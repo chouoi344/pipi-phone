@@ -1,0 +1,12 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* The page and chat headers use the same existing Back artwork and hit size. */
+.page-editor .modal-back{
+  display:flex;
+  align-items:center;
+  justify-self:start;
+  width:44px;
+  min-width:44px;
+  min-height:44px;
+  padding:8px 0;
+}
+.page-editor .modal-back .icon{width:23px;height:23px}

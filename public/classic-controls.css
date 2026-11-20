@@ -1,0 +1,87 @@
+/* Shared touch controls for the classic theme. The glyphs keep their native sizes. */
+/* A pending settings lookup gives feedback on the row that was pressed. */
+body.wechat-classic .cell[aria-busy="true"] .chevron {
+  width:15px; height:15px; flex:none; mask:none; -webkit-mask:none;
+  background:transparent; border:2px solid #aab3b9; border-right-color:#147d51;
+  border-radius:50%; animation:settings-loading .7s linear infinite;
+}
+@keyframes settings-loading {to {transform:rotate(360deg);}}
+body.wechat-classic :is(#view,.navigation-snapshot) > .topbar:has(.back-btn),
+body.wechat-classic #overlay .page-editor .modal-header:has(.modal-back) {padding-inline:8px;}
+body.wechat-classic :is(#view,.navigation-snapshot) > .topbar :is(.back-btn,.icon-btn,.nav-text),
+body.wechat-classic #overlay .page-editor .modal-header > :is(.modal-close,.modal-submit,.feature-header-action) {
+  min-width:44px; min-height:44px;
+}
+body.wechat-classic :is(#view,.navigation-snapshot) > .topbar .header-leading > .back-btn,
+body.wechat-classic #overlay .page-editor .modal-header > .modal-back {
+  display:inline-flex; align-items:center; justify-content:flex-start;
+  padding-inline:12px 8px; width:auto;
+}
+body.wechat-classic .back-btn > span:empty:not(.icon) {display:none;}
+body.wechat-classic :is(#view,.navigation-snapshot,#overlay) :is(.primary-btn,.button-area > .primary,.classic-entry-primary):not(.modal-submit) {min-height:48px;}
+body.wechat-classic :is(#view,.navigation-snapshot) .global-search-bar > .nav-text,
+body.wechat-classic :is(#view,.navigation-snapshot) .search-input-wrap .search-clear {min-width:44px; min-height:44px;}
+body.wechat-classic :is(#view,.navigation-snapshot) .search-input-wrap .search-clear {
+  background:radial-gradient(circle closest-side,#68717a 0 9px,transparent 9.5px); color:#fff;
+}
+
+/* The small gray mark stays centered in the larger Moments action. */
+.wechat-classic .moment-actions {flex-basis:44px;}
+.wechat-classic .moment-actions > summary {
+  width:44px; height:44px; background:transparent; position:relative; isolation:isolate;
+}
+.wechat-classic .moment-actions > summary::before {
+  content:""; position:absolute; z-index:-1; width:30px; height:21px; border-radius:4px; background:#f4f4f5;
+}
+.wechat-classic .moment-action-menu {right:100%; top:0; height:44px;}
+.wechat-classic :is(.moment-delete,.moment-expand,.moment-comment) {min-height:44px; min-width:44px;}
+
+.wechat-classic :is(#view,.navigation-snapshot) .my-wechat-id button,
+.wechat-classic .favorites-tabs button,
+.wechat-classic #overlay .note-todo-editor button {min-height:44px; min-width:44px;}
+.wechat-classic #overlay .note-editor-tools > :is(label,button) {display:grid; place-content:center; min-height:44px;}
+.wechat-classic :is(.moment-unread-pill,.farm-friend button,.ledger-filter select,.favorites-heading button) {min-height:44px; min-width:44px;}
+.wechat-classic .ledger-filter {padding-block:3px;}
+.wechat-classic :is(#overlay,.lightbox) :is(.lightbox-close,.image-more) {min-height:44px; min-width:44px;}
+
+body.wechat-classic :is(#view,.navigation-snapshot) .me-status-row {gap:4px; padding-block:0 24px;}
+body.wechat-classic :is(#view,.navigation-snapshot) .me-status-button {
+  min-height:44px; border:0; position:relative; isolation:isolate; color:#545b65;
+}
+body.wechat-classic :is(#view,.navigation-snapshot) .me-status-button::before {
+  content:""; position:absolute; inset:8px 0; z-index:-1; border:1px solid #d6d8da; border-radius:20px;
+}
+.wechat-classic .me-status-friends {width:44px; height:44px; border:none; background:transparent;}
+.wechat-classic .me-status-friends::before, .wechat-classic .me-status-friends::after {
+  content:""; position:absolute; inset:9px; border:1px solid #d6d8da; border-radius:50%;
+}
+.wechat-classic .me-status-friends::after {inset:16px; border-color:#747b80;}
+
+/* A separate column keeps the menu clear of the persona card's opening action. */
+body.wechat-classic :is(#view,.navigation-snapshot) .rp-card {
+  display:grid; grid-template-columns:minmax(0,1fr) 44px; align-content:start;
+}
+body.wechat-classic :is(#view,.navigation-snapshot) .rp-card-open {grid-column:1; grid-row:1;}
+body.wechat-classic :is(#view,.navigation-snapshot) .rp-card-open h3 {padding-right:0;}
+body.wechat-classic :is(#view,.navigation-snapshot) .rp-card-menu {grid-column:2; grid-row:1; position:static; width:44px; height:44px;}
+body.wechat-classic :is(#view,.navigation-snapshot) .rp-bound {grid-column:1 / -1; min-height:44px;}
+body.wechat-classic :is(#view,.navigation-snapshot) .rp-folder-menu {width:44px; height:44px;}
+
+/* Keep the thumbnail, description and removal targets separate, including on narrow phones. */
+body.wechat-classic :is(#view,.navigation-snapshot) .semantic-library .sticker-grid {
+  grid-template-columns:repeat(auto-fill,minmax(min(104px,100%),1fr)); gap:16px 10px;
+}
+.wechat-classic .sticker-library-item {display:grid; grid-template-columns:minmax(0,1fr) 44px;}
+.wechat-classic .sticker-library-image {grid-column:1 / -1;}
+.wechat-classic .sticker-library-item .sticker-library-meaning {
+  grid-row:2; grid-column:1; align-self:center; margin:0; min-height:44px; line-height:20px;
+  display:flex; align-items:center; text-align:left;
+}
+.wechat-classic .sticker-library-item .sticker-library-meaning span {
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.wechat-classic .sticker-library-item .sticker-delete-mark {
+  position:static; grid-row:2; grid-column:2; width:44px; height:44px;
+  color:#a44744; background:transparent; font-size:22px;
+}
+.wechat-classic .sticker-library-tools button {min-height:44px;}

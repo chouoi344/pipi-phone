@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pipi 本地模型演示</title><style>
+*{box-sizing:border-box}body{font:16px/1.65 system-ui,sans-serif;background:#f2f3f5;color:#202126;margin:0}main{max-width:900px;margin:32px auto;padding:24px;background:white;border-radius:16px}h1{font-size:25px;margin:0 0 10px}h2{font-size:19px;margin-top:28px}.notice{background:#fff3d6;padding:14px;border-radius:8px}button,.open{display:inline-block;background:#087d47;border:0;border-radius:8px;padding:11px 16px;color:white;text-decoration:none;font:inherit;cursor:pointer}select{font:inherit;padding:10px;max-width:100%}code{overflow-wrap:anywhere;background:#f0f1f2;padding:2px 5px}a{color:#0769aa}section{margin-top:18px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}ol{padding-left:24px}li{margin:8px 0}.table{overflow:auto}table{border-collapse:collapse;width:100%;font-size:14px;white-space:nowrap}td,th{padding:9px;text-align:left;border-bottom:1px solid #ddd}#result{min-height:26px;color:#555}.small{font-size:14px;color:#61646a}img{max-width:240px;width:100%;border:1px solid #ddd}@media(max-width:600px){main{margin:0;padding:20px;border-radius:0}h1{font-size:23px}button,.open{width:100%;text-align:center}}
+</style><script src="/demo.js" defer></script></head><body><main>
+<h1>本地模型链路演示</h1>
+<p class="notice">这是独立临时数据的演示实例。页面、请求解析、聊天状态、重试与保存使用真实应用代码；模型服务由本机 HTTP 模拟服务返回固定内容。没有连接外部模型，不产生模型费用。请只输入演示资料。</p>
+<section><a id="app-link" class="open" target="_blank" rel="noopener">打开真实应用</a><p>演示登录密码：<code id="password"></code></p><p class="small">应用内的资料名称和角色名称均带有演示标记。模型配置可在「我 → 设置 → 模型与服务」查看。</p></section>
+<h2>选择下一次模型请求的场景</h2>
+<form id="mode-form" class="row"><select id="mode" aria-label="模型请求场景"></select><button>应用场景</button></form><p id="result" role="status" aria-live="polite"></p>
+<p class="small">切换只影响后续请求。延迟场景可检查等待提示和重复发送；超时保持真实应用的 45 秒等待。失败消息保存在聊天中，点击红色感叹号可重试。「首次失败，重试成功」会让该场景的第一次模型请求失败、后续请求成功。</p>
+<h2>语音和引用预设</h2>
+<button id="prepare-samples">准备语音与引用示例</button><p id="sample-result" role="status"></p>
+<p class="small">在第一个演示角色中追加固定样本，保留现有演示内容。未转写语音可长按选择转文字，配合上方延迟、失败场景检查等待和重试；另有已存转写、图片引用、短链接和长文字引用。语音样本是提示音，文字为明确标注的固定演示结果。</p>
+<h2>在应用里点击试用</h2>
+<ol>
+<li><strong>文本聊天：</strong>在微信页打开一个演示角色，发送任意演示文字，回复带有「本地演示响应」。刷新页面，确认消息仍保留。</li>
+<li><strong>失败与重试：</strong>切到「首次失败，重试成功」，发一条消息；点击红色感叹号，再点重新发送。原消息恢复成功，只增加一条回复。</li>
+<li><strong>图片聊天：</strong><a href="/samples/receipt.png" download>下载演示小票 PNG</a>，通过聊天「+ → 相册」上传。固定回复说明图片已经到达本地服务，不识别图片内容。</li>
+<li><strong>拍照记账：</strong>在「我 → 服务 → 现实账本 → 拍照记账」上传同一小票，检查固定的 12.50 元草稿，点击确认后才写入账本。</li>
+<li><strong>朋友圈：</strong>在「我 → 设置 → 朋友圈管理」使用角色生成动态，返回固定且有演示标记的文案。</li>
+<li><strong>语音转文字：</strong>通过聊天输入区麦克风录入一段话，真实录音会传到本地服务，结果固定为「本地演示转写…」，不识别录音内容。</li>
+<li><strong>朗读：</strong>长按模型回复，选择「朗读消息」。服务返回 0.45 秒合成提示音，用来检查音频请求、保存和播放，不模拟真人语音。<a href="/samples/tone.mp3" download>下载提示音样本</a></li>
+</ol>
+<p class="notice">图像生成和自动记忆插件尚未接入，本演示没有实现这些能力。真实供应商兼容性、真实识别质量和真人语音效果仍需选定服务后验证。</p>
+<h2>实际模型 HTTP 请求</h2><p class="small">这里只记录接口、场景、状态和用时，不显示录音、图片或请求正文。请求正在等待时显示「处理中」。</p>
+<div class="table"><table><thead><tr><th>序号</th><th>接口</th><th>场景</th><th>状态</th><th>用时</th></tr></thead><tbody id="requests"></tbody></table></div><p id="connection" class="small" role="status"></p>
+</main></body></html>

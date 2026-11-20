@@ -88,8 +88,8 @@
   let rolePanelAvailable=false;
   const restoredPage=history.state?.pipi&&typeof history.state.route?.name==='string'?history.state:null;
   let state = null, csrf = '', authEpoch = 0, route = restoredPage?{...restoredPage.route}:{name:initialView,arg:null}, authSetup = false, modalOpen = false, searchTerm = '', searchOpen = false;
-  let sourceUrl = '',binaryMedia=false;
-  let composeText = '', composeImage = '', composeStickerId = '', quoteId = '', panel = '', sending = false, sendingRoleId = '', outgoing = null, avatarDraft = '', toastTimer, pendingRender = false, modalReturnFocus = null;
+  let sourceUrl = '',binaryMedia=false,imageVariants=false;
+  let composeText = '', composeImage = '', composeImageMeta=null, composeStickerId = '', quoteId = '', panel = '', sending = false, sendingRoleId = '', outgoing = null, avatarDraft = '', toastTimer, pendingRender = false, modalReturnFocus = null;
   let recordingSession=null,dictationBusy=false,composeComposing=false,searchComposing=false,deferredComposerUpdate=false;
   const routes = new Map();
   const navStack = restoredPage?.stack?.slice()||[], drafts = new Map(), chatScrolls = new Map();
@@ -113,7 +113,7 @@
   let chatSelection=null;
   let globalSearchTerm='';
   let contactsReturn=null,chatsReturn=0;
-  const transcriptViews=new Map();
+  const transcriptViews=new Map(),thumbnailAttempts=new Set();
   const chatDraftKey='pipi.chat-drafts',failedSends=new Map(),pressTimers=new Set(),avatarSources=new Map(),avatarKeys=new Map();
   const roleRoutes=new Set(['chat','role','memories','role-memories','role-schedule','role-references','chat-info','role-config','contact-settings','contact-more','contact-permissions','chat-search','friend-profile','role-stickers','role-reminders']);
   let avatarSequence=0,renderTimer=0,bootStale=Boolean(restoredPage&&(restoredPage.overlay||restoredPage.chatSelection||restoredPage.childDialog||restoredPage.featureSelection));
@@ -272,6 +272,35 @@
   async function uploadImageData(source,{requireUrl=false}={}){return source.startsWith('data:')&&(binaryMedia||requireUrl)?uploadMedia(imageBlob(source),{requireUrl}):source;}
   async function uploadImage(file,convertSticker=false){return uploadMedia(await readImage(file,convertSticker,true));}
   async function uploadProfileImage(file,options){return uploadMedia(await readProfileImage(file,true),options);}
+  async function imageVariant(source,longEdge,quality){
+    const width=source.naturalWidth||source.width,height=source.naturalHeight||source.height,ratio=Math.min(1,longEdge/Math.max(width,height)),canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(width*ratio));canvas.height=Math.max(1,Math.round(height*ratio));canvas.getContext('2d').drawImage(source,0,0,canvas.width,canvas.height);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',quality));if(!blob)throw new Error('图片副本生成失败');return blob;
+  }
+  async function prepareChatImage(file){
+    const blob=await readImage(file,false,true),image=await uploadMedia(blob),result={image};
+    if(!imageVariants)return result;
+    let bitmap;try{bitmap=await createImageBitmap(blob);}catch{return result;}
+    try{
+      try{result.thumb=await uploadMedia(await imageVariant(bitmap,120,.6));}catch{}
+      if(blob.size>4*1024*1024||Math.max(bitmap.width,bitmap.height)>2560)try{result.modelImage=await uploadMedia(await imageVariant(bitmap,2048,.88));}catch{}
+      return result;
+    }finally{bitmap.close();}
+  }
+  async function backfillThumbnail(img){
+    if(!imageVariants||!img.isConnected||!img.naturalWidth)return;
+    const messageId=img.closest('[data-bubble]').dataset.bubble,message=state.messages.find(item=>item.id===messageId),originalImage=message?.type==='image'?message.content:message?.meta?.image;
+    if(!message||message.meta?.thumb||message.meta?.stickerId||message.meta?.expired||thumbnailAttempts.has(messageId)||!safeImage(originalImage))return;
+    thumbnailAttempts.add(messageId);
+    try{
+      const thumb=await uploadMedia(await imageVariant(img,120,.6)),current=state.messages.find(item=>item.id===messageId),image=current?.type==='image'?current.content:current?.meta?.image;
+      if(!current||current.meta?.thumb||image!==originalImage)return;
+      const result=await api('/api/chat/media/thumbnail',{messageId,thumb,originalImage});if(result.state)setState(result.state);
+    }catch{} // Missing previews are best effort; each message is attempted once per page load.
+  }
+  function bindChatThumbnails(){
+    for(const img of view.querySelectorAll('.image-bubble:not(.sticker-bubble) .message-image'))if(img.complete)void backfillThumbnail(img);else img.addEventListener('load',()=>void backfillThumbnail(img),{once:true});
+  }
   async function act(type, payload = {}) { const result = await api('/api/action',{type,payload}); if (result.state) setState(result.state); if(type==='sticker.add'){const images=payload.images||[payload.image];window.PipiStickers?.analyze(state.stickers.filter(s=>images.includes(s.image))).catch(error=>toast(error.message));}return result; }
   function trackModalHistory(nested=false){if((nested||!history.state?.overlay)&&!overlayBackPending)history.pushState({pipi:true,route:{...route},stack:[...navStack],overlay:true,overlayDepth:nested?(history.state?.overlayDepth||1)+1:1},'');}
   // A native dialog within a page owns one history entry, just like other
@@ -476,7 +505,7 @@
       const input=view.querySelector('#compose-text'),emoji=view.querySelector('.emoji-scroll');
       if(input){composeText=readComposerText(input);composerSelection=readComposerSelection(input);composerScroll.input=input.scrollTop;}
       if(emoji)composerScroll.emoji=emoji.scrollTop;
-      drafts.set(route.arg,{text:composeText,image:composeImage,stickerId:composeStickerId,quote:quoteId,panel,selection:{...composerSelection},scroll:{...composerScroll},morePage,emojiPage,emojiTab,emojiSearch,emojiExpandedHeight});
+      drafts.set(route.arg,{text:composeText,image:composeImage,imageMeta:composeImageMeta,stickerId:composeStickerId,quote:quoteId,panel,selection:{...composerSelection},scroll:{...composerScroll},morePage,emojiPage,emojiTab,emojiSearch,emojiExpandedHeight});
       const list=view.querySelector('#chat-messages');if(list)chatScrolls.set(route.arg,list.scrollTop);
     }
     persistChatDrafts();
@@ -500,7 +529,7 @@
     if(!fromBack){if(['chats','contacts','discover','me'].includes(name))navStack.length=0;else if(route.name!==name||route.arg!==nextArg)navStack.push({...route});}
     if(name!=='chat'||route.name!=='chat'||route.arg!==nextArg){
       const draft=name==='chat'?drafts.get(nextArg):null;
-      composeText=draft?.text||'';composeImage=draft?.image||'';composeStickerId=draft?.stickerId||'';quoteId=draft?.quote||'';
+      composeText=draft?.text||'';composeImage=draft?.image||'';composeImageMeta=draft?.imageMeta||null;composeStickerId=draft?.stickerId||'';quoteId=draft?.quote||'';
       composerSelection=draft?.selection?{...draft.selection}:{start:composeText.length,end:composeText.length};composerScroll=draft?.scroll?{...draft.scroll}:{input:0,emoji:0};
       const returningFromPayment=fromBack&&route.name==='wallet'&&route.arg?.roleId===nextArg&&['transfer','redpacket'].includes(route.arg?.mode);
       panel=draft?.panel==='voice'?'voice':returningFromPayment&&draft?.panel==='more'?'more':'';morePage=draft?.morePage||0;emojiPage=draft?.emojiPage||0;emojiTab=draft?.emojiTab||'all';emojiSearch=draft?.emojiSearch||'';emojiExpandedHeight=draft?.emojiExpandedHeight||0;
@@ -1174,12 +1203,12 @@
       case 'contact-tags':showView('contact-tags');break;
       case 'add-sticker':view.querySelector('#sticker-file')?.click();break;
       case 'clear-quote': quoteId=''; updateComposer(); break;
-      case 'clear-image': composeImage='';composeStickerId=''; updateComposer(); break;
+      case 'clear-image': composeImage='';composeImageMeta=null;composeStickerId=''; updateComposer(); break;
       case 'upload-chat-image': view.querySelector('#chat-image-file')?.click(); break;
       case 'chat-transfer': showView('wallet',{roleId:r?.id,mode:'transfer'}); break;
       case 'chat-redpacket': showView('wallet',{roleId:r?.id,mode:'redpacket'}); break;
       case 'chat-pat': if(r)await patChat(r.id,'contact');break;
-      case 'logout': confirmDialog('退出登录？','数据会保留在服务器，输入密码即可重新登录。',async()=>{await api('/api/logout',{}); csrf=''; state=null;drafts.clear();composerHistories.clear();failedSends.clear();composeText='';composeImage='';composeStickerId='';quoteId='';sessionStorage.removeItem(chatDraftKey);window.PipiEngine?.stop(); renderAuth(false);},'退出登录'); break;
+      case 'logout': confirmDialog('退出登录？','数据会保留在服务器，输入密码即可重新登录。',async()=>{await api('/api/logout',{}); csrf=''; state=null;drafts.clear();composerHistories.clear();failedSends.clear();composeText='';composeImage='';composeImageMeta=null;composeStickerId='';quoteId='';sessionStorage.removeItem(chatDraftKey);window.PipiEngine?.stop(); renderAuth(false);},'退出登录'); break;
       case 'download-backup': downloadBackup(); break;
       case 'restore-backup': pickBackup(); break;
     }
@@ -1290,6 +1319,7 @@
     if(button){button.hidden=!newChatMessageIds.size;button.textContent='↓ '+newChatMessageIds.size+' 条新消息';}
   }
   function bindChat() {
+    if(imageVariants)bindChatThumbnails();
     bindComposer();
     const cancelReply=view.querySelector('[data-chat-cancel]');if(cancelReply)cancelReply.onclick=()=>cancelChatReply(cancelReply);
     for(const button of view.querySelectorAll('[data-message-speech]')){
@@ -1417,7 +1447,7 @@
     view.querySelectorAll('[data-sticker]').forEach(el=>el.onclick=()=>{const sticker=state.stickers?.find(s=>s.id===el.dataset.sticker);if(sticker&&safeImage(sticker.image)){sendSticker(sticker);}});
     const stickerFile=view.querySelector('#sticker-file');if(stickerFile)stickerFile.onchange=()=>uploadStickers(stickerFile);
     const drag=view.querySelector('.emoji-drag-handle');if(drag){let startY=0,height=0;const resize=delta=>{const max=Math.max(220,document.querySelector('.phone-shell').clientHeight-180);emojiExpandedHeight=Math.max(220,Math.min(max,height+delta));const anchor=captureChatLayout();view.querySelector('.emoji-board').style.height=emojiExpandedHeight+'px';restoreChatLayout(anchor);};drag.onpointerdown=e=>{startY=e.clientY;height=view.querySelector('.emoji-board').clientHeight;drag.setPointerCapture(e.pointerId);};drag.onpointermove=e=>{if(drag.hasPointerCapture(e.pointerId))resize(startY-e.clientY);};drag.onkeydown=e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown'){e.preventDefault();height=view.querySelector('.emoji-board').clientHeight;resize(e.key==='ArrowUp'?30:-30);}};}
-    const file=view.querySelector('#chat-image-file'); if(file)file.onchange=async()=>{if(!file.files?.[0])return;const roleId=route.arg,origin=route,sequence=++chatImageSequence;try{const data=await uploadImage(file.files[0]);if(sequence!==chatImageSequence||route!==origin||route.name!=='chat'||route.arg!==roleId)return;composeImage=data;composeStickerId='';panel='';updateComposer();if(!composeText.trim())sendMessage();}catch(err){toast(err.message);}};
+    const file=view.querySelector('#chat-image-file'); if(file)file.onchange=async()=>{if(!file.files?.[0])return;const roleId=route.arg,origin=route,sequence=++chatImageSequence;try{const data=await prepareChatImage(file.files[0]);if(sequence!==chatImageSequence||route!==origin||route.name!=='chat'||route.arg!==roleId)return;composeImage=data.image;composeImageMeta={...(data.thumb?{thumb:data.thumb}:{}),...(data.modelImage?{modelImage:data.modelImage}:{})};composeStickerId='';panel='';updateComposer();if(!composeText.trim())sendMessage();}catch(err){toast(err.message);}};
     const record=view.querySelector('[data-record]');
     if(record)window.PipiVoiceHold.bind({button:record,host:view.closest('.phone-shell'),
       begin:controls=>startRecording('hold',controls),onError:error=>toast(error.message)});
@@ -1427,31 +1457,31 @@
   async function sendMessage(keepEmoji=false) {
     if(composeComposing||recordingSession||(!composeText.trim()&&!composeImage))return;
     const r=roleById(route.arg);if(!r)return;
-    const draft={text:composeText,image:composeImage,stickerId:composeStickerId,quote:quoteId},text=draft.text.trim(),image=draft.image,quote=quotedMessage(draft.quote),failed=failedSends.get(r.id);
+    const draft={text:composeText,image:composeImage,imageMeta:composeImageMeta,stickerId:composeStickerId,quote:quoteId},text=draft.text.trim(),image=draft.image,quote=quotedMessage(draft.quote),failed=failedSends.get(r.id);
     // Resending an unchanged failed draft reuses its requestId, so a request that did reach the server is not stored twice.
-    const requestId=failed&&failed.text===text&&failed.image===image&&failed.stickerId===draft.stickerId&&failed.quote===(quote?.id||'')?failed.requestId:crypto.randomUUID();
+    const requestId=failed&&failed.text===text&&failed.image===image&&failed.stickerId===draft.stickerId&&failed.quote===(quote?.id||'')&&JSON.stringify(failed.imageMeta||{})===JSON.stringify(draft.imageMeta||{})?failed.requestId:crypto.randomUUID();
     const restoreEmoji=keepEmoji&&panel==='emoji';
     window.PipiEngine?.resetActivity(r.id);
-    composeText='';composeImage='';composeStickerId='';quoteId='';composerSelection={start:0,end:0};drafts.delete(r.id);composerHistories.delete(r.id);
+    composeText='';composeImage='';composeImageMeta=null;composeStickerId='';quoteId='';composerSelection={start:0,end:0};drafts.delete(r.id);composerHistories.delete(r.id);
     panel=restoreEmoji?'emoji':'';forceBottomRole=r.id;chatScrolls.delete(r.id);updateComposer();
     try {
       const uploadedImage=image?await uploadImageData(image):'';
-      const result=await api('/api/chat',{roleId:r.id,text,image:uploadedImage||undefined,stickerId:draft.stickerId||undefined,quoteId:quote?.id,requestId});if(failedSends.get(r.id)?.requestId===requestId)failedSends.delete(r.id);receiveState(result.state);if(result.notice)toast(result.notice);
+      const result=await api('/api/chat',{roleId:r.id,text,image:uploadedImage||undefined,stickerId:draft.stickerId||undefined,quoteId:quote?.id,requestId,...(imageVariants?draft.imageMeta:{})});if(failedSends.get(r.id)?.requestId===requestId)failedSends.delete(r.id);receiveState(result.state);if(result.notice)toast(result.notice);
     } catch(err) {
       toast(err.message);
-      if(!err.state){failedSends.set(r.id,{text,image,stickerId:draft.stickerId,quote:quote?.id||'',requestId});restoreFailedDraft(r.id,draft);}
+      if(!err.state){failedSends.set(r.id,{text,image,imageMeta:draft.imageMeta,stickerId:draft.stickerId,quote:quote?.id||'',requestId});restoreFailedDraft(r.id,draft);}
       if(err.state)refresh();
     }
   }
   // The failed text goes back in front of anything typed since; the newer input is never replaced.
-  function mergeDraft(current={},failed){const text=failed.text?(current.text?failed.text+'\n'+current.text:failed.text):current.text||'',shift=text.length-(current.text||'').length;return {...current,text,image:current.image||failed.image||'',stickerId:current.image?current.stickerId:failed.stickerId||'',quote:current.quote||failed.quote||'',selection:current.selection?{start:current.selection.start+shift,end:current.selection.end+shift}:undefined};}
+  function mergeDraft(current={},failed){const text=failed.text?(current.text?failed.text+'\n'+current.text:failed.text):current.text||'',shift=text.length-(current.text||'').length;return {...current,text,image:current.image||failed.image||'',imageMeta:current.image?current.imageMeta:failed.imageMeta,stickerId:current.image?current.stickerId:failed.stickerId||'',quote:current.quote||failed.quote||'',selection:current.selection?{start:current.selection.start+shift,end:current.selection.end+shift}:undefined};}
   function restoreFailedDraft(roleId,draft){
     if(route.name!=='chat'||route.arg!==roleId){drafts.set(roleId,drafts.has(roleId)?mergeDraft(drafts.get(roleId),draft):draft);persistChatDrafts();return;}
     if(composeComposing){setTimeout(()=>restoreFailedDraft(roleId,draft),300);return;}
-    if(!composeText&&!composeImage){composeText=draft.text;composeImage=draft.image;composeStickerId=draft.stickerId;quoteId=draft.quote;composerSelection={start:draft.text.length,end:draft.text.length};updateComposer();return;}
+    if(!composeText&&!composeImage){composeText=draft.text;composeImage=draft.image;composeImageMeta=draft.imageMeta||null;composeStickerId=draft.stickerId;quoteId=draft.quote;composerSelection={start:draft.text.length,end:draft.text.length};updateComposer();return;}
     const input=view.querySelector('#compose-text');if(input&&document.activeElement===input)composerSelection=readComposerSelection(input);
-    const before=[composeImage,quoteId],merged=mergeDraft({text:composeText,image:composeImage,stickerId:composeStickerId,quote:quoteId,selection:composerSelection},draft);
-    rememberComposerEdit();composeText=merged.text;composeImage=merged.image;composeStickerId=merged.stickerId;quoteId=merged.quote;composerSelection=merged.selection;syncComposerDraft();
+    const before=[composeImage,quoteId],merged=mergeDraft({text:composeText,image:composeImage,imageMeta:composeImageMeta,stickerId:composeStickerId,quote:quoteId,selection:composerSelection},draft);
+    rememberComposerEdit();composeText=merged.text;composeImage=merged.image;composeImageMeta=merged.imageMeta||null;composeStickerId=merged.stickerId;quoteId=merged.quote;composerSelection=merged.selection;syncComposerDraft();
     if(before[0]!==composeImage||before[1]!==quoteId)updateComposer();
   }
   // A sticker tapped beside a draft is sent on its own; the draft text and picture stay put.
@@ -2037,7 +2067,7 @@
     };
   }
   async function boot() {
-    try{const status=await api('/api/status');sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
+    try{const status=await api('/api/status');sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;imageVariants=binaryMedia&&status.imageVariants===true;rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
     catch(err){renderAuth(false,`暂时无法连接这部小手机。${err.message}`);}
   }
   window.Pipi={getState:()=>state,api,apiRaw,act,receiveState,updateTyping,syncChatProgress,readImage,readProfileImage,uploadMedia,uploadImage,uploadImageData,uploadProfileImage,showView,goBack,openWhenReady,openChatMessage:(roleId,messageId)=>{focusMessageId=messageId;showView('chat',roleId);},preserveChatLayout:callback=>{const snapshot=captureChatLayout();callback();restoreChatLayout(snapshot);},scrollChatToBottom:(roleId)=>{forceBottomRole=roleId;chatScrolls.delete(roleId);if(route.name==='chat'&&route.arg===roleId)scrollChat();},openModal,closeModal,openPage,openNestedPage,openChildDialog,closeChildDialog,closePage:closeModal,openPhoto:lightbox,actionSheet,confirmDialog,toast,esc,avatar,icons,refresh,setState,registerRoute:(name,renderer)=>routes.set(name,renderer)};

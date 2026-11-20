@@ -308,7 +308,7 @@ function createApp(options={}){
       return json(res,200,{
         setupRequired:!getMeta('password'),authenticated:!!auth,...(auth?{
           csrfToken:auth.csrf
-        }:{}),version:VERSION,sourceUrl,rolePanel:true,softwareUpdates:true,binaryMedia:true
+        }:{}),version:VERSION,sourceUrl,rolePanel:true,softwareUpdates:true,binaryMedia:true,imageVariants:true
       });
     }
     if(req.method==='POST'&&(p==='/api/setup'||p==='/api/login')){
@@ -493,6 +493,17 @@ function createApp(options={}){
       return json(res,200,{url:await Media.receiveUpload(dataDir,req)});
     }
     const b=await body(req,p==='/api/restore'?MAX_BACKUP_BYTES:(p==='/api/action'?64:32)*1024*1024);
+    if(p!=='/api/restore'){
+      const allowed=['/api/chat','/api/chat/send'].includes(p)?['thumb','modelImage']:p==='/api/chat/media/thumbnail'?['thumb']:[];
+      const pending=[b];
+      while(pending.length){
+        const value=pending.pop();
+        for(const [key,item] of Object.entries(value)){
+          if(['thumb','modelImage'].includes(key)&&(value!==b||!allowed.includes(key)))S.fail('缩略图和模型副本只用于聊天图片');
+          if(item&&typeof item==='object')pending.push(item);
+        }
+      }
+    }
     if(p!=='/api/restore')Media.externalize(dataDir,b,{image:(value,field)=>S.image(value,false,field==='avatar'?'头像':field==='cover'?'朋友圈背景图':'')});
     rate('api:'+auth.hash,180,60000);
     switch(p){
@@ -541,10 +552,26 @@ function createApp(options={}){
           state:S.publicState(read())
         });
       }
+      case '/api/chat/media/thumbnail':{
+        const messageId=S.text(b.messageId,100),thumb=S.image(b.thumb,false);
+        const expected=b.originalImage===undefined?undefined:S.image(b.originalImage,false);
+        const target=state=>{
+          const message=S.find(state.messages,messageId,'消息');
+          const original=message.type==='image'?message.content:message.type==='text'?message.meta?.image:'';
+          if(!original||!Media.resolveImageBytes(dataDir,original))S.fail('原图已不可用，未补充缩略图',409,'IMAGE_UNAVAILABLE');
+          if(expected!==undefined&&expected!==original)S.fail('原图已变更，未补充缩略图',409,'IMAGE_CHANGED');
+          return message;
+        };
+        const current=read();
+        if(target(current).meta?.thumb)return json(res,200,{state:S.publicState(current)});
+        const result=mutate(state=>{const message=target(state);message.meta??={};if(!message.meta.thumb)message.meta.thumb=thumb;});
+        return json(res,200,{state:S.publicState(result.state)});
+      }
       case '/api/chat/send':
       case '/api/chat':{
         rate('ai:'+auth.hash,40);
         const roleId=S.text(b.roleId,100),text=S.text(b.text,16000),img=S.image(b.image);
+        const variants=S.imageVariants(b,Boolean(img));
         S.chatAllowed(S.role(read(),roleId));
         const audio=b.audio===undefined?'':S.audio(b.audio);
         if(audio&&(text||img))S.fail('语音不能与文字或图片同时发送');
@@ -558,7 +585,7 @@ function createApp(options={}){
         const stickerId=b.stickerId===undefined?undefined:S.text(b.stickerId,100);
         if(stickerId!==undefined&&(!stickerId||!img||audio))S.fail('表情消息须提供有效表情和图片');
         const signature=digest(JSON.stringify({
-          roleId,text,img,...(stickerId===undefined?{}:{stickerId}),...(audio?{audio,durationMs}:{}),...(quoteId?{quoteId}:{})
+          roleId,text,img,...(stickerId===undefined?{}:{stickerId}),...(audio?{audio,durationMs}:{}),...(quoteId?{quoteId}:{}),...variants
         }));
         const existing=db.prepare('SELECT * FROM requests WHERE id=?').get(requestId);
         if(existing){
@@ -569,7 +596,7 @@ function createApp(options={}){
         }
         let messageId;
         mutate(s=>{
-          const r=S.role(s,roleId),meta={};
+          const r=S.role(s,roleId),meta={...variants};
           if(stickerId!==undefined){
             const sticker=S.find(s.stickers,stickerId,'收藏表情');
             const media=require('./lib/media-store.cjs');

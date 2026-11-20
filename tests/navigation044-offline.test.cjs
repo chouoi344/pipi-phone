@@ -15,7 +15,7 @@ function productFunction(name){
   return source.slice(start,end)+"\n";
 }
 const popLine=source.match(/window\.addEventListener\('popstate',.*$/m)?.[0];
-const navigationContext="const state=null;let bootStale=false;function persistChatDrafts(){}";
+const navigationContext="const state=null;let bootStale=false,composeImageMeta=null;function persistChatDrafts(){}";
 assert.ok(popLine,'product popstate registration exists');
 class Dialog extends EventTarget{
   isConnected=true;open=false;shows=0;closes=0;

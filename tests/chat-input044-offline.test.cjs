@@ -36,7 +36,7 @@ function fixture(initialBubbles=[]){
   const context=vm.createContext({window,history,document,view,Event,AbortController,console,setTimeout:callback=>{jobs.push(callback);return callback;},clearTimeout:callback=>{const i=jobs.indexOf(callback);if(i>=0)jobs.splice(i,1);},requestAnimationFrame:callback=>{jobs.push(callback);return jobs.length;},cancelAnimationFrame(){},overlay:{replaceChildren(){}},buildComposer,
     buildScreen(name,model){if(name==='chat'){nodes.list=node({scrollHeight:3000,clientHeight:600,querySelectorAll:()=>[]});nodes.bubbles=initialBubbles;if(model.selecting){if(nodes.footer){nodes.footer.isConnected=false;for(const child of nodes.footer.children)child.isConnected=false;}Object.assign(nodes,{form:null,input:null,emoji:null,footer:null});}else buildComposer(model);}else{if(nodes.footer?.contains(document.activeElement))document.activeElement?.blur();nodes={};}},
     showMenu(){menus++;},showPayment(){payments++;}});
-  vm.runInContext(`
+  vm.runInContext(`let imageVariants=false,composeImageMeta=null;
     let route={name:'chat',arg:'alice'},modalOpen=false,modalCloseCallback=null,modalSaveInProgress=false,modalReturnFocus=null,overlayBackPending=false,overlayCloseQueued=false,childDialog=null,childDialogSequence=0,queuedView=null,queuedBack=false;
     const navStack=[],drafts=new Map(),chatScrolls=new Map(),overlayBackWaiters=[],composerHistories=new Map(),pressTimers=new Set();
     const chatDraftKey='pipi.chat-drafts',storage=new Map(),sessionStorage={setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)};

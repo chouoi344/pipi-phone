@@ -26,7 +26,7 @@ function fixture(messages=[]){
     sendAction(type,payload){calls.push({type,payload:JSON.parse(JSON.stringify(payload))});return new Promise((resolve,reject)=>requests.push({resolve,reject}));},
     changeView(name,arg){navigation.push({name,arg});for(const el of avatars)el.isConnected=false;},countRefresh(){refreshes++;},countMenu(){menus++;},countPayment(){payments++;},
     captureReader(title,html){readers.push({title,html});},captureToast:text=>toasts.push(text)});
-  vm.runInContext(`let route={name:'chat',arg:'alice'},modalOpen=false,panel='',chatSelection=null,speechSession=null;const patRequests=new Set(),avatarTaps=new Map(),pressTimers=new Set(),state={messages:${JSON.stringify(messages)}};
+  vm.runInContext(`let imageVariants=false,composeImageMeta=null;let route={name:'chat',arg:'alice'},modalOpen=false,panel='',chatSelection=null,speechSession=null;const patRequests=new Set(),avatarTaps=new Map(),pressTimers=new Set(),state={messages:${JSON.stringify(messages)}};
     function bindComposer(){}function refresh(){countRefresh();}function showView(name,arg){route={name,arg};changeView(name,arg);}
     function act(type,payload){return sendAction(type,payload);}function toast(text){captureToast(text);}function messageMenu(){modalOpen=true;countMenu();}
     function safeImage(){return false;}function lightbox(){}function playAudio(){}function speakMessage(){}function changeComposerMode(){}

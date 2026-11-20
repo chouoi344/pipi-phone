@@ -32,6 +32,8 @@ test('complete backup restores images and the full memory history to an independ
       return result;
     }
     const login=await json('/api/setup',{password:'Private-Test-Backup_2026!',displayName:name});
+    // Keep timed deduplication outside the portable backup round-trip assertions.
+    await json('/api/engine/modules',{id:'memory',values:{enabled:false}});
     return {app,dataDir,raw,json,roleId:login.state.roles[0].id};
   }
 

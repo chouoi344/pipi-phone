@@ -108,6 +108,7 @@
   new MutationObserver(schedule).observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'data-skin'] });
   new ResizeObserver(schedule).observe(probe, { box: 'border-box' });
   window.addEventListener('resize', schedule);
+  window.addEventListener('pageshow', schedule);
   document.addEventListener('focusin', schedule);
   document.addEventListener('focusout', schedule);
   desktopPointer.addEventListener('change', schedule);

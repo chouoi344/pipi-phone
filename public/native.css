@@ -25,7 +25,7 @@ body,.phone-shell{font-family:var(--ui-font)}
 :is(#view,.navigation-snapshot)>.search-bar{padding:8px}
 :is(#view,.navigation-snapshot)>.search-bar .search-input-wrap{height:36px;min-height:36px;border-radius:8px;gap:6px;padding:0 10px}
 :is(#view,.navigation-snapshot)>.search-bar .search-input-wrap>.icon{width:20px;height:20px;background-color:#b2b2b2}
-:is(#view,.navigation-snapshot)>.search-bar .search-input-wrap>input{height:36px;min-height:36px;padding:0;font-size:17px;line-height:24px;color:#191919}
+:is(#view,.navigation-snapshot)>.search-bar .search-input-wrap>input{height:36px;min-height:36px;padding:0;font-size:17px;--editable-font-size:17px;line-height:24px;color:#191919}
 :is(#view,.navigation-snapshot)>.search-bar .search-input-wrap>input::placeholder{color:#b2b2b2}
 
 /* ---------- Tab bar: 56pt above the home indicator ---------- */
@@ -86,7 +86,7 @@ body,.phone-shell{font-family:var(--ui-font)}
 :is(#view,.navigation-snapshot) .compose-row .compose-trailing{margin-left:3px;height:40px;min-height:0;display:flex;align-items:center}
 :is(#view,.navigation-snapshot) .compose-row .compose-trailing>*{height:40px;min-height:0}
 :is(#view,.navigation-snapshot) .compose-field{border-radius:4px}
-:is(#view,.navigation-snapshot) .compose-field .compose-input{min-height:40px;max-height:112px;padding:8px 36px 8px 10px;font-size:17px;line-height:24px}
+:is(#view,.navigation-snapshot) .compose-field .compose-input{min-height:40px;max-height:112px;padding:8px 36px 8px 10px;font-size:17px;--editable-font-size:17px;line-height:24px}
 :is(#view,.navigation-snapshot) .compose-dictation{right:7px;bottom:4px;width:28px;height:32px;color:#7d7d7d}
 :is(#view,.navigation-snapshot) .compose-dictation .icon{width:20px;height:22px}
 :is(#view,.navigation-snapshot) .voice-record{height:40px;border-radius:4px;font-size:17px;font-weight:500;background:#fff;border:0;color:#191919}
@@ -258,7 +258,7 @@ body,.phone-shell{font-family:var(--ui-font)}
 
 /* ---------- New friends ---------- */
 :is(#view,.navigation-snapshot) .new-friends-search{display:block;width:100%;padding:8px;background:#ededed}
-:is(#view,.navigation-snapshot) .new-friends-search .search-input-wrap{height:36px;border-radius:8px;gap:6px;font-size:17px;color:#b2b2b2}
+:is(#view,.navigation-snapshot) .new-friends-search .search-input-wrap{height:36px;border-radius:8px;gap:6px;font-size:17px;--editable-font-size:17px;color:#b2b2b2}
 :is(#view,.navigation-snapshot) .new-friends-search .search-input-wrap .icon{width:20px;height:20px;background-color:#b2b2b2}
 :is(#view,.navigation-snapshot) .new-friend-row{min-height:64px;padding:8px 16px;gap:12px}
 :is(#view,.navigation-snapshot) .new-friend-row .contact-tool{width:44px;height:44px;border-radius:4px}

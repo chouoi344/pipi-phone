@@ -17,7 +17,7 @@
   // Reference artwork/fonts are not copied; this app reuses the GPL icon set below.
   // Masks are rendering derivatives: the upstream React SVG root fill is resolved
   // to black while original licensed SVG bytes remain intact in /icons.
-  const iconVersion = '0.13.1';
+  const iconVersion = '0.13.2';
   const assetIcon = (name, color = false, cls = '') => color
     ? `<img class="icon asset-icon ${cls}" src="/vendor/fake-world/icons/${name}.svg?v=${iconVersion}" alt="" aria-hidden="true">`
     : `<span class="icon mask-icon ${cls}" style="--icon-url:url('/vendor/fake-world/masks/${name}.svg?v=${iconVersion}')" aria-hidden="true"></span>`;
@@ -106,7 +106,7 @@
   let composerPointerSettling=false,composerPointerFrame=0,pointerComposerUpdatePending=false,pointerViewRefreshPending=false;
   let focusMessageId = '', forceBottomRole='', composerSelection = {start:0,end:0};
   let composerScroll={input:0,emoji:0};
-  let chatImageSequence=0;
+  let chatImageSequence=0, systemFilePicker, stickerUploadEpoch=-1;
   let morePage=0, emojiPage=0, chatSearch='',chatSearchFilter='all',chatSearchDate='';
   let emojiTab='all',emojiSearch='',emojiExpandedHeight=0;
   let composerPanelFrom=null;
@@ -115,8 +115,11 @@
   let chatSelection=null;
   let globalSearchTerm='';
   let contactsReturn=null,chatsReturn=0;
-  const transcriptViews=new Map(),thumbnailAttempts=new Set();
-  const chatDraftKey='pipi.chat-drafts',failedSends=new Map(),pressTimers=new Set(),avatarSources=new Map(),avatarKeys=new Map();
+  const transcriptViews=new Map(),thumbnailAttempts=new Set(),thumbnailQueue=[],chatImageSizes=new Map();
+  let thumbnailWorkers=0;
+  const previewWarmups=new Map();
+  let previewWarmupTimer=0;
+  const chatDraftKey='pipi.chat-drafts',failedSends=new Map(),pressTimers=new Set(),avatarSources=new Map(),avatarKeys=new Map(),profileAvatarImages=new Map();
   const roleRoutes=new Set(['chat','role','memories','role-memories','role-schedule','role-references','chat-info','role-config','contact-settings','contact-more','contact-permissions','chat-search','friend-profile','role-stickers','role-reminders']);
   let avatarSequence=0,renderTimer=0,bootStale=Boolean(restoredPage&&(restoredPage.overlay||restoredPage.chatSelection||restoredPage.childDialog||restoredPage.featureSelection));
   const statusChoices=[['happy','美滋滋','statusHappy'],['daze','发呆','statusDaze'],['busy','忙','statusBusy'],['focus','学习','statusFocus'],['fish','摸鱼','statusFish'],['work','搬砖','statusWork'],['travel','出差','statusTravel'],['exercise','运动','statusExercise'],['coffee','喝咖啡','statusCoffee'],['rest','休息','statusRest'],['music','听歌','statusMusic'],['game','玩游戏','statusGame'],['sleep','睡觉','statusSleep'],['other','其他','statusOther']];
@@ -142,14 +145,14 @@
     }
     return emojiLookup;
   }
-  function richText(value,editable=false){const {map,expression}=compiledEmoji(),text=String(value??'');if(!expression)return esc(text);return text.split(expression).map(part=>{if(!map.has(part))return esc(part);const html=emojiSprite(map.get(part),true);return editable?html.replace('<span ','<span contenteditable="false" data-compose-token="'+esc(part)+'" '):html;}).join('');}
+  function richText(value,editable=false){const {map,expression}=compiledEmoji(),text=String(value??'');if(!expression)return esc(text);return text.split(expression).map(part=>{if(!map.has(part))return esc(part);const html=emojiSprite(map.get(part),true);return editable?html.replace('<span ','<span contenteditable="false" data-compose-token="'+esc(part)+'" ')+'\u200b':html;}).join('');}
   // Reuse the licensed sprite and token renderer above. A real editing host lets
   // the browser place the caret around atomic pictures, including wrapped lines;
   // the server and drafts continue to receive the existing plain token format.
   function composerDOM(input){
     let text='';const units=[],boundaries=new Map(),tokens=compiledEmoji().map;
     const visit=node=>{
-      if(node.nodeType===Node.TEXT_NODE){const value=node.data.replace(/\u00a0/g,' '),start=text.length;text+=value;units.push({node,start,end:text.length});return;}
+      if(node.nodeType===Node.TEXT_NODE){const value=node.data.replace(/\u200b/g,'').replace(/\u00a0/g,' '),start=text.length;text+=value;units.push({node,start,end:text.length});return;}
       if(node.nodeType!==Node.ELEMENT_NODE)return;
       const token=node.dataset.composeToken;
       if(token&&tokens.has(token)){const start=text.length;text+=token;units.push({node,start,end:text.length,atomic:true});return;}
@@ -157,8 +160,8 @@
       const points=[];boundaries.set(node,points);let previousBlock=false;
       [...node.childNodes].forEach((child,index)=>{const block=child.nodeType===1&&/^(DIV|P|LI)$/.test(child.tagName);if((block||previousBlock)&&text&&!text.endsWith('\n'))text+='\n';points[index]=text.length;visit(child);previousBlock=block;});points[node.childNodes.length]=text.length;
     };visit(input);
-    const offset=(node,index)=>{const unit=units.find(item=>item.node===node);if(unit)return unit.atomic?(index?unit.end:unit.start):unit.start+Math.min(index,unit.end-unit.start);return boundaries.get(node)?.[index];};
-    const point=value=>{value=Math.max(0,Math.min(text.length,value));for(const unit of units){if(value<=unit.end){if(!unit.atomic)return [unit.node,Math.max(0,value-unit.start)];const parent=unit.node.parentNode,index=[...parent.childNodes].indexOf(unit.node);return [parent,index+(value>unit.start?1:0)];}}return [input,input.childNodes.length];};
+    const offset=(node,index)=>{const unit=units.find(item=>item.node===node);if(unit)return unit.atomic?(index?unit.end:unit.start):unit.start+node.data.slice(0,index).replace(/\u200b/g,'').length;return boundaries.get(node)?.[index];};
+    const point=value=>{value=Math.max(0,Math.min(text.length,value));for(const unit of units){if(value<=unit.end){if(!unit.atomic){let index=0,count=0;while(index<unit.node.length&&(count<value-unit.start||unit.node.data[index]==='\u200b')){if(unit.node.data[index]!=='\u200b')count++;index++;}return [unit.node,index];}if(value===unit.end&&unit.node.nextSibling?.nodeType===Node.TEXT_NODE&&unit.node.nextSibling.data.startsWith('\u200b'))return [unit.node.nextSibling,1];const parent=unit.node.parentNode,index=[...parent.childNodes].indexOf(unit.node);return [parent,index+(value>unit.start?1:0)];}}return [input,input.childNodes.length];};
     return {text,offset,point};
   }
   function readComposerSelection(input){const selection=getSelection();if(!selection?.rangeCount)return composerSelection;const range=selection.getRangeAt(0);if(!input.contains(range.startContainer)||!input.contains(range.endContainer))return composerSelection;const model=composerDOM(input),start=model.offset(range.startContainer,range.startOffset),end=model.offset(range.endContainer,range.endOffset);return Number.isFinite(start)&&Number.isFinite(end)?{start,end}:composerSelection;}
@@ -170,11 +173,24 @@
   const roleById = id => state?.roles?.find(r => r.id === id);
   const roleName = r => r?.remark || r?.name || '联系人';
   function avatarKey(src){if(typeof src!=='string'||!src)return '';let key=avatarKeys.get(src);if(key===undefined){if(!safeImage(src))return '';key=String(++avatarSequence);}else avatarKeys.delete(src);avatarKeys.set(src,key);avatarSources.set(key,src);if(avatarKeys.size>512){const [oldSrc,oldKey]=avatarKeys.entries().next().value;avatarKeys.delete(oldSrc);avatarSources.delete(oldKey);}return key;}
-  function paintAvatars(root){if(root?.nodeType!==1)return;for(const img of root.matches('img[data-avatar-key]:not([src])')?[root]:root.querySelectorAll('img[data-avatar-key]:not([src])')){const src=avatarSources.get(img.dataset.avatarKey);if(src)img.src=src;}}
+  function paintAvatars(root){
+    if(root?.nodeType!==1)return;
+    for(const img of root.matches('img[data-avatar-key]')?[root]:root.querySelectorAll('img[data-avatar-key]')){
+      const key=img.dataset.avatarKey,src=avatarSources.get(key);if(!src)continue;
+      if(img.loading==='eager'&&!img.closest('.navigation-snapshot')){
+        const previous=profileAvatarImages.get(key);
+        if(previous&&previous!==img){previous.width=img.width;previous.height=img.height;previous.alt=img.alt;img.replaceWith(previous);}
+        else profileAvatarImages.set(key,img);
+        if(profileAvatarImages.size>4)profileAvatarImages.delete(profileAvatarImages.keys().next().value);
+      }
+      if(!img.hasAttribute('src'))img.src=src;
+    }
+  }
   new MutationObserver(records=>{for(const record of records)for(const node of record.addedNodes)paintAvatars(node);}).observe(document.body,{childList:true,subtree:true});
-  function avatar(entity = {}, size = 48) {
+  function avatar(entity = {}, size = 48, eager = false) {
+    eager ||= entity===state?.profile&&['me','profile'].includes(route.name);
     const name = String(entity.name || entity.remark || '我'), key = avatarKey(entity.avatar);
-    return `<span class="avatar ${key?'':'avatar-empty'}" style="--avatar-size:${Math.max(20,Math.min(100,Number(size)||48))}px">${key ? `<img data-avatar-key="${key}" alt="${esc(name)}的头像" loading="lazy">` : assetIcon('people-filled')}</span>`;
+    return `<span class="avatar ${key?'':'avatar-empty'}" style="--avatar-size:${Math.max(20,Math.min(100,Number(size)||48))}px">${key ? `<img data-avatar-key="${key}"${eager?` src="${esc(entity.avatar)}" fetchpriority="high"`:''} alt="${esc(name)}的头像" width="${size}" height="${size}" loading="${eager?'eager':'lazy'}" decoding="async">` : assetIcon('people-filled')}</span>`;
   }
   function toast(text, subtle = false) {
     clearTimeout(toastTimer);
@@ -197,7 +213,7 @@
   function scheduleRender(){pendingRender=true;clearTimeout(renderTimer);renderTimer=setTimeout(flushRender);}
   // Every deferred redraw leaves through here: composer text, caret and scroll survive.
   function flushRender(force=false){
-    if(!pendingRender||!state||modalOpen||composeComposing||searchComposing||recordingSession||(!force&&route.name==='providers'))return;
+    if(!pendingRender||!state||document.hidden||modalOpen||composeComposing||searchComposing||recordingSession||(!force&&route.name==='providers'))return;
     const active=document.activeElement,input=view.querySelector('#compose-text');
     if(active&&active!==input&&(active.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)))return;
     if(roleRoutes.has(route.name)&&!roleById(route.arg)){showView(route.name==='chat'?'chats':'contacts');return;}
@@ -272,36 +288,96 @@
   async function uploadMedia(blob,{requireUrl=false}={}){if(binaryMedia)return (await apiRaw('/api/media/upload',blob)).url;const source=await readBlobData(blob);return requireUrl?(await api('/api/media/upload',{image:source})).url:source;}
   function imageBlob(source){const comma=source.indexOf(','),data=atob(source.slice(comma+1)),bytes=new Uint8Array(data.length);for(let i=0;i<data.length;i++)bytes[i]=data.charCodeAt(i);return new Blob([bytes],{type:source.slice(5,source.indexOf(';'))});}
   async function uploadImageData(source,{requireUrl=false}={}){return source.startsWith('data:')&&(binaryMedia||requireUrl)?uploadMedia(imageBlob(source),{requireUrl}):source;}
-  async function uploadImage(file,convertSticker=false){return uploadMedia(await readImage(file,convertSticker,true));}
-  async function uploadProfileImage(file,options){return uploadMedia(await readProfileImage(file,true),options);}
+  async function uploadImage(file,convertSticker=false){
+    const epoch=authEpoch,blob=await readImage(file,convertSticker,true);
+    if(epoch!==authEpoch)throw new Error('登录状态已变化，请重新选图');
+    return uploadMedia(blob);
+  }
+  async function uploadProfileImage(file,options){
+    const epoch=authEpoch,blob=await readProfileImage(file,true);
+    if(epoch!==authEpoch)throw new Error('登录状态已变化，请重新选图');
+    return uploadMedia(blob,options);
+  }
   async function imageVariant(source,longEdge,quality){
     const width=source.naturalWidth||source.width,height=source.naturalHeight||source.height,ratio=Math.min(1,longEdge/Math.max(width,height)),canvas=document.createElement('canvas');
     canvas.width=Math.max(1,Math.round(width*ratio));canvas.height=Math.max(1,Math.round(height*ratio));canvas.getContext('2d').drawImage(source,0,0,canvas.width,canvas.height);
     const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',quality));if(!blob)throw new Error('图片副本生成失败');return blob;
   }
-  async function prepareChatImage(file){
-    const blob=await readImage(file,false,true),image=await uploadMedia(blob),result={image};
+  async function prepareChatImage(file, stillCurrent = () => true){
+    const blob=await readImage(file,false,true);
+    if(!stillCurrent())return;
+    const image=await uploadMedia(blob),result={image};
+    if(!stillCurrent())return;
     if(!imageVariants)return result;
     let bitmap;try{bitmap=await createImageBitmap(blob);}catch{return result;}
     try{
-      try{result.thumb=await uploadMedia(await imageVariant(bitmap,120,.6));}catch{}
-      if(blob.size>4*1024*1024||Math.max(bitmap.width,bitmap.height)>2560)try{result.modelImage=await uploadMedia(await imageVariant(bitmap,2048,.88));}catch{}
+      try{const thumb=await imageVariant(bitmap,320,.78);if(!stillCurrent())return;result.thumb=await uploadMedia(thumb);}catch{}
+      if(!stillCurrent())return;
+      if(blob.size>4*1024*1024||Math.max(bitmap.width,bitmap.height)>2560)try{const model=await imageVariant(bitmap,2048,.88);if(!stillCurrent())return;result.modelImage=await uploadMedia(model);}catch{}
       return result;
     }finally{bitmap.close();}
   }
   async function backfillThumbnail(img){
     if(!imageVariants||!img.isConnected||!img.naturalWidth)return;
     const messageId=img.closest('[data-bubble]').dataset.bubble,message=state.messages.find(item=>item.id===messageId),originalImage=message?.type==='image'?message.content:message?.meta?.image;
-    if(!message||message.meta?.thumb||message.meta?.stickerId||message.meta?.expired||thumbnailAttempts.has(messageId)||!safeImage(originalImage))return;
+    if(!message||message.meta?.thumb||message.meta?.stickerId||message.meta?.expired||thumbnailAttempts.has(messageId)||!safeImage(originalImage)||img.getAttribute('src')!==originalImage)return;
     thumbnailAttempts.add(messageId);
+    const epoch=authEpoch;
     try{
-      const thumb=await uploadMedia(await imageVariant(img,120,.6)),current=state.messages.find(item=>item.id===messageId),image=current?.type==='image'?current.content:current?.meta?.image;
+      const variant=await imageVariant(img,320,.78);
+      if(epoch!==authEpoch)return;
+      const thumb=await uploadMedia(variant);
+      if(epoch!==authEpoch)return;
+      const current=state.messages.find(item=>item.id===messageId),image=current?.type==='image'?current.content:current?.meta?.image;
       if(!current||current.meta?.thumb||image!==originalImage)return;
       const result=await api('/api/chat/media/thumbnail',{messageId,thumb,originalImage});if(result.state)setState(result.state);
     }catch{} // Missing previews are best effort; each message is attempted once per page load.
   }
+  function queueChatThumbnail(img){
+    if(img.dataset.thumbnailQueued)return;
+    img.dataset.thumbnailQueued='true';thumbnailQueue.push(img);drainChatThumbnails();
+  }
+  function drainChatThumbnails(){
+    while(thumbnailWorkers<2&&thumbnailQueue.length){const img=thumbnailQueue.shift();if(!img.isConnected)continue;thumbnailWorkers++;void backfillThumbnail(img).finally(()=>{thumbnailWorkers--;drainChatThumbnails();});}
+  }
+  function chatImageMarkup(message,original,alt,sticker=false){
+    const source=!sticker&&safeImage(message.meta?.thumb)?message.meta.thumb:original,size=chatImageSizes.get(source);
+    return `<img class="message-image${sticker?'':' chat-photo'}" data-media-preview="${source===original?'original':'thumbnail'}" src="${esc(source)}" alt="${alt}" loading="lazy" decoding="async"${sticker?'':` width="${size?.width||120}" height="${size?.height||120}" style="width:${size?.width||120}px;height:${size?.height||120}px"`}>`;
+  }
+  function scheduleChatPreviewWarmup(roleIds){
+    const connection=navigator.connection;
+    if(previewWarmupTimer||previewWarmups.size>=4||connection?.saveData||['slow-2g','2g','3g'].includes(connection?.effectiveType))return;
+    previewWarmupTimer=setTimeout(()=>{
+      const warm=()=>{
+        previewWarmupTimer=0;if(route.name!=='chats'||document.hidden)return;
+        const counts=new Map(),recent=state.messages.slice(-200);
+        for(let index=recent.length-1;index>=0&&previewWarmups.size<4;index--){
+          const message=recent[index],source=message.meta?.thumb;
+          if(!roleIds.includes(message.roleId)||(counts.get(message.roleId)||0)>=2||message.meta?.expired||message.meta?.stickerId||!safeImage(source))continue;
+          counts.set(message.roleId,(counts.get(message.roleId)||0)+1);if(previewWarmups.has(source))continue;
+          const image=new Image();image.decoding='async';image.fetchPriority='low';previewWarmups.set(source,image);image.src=source;
+          // Optional warming failures leave the normal visible image request in charge.
+          void image.decode().then(()=>{const scale=Math.min(150/image.naturalWidth,186/image.naturalHeight);chatImageSizes.set(source,{width:Math.round(image.naturalWidth*scale),height:Math.round(image.naturalHeight*scale)});if(chatImageSizes.size>256)chatImageSizes.delete(chatImageSizes.keys().next().value);},()=>{});
+        }
+      };
+      if(window.requestIdleCallback)window.requestIdleCallback(warm,{timeout:1000});else warm();
+    },400);
+  }
   function bindChatThumbnails(){
-    for(const img of view.querySelectorAll('.image-bubble:not(.sticker-bubble) .message-image'))if(img.complete)void backfillThumbnail(img);else img.addEventListener('load',()=>void backfillThumbnail(img),{once:true});
+    for(const img of view.querySelectorAll('.chat-photo')){
+      const loaded=()=>{
+        if(!img.isConnected||!img.naturalWidth)return;
+        const scale=Math.min(150/img.naturalWidth,186/img.naturalHeight),width=Math.round(img.naturalWidth*scale),height=Math.round(img.naturalHeight*scale),source=img.getAttribute('src');
+        chatImageSizes.delete(source);chatImageSizes.set(source,{width,height});if(chatImageSizes.size>256)chatImageSizes.delete(chatImageSizes.keys().next().value);
+        const list=img.closest('#chat-messages'),bottom=list.dataset.scrollReady==='true'&&list.scrollHeight-list.scrollTop-list.clientHeight<=2,top=list.getBoundingClientRect().top;
+        let low=0,high=list.children.length;while(low<high){const middle=(low+high)>>1;if(list.children[middle].getBoundingClientRect().bottom<=top)low=middle+1;else high=middle;}
+        const anchor=list.children[low],before=anchor?.getBoundingClientRect().top;
+        img.style.width=width+'px';img.style.height=height+'px';img.width=width;img.height=height;
+        if(list.dataset.scrollReady==='true'){if(bottom)list.scrollTop=list.scrollHeight;else if(anchor)list.scrollTop+=anchor.getBoundingClientRect().top-before;}
+        if(imageVariants)queueChatThumbnail(img);
+      };
+      if(img.complete)loaded();else img.addEventListener('load',loaded,{once:true});
+    }
   }
   async function act(type, payload = {}) { const result = await api('/api/action',{type,payload}); if (result.state) setState(result.state); if(type==='sticker.add'){const images=payload.images||[payload.image];window.PipiStickers?.analyze(state.stickers.filter(s=>images.includes(s.image))).catch(error=>toast(error.message));}return result; }
   function trackModalHistory(nested=false){if((nested||!history.state?.overlay)&&!overlayBackPending)history.pushState({pipi:true,route:{...route},stack:[...navStack],overlay:true,overlayDepth:nested?(history.state?.overlayDepth||1)+1:1},'');}
@@ -711,6 +787,7 @@
     const lastMessages=new Map();
     for(const message of state.messages)lastMessages.set(message.roleId,message);
     const visible = (state.roles||[]).filter(r=>!r.hidden).sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned) || new Date(lastMessages.get(b.id)?.createdAt || 0)-new Date(lastMessages.get(a.id)?.createdAt || 0));
+    scheduleChatPreviewWarmup(visible.slice(0,2).map(role=>role.id));
     return header(unread?`微信 (${unread>99?'99+':unread})`:'微信', {right:iconButton('plus','new-menu','添加')}) + `<div class="search-bar"><button class="search-input-wrap search-entry" data-action="global-search" aria-label="搜索联系人与消息">${icons.search}<span>搜索</span></button></div><div class="content"><div class="conversation-list">${visible.map(r=>{
       const msg=lastMessages.get(r.id); return `<div class="conversation-wrap"><div class="conversation-actions"><button class="unread-action" data-conv="${r.unread?'read':'unread'}" data-role="${esc(r.id)}">${r.unread?'标为已读':'标为未读'}</button><button class="hide-action" data-conv="hide" data-role="${esc(r.id)}">不显示</button><button class="delete-action" data-conv="delete" data-role="${esc(r.id)}">删除</button></div><button class="conversation ${r.pinned?'pinned':''}" data-role="${esc(r.id)}" data-open-chat="${esc(r.id)}"><span class="conversation-avatar">${avatar(r,48)}${r.unread?(r.muted?'<span class="unread-dot"></span>':`<span class="unread-badge">${r.unread>99?'99+':r.unread}</span>`):''}</span><span class="conversation-copy"><span class="conversation-line"><span class="conversation-name">${esc(roleName(r))}</span><time class="conversation-time">${esc(shortTime(msg?.createdAt))}</time></span><span class="conversation-preview">${msg?.status==='error'?'<span class="failed">!</span>':''}${r.muted&&r.unread>1?'['+r.unread+'条] ':''}${esc(preview(msg))}</span></span>${r.muted?assetIcon('muted',false,'conversation-muted'):''}</button></div>`;
     }).join('') || `<div class="empty"><h3>暂无聊天</h3><p>创建朋友后，就可以开始聊天。</p><button class="primary-btn" data-action="add-role">创建新朋友</button></div>`}</div></div>${tabbar('chats')}`;
@@ -958,7 +1035,7 @@
         const sticker=Boolean(m.meta?.stickerId);
         imageClass=sticker?'image-bubble sticker-bubble':'image-bubble';
         if(m.meta?.expired?.kind==='image')imageClass+=' expired-media-bubble';
-        bubble=m.meta?.expired?.kind==='image'?renderExpiredImage(m.meta.thumb):safeImage(m.content)?`<img class="message-image" src="${esc(m.content)}" alt="${sticker?'聊天表情':'聊天图片'}" loading="lazy">`:'[无法显示的图片]';
+        bubble=m.meta?.expired?.kind==='image'?renderExpiredImage(m.meta.thumb):safeImage(m.content)?chatImageMarkup(m,m.content,sticker?'聊天表情':'聊天图片',sticker):'[无法显示的图片]';
       }
       if(m.type==='voice') bubble=m.meta?.expired?.kind==='voice'?`<span class="voice-message expired-voice"><span>${voiceSeconds}″</span><small>语音已过期</small></span>`:`<span class="voice-message ${mine?'voice-mine':''}">${icons.voiceBubbleWave}<span>${voiceSeconds}″</span></span>`;
       if(m.type==='forward'){transferClass='forward-card';bubble=`<span class="forward-title">聊天记录</span><span class="forward-summary">${(m.meta?.entries||[]).slice(0,3).map(entry=>`<span>${esc(entry.senderName)}：${esc(preview(entry))}</span>`).join('')}</span><span class="forward-footer">聊天记录 · ${(m.meta?.entries||[]).length} 条</span>`;}
@@ -1007,7 +1084,7 @@
       }
       const chunks=null;
       const bubbles=chunks&&chunks.length>1?chunks.map(chunk=>`<div class="message-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}" aria-label="${esc(chunk.slice(0,80))}，长按或右键操作">${richText(chunk)}</div>`).join(''):`<div class="message-bubble ${imageClass} ${transferClass}" role="button" tabindex="0" data-bubble="${esc(m.id)}" aria-label="${m.type==='image'?(m.meta?.stickerId?'表情':'图片'):m.type==='voice'?`语音消息，${voiceSeconds}秒`:m.type==='forward'?'聊天记录':paymentLabel?esc(paymentLabel):esc(String(m.content).slice(0,80))}，长按或右键操作">${bubble}</div>`;
-      const attachedImage=m.type==='text'&&m.meta?.expired?.kind==='image'?`<div class="message-bubble image-bubble expired-media-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}">${renderExpiredImage(m.meta.thumb)}</div>`:m.type==='text'&&safeImage(m.meta?.image)?`<div class="message-bubble image-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}"><img class="message-image" src="${esc(m.meta.image)}" alt="附带的聊天图片" loading="lazy"></div>`:'';
+      const attachedImage=m.type==='text'&&m.meta?.expired?.kind==='image'?`<div class="message-bubble image-bubble expired-media-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}">${renderExpiredImage(m.meta.thumb)}</div>`:m.type==='text'&&safeImage(m.meta?.image)?`<div class="message-bubble image-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}">${chatImageMarkup(m,m.meta.image,'附带的聊天图片')}</div>`:'';
       return timeLabel+`<div class="message-row ${mine?'mine':''} ${m.meta?.expired?'message-expired':''} ${chatSelection?.ids.has(m.id)?'message-selected':''}" data-message="${esc(m.id)}">${chatSelection?`<button class="message-select" data-select-message="${esc(m.id)}" aria-label="选择消息" aria-pressed="${chatSelection.ids.has(m.id)}">${chatSelection.ids.has(m.id)?'✓':''}</button>`:''}<button class="message-avatar" data-chat-avatar="${mine?'self':'contact'}" aria-label="${mine?'我的头像':'朋友头像'}：单击查看资料，双击拍一拍">${avatar(entity,43)}</button><div class="message-body ${m.type==='voice'?'voice-body':''}" ${m.type==='voice'?`style="--voice-width:${voiceWidth}px"`:''}>${bubbles}${attachedImage}${m.type==='text'&&m.meta?.expired?.kind==='voice'?'<p class="expired-voice-note">语音已过期</p>':''}${m.type==='text'&&m.sender==='assistant'&&m.status!=='demo'&&!chatSelection&&!m.meta?.expired?speechIndicator(m.id):''}${m.meta?.quote?renderMessageQuote(m.meta.quote,r):''}${m.type==='voice'?renderVoiceTranscript(m):''}${chatSelection?`<button class="message-range" data-select-range="${esc(m.id)}">选择到这里</button>`:''}${m.status==='error'?`<button class="message-failure" data-retry="${esc(m.id)}" aria-label="发送失败，点击重试">!</button>`:''}</div></div>`;
     }).join('');
     const pending=outgoing?.roleId===r.id?`<div class="message-row mine"><span>${avatar(state.profile,43)}</span><div class="message-body">${outgoing.image?`<div class="message-bubble image-bubble"><img class="message-image" src="${esc(outgoing.image)}" alt="正在发送的图片"></div>`:''}${outgoing.text?`<div class="message-bubble">${esc(outgoing.text)}</div>`:''}<div class="message-label" style="text-align:right;margin-top:5px">发送中…</div></div></div>`:'';
@@ -1021,7 +1098,8 @@
   }
   function renderMessageQuote(quote,r){
     const original=quote.messageId&&(state.messages||[]).find(m=>m.id===quote.messageId),available=original&&original.meta?.kind!=='recalled'&&!quote.unavailable,expired=quote.expired||original?.meta?.expired;
-    const name=quote.senderName||(quote.sender==='user'?state.profile?.name:roleName(r)),image=expired?'':safeImage(quote.image)?quote.image:quote.type==='image'&&safeImage(quote.content)?quote.content:'';
+    const thumbnail=quote.stickerId||original?.meta?.stickerId?'':safeImage(quote.thumb)?quote.thumb:original?.meta?.thumb;
+    const name=quote.senderName||(quote.sender==='user'?state.profile?.name:roleName(r)),image=expired?'':safeImage(thumbnail)?thumbnail:safeImage(quote.image)?quote.image:quote.type==='image'&&safeImage(quote.content)?quote.content:'';
     const label=expired?.kind==='voice'?'[语音已过期]':'[图片已过期]';
     const text=expired?(quote.type==='text'&&quote.content?quote.content+' '+label:label):({image:image?'':'[图片]',voice:'[语音]',forward:'[聊天记录]',transfer:'[转账]',redpacket:'[红包]'})[quote.type]??quote.content;
     const unavailable=quote.unavailable==='recalled'?'原消息已撤回':quote.unavailable==='deleted'?'原消息已删除':'';
@@ -1047,10 +1125,27 @@
   // at the GPL revision above; seven-column scrolling follows the supplied iPhone reference.
   const micMark='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5.5 11v2a6.5 6.5 0 0 0 13 0v-2M12 19.5V21"/></svg>';
   function emojiEntries(){return window.PipiEmoji||[];}
+  let queuedEmojiRecents=[],emojiRecentTimer=0,emojiRecentsSaving=false;
+  function recordEmojiUse(token){
+    queuedEmojiRecents=[token,...queuedEmojiRecents.filter(value=>value!==token)].slice(0,24);
+    clearTimeout(emojiRecentTimer);
+    emojiRecentTimer=setTimeout(saveEmojiRecents,250);
+  }
+  async function saveEmojiRecents(){
+    if(emojiRecentsSaving||!state||!queuedEmojiRecents.length)return;
+    const epoch=authEpoch,tokens=queuedEmojiRecents;
+    queuedEmojiRecents=[];
+    emojiRecentsSaving=true;
+    try{await act('emoji.use',{tokens});}
+    catch(error){if(authEpoch===epoch)console.debug('Recent emoji sync unavailable',error.message);}
+    finally{
+      if(authEpoch===epoch){emojiRecentsSaving=false;if(queuedEmojiRecents.length)void saveEmojiRecents();}
+    }
+  }
   function renderEmojiBoard(){
     const entries=emojiEntries(),term=emojiSearch.trim().toLowerCase(),matches=entries.filter(e=>!term||(e.label+' '+e.token).toLowerCase().includes(term));
     const emojiButtons=items=>items.map(e=>'<button type="button" data-emoji="'+esc(e.token)+'" aria-label="'+esc(e.label||e.token)+'">'+emojiSprite(e)+'</button>').join('');
-    const recent=(state.emojiRecents||[]).map(token=>entries.find(e=>e.token===token)).filter(Boolean).slice(0,7);
+    const recent=[...new Set([...queuedEmojiRecents,...(state.emojiRecents||[])])].map(token=>entries.find(e=>e.token===token)).filter(Boolean).slice(0,7);
     const tabs=[['search','search','搜索表情'],['all','smile','所有表情'],['favorites','heart','收藏表情'],['selfie','','自拍表情']];
     const toolbar='<div class="emoji-toolbar" role="tablist" aria-label="表情分类">'+tabs.map(([tab,icon,label])=>'<button type="button" role="tab" aria-selected="'+(emojiTab===tab)+'" class="'+(emojiTab===tab?'active':'')+'" data-emoji-tab="'+tab+'" aria-label="'+label+'">'+(tab==='selfie'?'<img src="/vendor/fake-world/selfie-expression.png" alt="">':icons[icon])+'</button>').join('')+'</div>';
     let content='';
@@ -1064,7 +1159,20 @@
   function renderComposeTrailing(){return iconButton('add','toggle-panel','展开更多功能');}
   function captureChatLayout(){const list=view.querySelector('#chat-messages');return route.name==='chat'&&list?.dataset.scrollReady==='true'?{list,roleId:route.arg,top:list.scrollTop,bottom:list.scrollHeight-list.scrollTop-list.clientHeight<=2}:null;}
   function restoreChatLayout(snapshot){if(!snapshot||!snapshot.list.isConnected||route.name!=='chat'||route.arg!==snapshot.roleId)return;const list=snapshot.list;if(snapshot.bottom){list.scrollTop=list.scrollHeight;chatScrolls.delete(snapshot.roleId);}else{list.scrollTop=snapshot.top;chatScrolls.set(snapshot.roleId,list.scrollTop);}}
-  function resizeComposeInput(input){if(!input)return;const anchor=captureChatLayout();input.style.height='40px';input.style.height=Math.min(112,input.scrollHeight)+'px';restoreChatLayout(anchor);}
+  function resizeComposeInput(input){
+    if(!input)return;const anchor=captureChatLayout(),scroll=input.scrollTop;
+    input.style.height='40px';
+    const height=Math.min(112,input.scrollHeight);
+    input.style.height=height+'px';input.scrollTop=scroll;
+    input.parentElement.classList.toggle('compose-multiline',height>44);
+    const selection=getSelection();
+    if(document.activeElement===input&&selection?.rangeCount&&selection.isCollapsed&&input.contains(selection.anchorNode)){
+      const caret=selection.getRangeAt(0).getBoundingClientRect(),box=input.getBoundingClientRect();
+      if(caret.height){if(caret.bottom>box.bottom-8)input.scrollTop+=caret.bottom-box.bottom+8;else if(caret.top<box.top+8)input.scrollTop-=box.top+8-caret.top;}
+    }
+    restoreChatLayout(anchor);
+  }
+  let stopComposerDeleteHold=()=>{};
   function syncComposerControls(){
     const anchor=captureChatLayout();let changed=false;
     const trailing=view.querySelector('.compose-trailing'),mode=composeTrailingMode();
@@ -1105,6 +1213,7 @@
   window.addEventListener('blur',releaseAllComposerPointers);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseAllComposerPointers();});
   function updateComposer() {
+    stopComposerDeleteHold();
     persistChatDrafts();
     if(composerPointerBusy()){pointerComposerUpdatePending=true;return;}
     if(recordingSession?.mode==='hold')return;
@@ -1201,7 +1310,7 @@
     view.querySelectorAll('[data-remove-sticker]').forEach(el=>el.onclick=()=>confirmDialog('移除这个表情？','移除后可重新添加，聊天记录中的图片不受影响。',()=>act('sticker.delete',{id:el.dataset.removeSticker}),'移除'));
     if(route.name==='storage')window.PipiStorage.bind();
     if(route.name==='account-security')window.PipiAccount.bind();
-    if(route.name==='stickers'){window.PipiStickers.bind(view);const file=view.querySelector('#sticker-file');if(file)file.onchange=()=>uploadStickers(file);}
+    if(route.name==='stickers'){window.PipiStickers.bind(view);const file=view.querySelector('#sticker-file');if(file)file.onchange=()=>uploadStickers([...file.files],route,authEpoch);}
   }
   let openingRequest = 0;
   async function openWhenReady(name, load, trigger) {
@@ -1299,14 +1408,14 @@
       case 'emoji-send':await sendMessage(true);break;
       case 'manage-stickers':showView('stickers');break;
       case 'contact-tags':showView('contact-tags');break;
-      case 'add-sticker':view.querySelector('#sticker-file')?.click();break;
+      case 'add-sticker': chooseComposerFiles('#sticker-file', uploadStickers); break;
       case 'clear-quote': quoteId=''; updateComposer(); break;
       case 'clear-image': composeImage='';composeImageMeta=null;composeStickerId=''; updateComposer(); break;
-      case 'upload-chat-image': view.querySelector('#chat-image-file')?.click(); break;
+      case 'upload-chat-image': chooseComposerFiles('#chat-image-file', useChatImage); break;
       case 'chat-transfer': showView('wallet',{roleId:r?.id,mode:'transfer'}); break;
       case 'chat-redpacket': showView('wallet',{roleId:r?.id,mode:'redpacket'}); break;
       case 'chat-pat': if(r)await patChat(r.id,'contact');break;
-      case 'logout': confirmDialog('退出登录？','数据会保留在服务器，输入密码即可重新登录。',async()=>{await api('/api/logout',{}); csrf=''; state=null;drafts.clear();composerHistories.clear();failedSends.clear();composeText='';composeImage='';composeImageMeta=null;composeStickerId='';quoteId='';sessionStorage.removeItem(chatDraftKey);window.PipiEngine?.stop();window.PipiStorage?.reset();window.PipiAccount?.reset(); renderAuth(false);},'退出登录'); break;
+      case 'logout': confirmDialog('退出登录？','数据会保留在服务器，输入密码即可重新登录。',async()=>{await api('/api/logout',{}); csrf=''; state=null;drafts.clear();composerHistories.clear();failedSends.clear();composeText='';composeImage='';composeImageMeta=null;composeStickerId='';quoteId='';sessionStorage.removeItem(chatDraftKey);renderAuth(false);},'退出登录'); break;
       case 'download-backup': downloadBackup(); break;
       case 'restore-backup': pickBackup(); break;
     }
@@ -1376,8 +1485,12 @@
     },'发送');
   }
   function editChatBackground(r){
-    let draft=r.chatBackground||'';
-    openModal('设置聊天背景','<div class="chat-background-preview"></div><button type="button" class="secondary-btn block-btn" id="pick-chat-background">从相册选择</button><button type="button" class="secondary-btn block-btn" id="clear-chat-background">恢复默认背景</button><input id="chat-background-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>',async form=>{await act('role.save',{id:r.id,chatBackground:draft});if(form.isConnected){closeModal(false);refresh();}},'保存',undefined,'cancel',{lockWhileSaving:true});
+    let draft=r.chatBackground||'', selection=0, loading=false;
+    openModal('设置聊天背景','<div class="chat-background-preview"></div><button type="button" class="secondary-btn block-btn" id="pick-chat-background">从相册选择</button><button type="button" class="secondary-btn block-btn" id="clear-chat-background">恢复默认背景</button><input id="chat-background-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>',async form=>{
+      if(loading)throw new Error('图片正在处理，请稍候');
+      await act('role.save',{id:r.id,chatBackground:draft});
+      if(form.isConnected){closeModal(false);refresh();}
+    },'保存',undefined,'cancel',{lockWhileSaving:true});
     overlay.querySelector('.page-editor').classList.add('chat-background-editor');
     const preview=overlay.querySelector('.chat-background-preview'),file=overlay.querySelector('#chat-background-file');
     function paint() {
@@ -1387,8 +1500,17 @@
         `<p data-skin-wallpaper-name>${esc(window.PipiSkins?.wallpaperName || '默认聊天背景')}</p>`;
     }
     paint();
-    overlay.querySelector('#pick-chat-background').onclick=()=>file.click();overlay.querySelector('#clear-chat-background').onclick=()=>{draft='';file.value='';paint();};
-    file.onchange=async()=>{if(!file.files?.[0])return;try{const image=await uploadImage(file.files[0]);if(file.isConnected){draft=image;paint();}}catch(err){toast(err.message);}};
+    const pick=overlay.querySelector('#pick-chat-background'),submit=overlay.querySelector('.modal-submit');
+    const setLoading=value=>{loading=value;pick.disabled=value;submit.disabled=value;};
+    pick.onclick=()=>file.click();
+    overlay.querySelector('#clear-chat-background').onclick=()=>{selection++;setLoading(false);draft='';file.value='';paint();};
+    file.onchange=async()=>{
+      const chosen=file.files[0];if(!chosen)return;
+      const current=++selection;file.value='';setLoading(true);
+      try{const image=await uploadImage(chosen);if(file.isConnected&&selection===current){draft=image;paint();}}
+      catch(error){if(file.isConnected&&selection===current)toast(error.message);}
+      finally{if(file.isConnected&&selection===current)setLoading(false);}
+    };
   }
   async function patChat(roleId,target,messageId) {
     const key=roleId+':'+target;if(patRequests.has(key))return;patRequests.add(key);
@@ -1418,7 +1540,7 @@
     if(button){button.hidden=!newChatMessageIds.size;button.textContent='↓ '+newChatMessageIds.size+' 条新消息';}
   }
   function bindChat() {
-    if(imageVariants)bindChatThumbnails();
+    bindChatThumbnails();
     bindComposer();
     const cancelReply=view.querySelector('[data-chat-cancel]');if(cancelReply)cancelReply.onclick=()=>cancelChatReply(cancelReply);
     for(const button of view.querySelectorAll('[data-message-speech]')){
@@ -1491,6 +1613,57 @@
     view.querySelectorAll('[data-speak]').forEach(el=>el.onclick=()=>speakMessage(el.dataset.speak,el));
     view.querySelectorAll('[data-play]').forEach(el=>el.onclick=()=>playAudio(state.messages.find(m=>m.id===el.dataset.play)?.meta?.audio,el.dataset.play));
   }
+  function chooseComposerFiles(selector, onSelect) {
+    const template = view.querySelector(selector);
+    if (!template) return;
+    const origin = route, epoch = authEpoch;
+    const editor = view.querySelector('#compose-text');
+    if (editor && document.activeElement === editor) {
+      composerSelection = readComposerSelection(editor);
+      editor.blur();
+    }
+    persistChatDrafts();
+    systemFilePicker?.remove();
+    // The native chooser can outlive a view refresh. Keep its input outside
+    // the rebuilt composer so the browser can deliver change or cancel.
+    const picker = document.createElement('input');
+    picker.type = 'file';
+    picker.accept = template.accept;
+    picker.multiple = template.multiple;
+    picker.hidden = true;
+    systemFilePicker = picker;
+    view.after(picker);
+    function settle() {
+      picker.remove();
+      if (systemFilePicker !== picker) return false;
+      systemFilePicker = null;
+      scheduleViewport();
+      return route === origin && authEpoch === epoch;
+    }
+    picker.addEventListener('cancel', settle, {once:true});
+    picker.addEventListener('change', () => {
+      const files = [...picker.files];
+      if (settle() && files.length) void onSelect(files, origin, epoch);
+    }, {once:true});
+    picker.click();
+  }
+  async function useChatImage(files, origin, epoch) {
+    if (!files.length) return;
+    const sequence = ++chatImageSequence;
+    const stillCurrent = () => sequence === chatImageSequence && route === origin && authEpoch === epoch;
+    try {
+      const data = await prepareChatImage(files[0], stillCurrent);
+      if (!data || !stillCurrent()) return;
+      composeImage = data.image;
+      composeImageMeta = {thumb:data.thumb, modelImage:data.modelImage};
+      composeStickerId = '';
+      panel = '';
+      updateComposer();
+      if (!composeText.trim()) sendMessage();
+    } catch (error) {
+      if (stillCurrent()) toast(error.message);
+    }
+  }
   function bindComposer() {
     if (window.ClassicSocial) window.ClassicChat.decorate(view);
     const form=view.querySelector('#compose-form'); if(!form)return;
@@ -1538,15 +1711,34 @@
       input.addEventListener('drop',event=>{event.preventDefault();if(composeComposing||sending)return;rememberSelection();useKeyboard(true);insertComposerText((event.dataTransfer?.getData('text/plain')||'').replace(/\r\n?/g,'\n'));});
       for(const type of ['copy','cut'])input.addEventListener(type,event=>{const selection=readComposerSelection(input);if(selection.start===selection.end)return;event.preventDefault();event.clipboardData?.setData('text/plain',readComposerText(input).slice(selection.start,selection.end));if(type==='cut'&&!composeComposing&&!sending){composerSelection=selection;useKeyboard(true);insertComposerText('');}});
     }
+    const removeEmoji=view.querySelector('[data-action=emoji-delete]');
+    if(removeEmoji){
+      removeEmoji.addEventListener('click',event=>{if(event.detail){event.preventDefault();event.stopImmediatePropagation();}},true);
+      removeEmoji.addEventListener('pointerdown',event=>{
+        if(event.button!==0||removeEmoji.disabled)return;
+        event.preventDefault();stopComposerDeleteHold();
+        if(input)composerSelection=readComposerSelection(input);
+        const controller=new AbortController(),origin=route;let timer;
+        const stop=()=>{clearTimeout(timer);controller.abort();stopComposerDeleteHold=()=>{};};stopComposerDeleteHold=stop;
+        const tick=()=>{if(!removeEmoji.isConnected||removeEmoji.disabled||route!==origin||panel!=='emoji'||document.hidden){stop();return;}deleteComposerText();timer=setTimeout(tick,70);};
+        deleteComposerText();timer=setTimeout(tick,450);
+        for(const type of ['pointerup','pointercancel','blur'])window.addEventListener(type,stop,{signal:controller.signal});
+        document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();},{signal:controller.signal});
+        removeEmoji.addEventListener('pointerleave',stop,{signal:controller.signal});
+        removeEmoji.addEventListener('pointermove',e=>{const box=removeEmoji.getBoundingClientRect();if(e.clientX<box.left||e.clientX>box.right||e.clientY<box.top||e.clientY>box.bottom)stop();},{signal:controller.signal});
+        removeEmoji.addEventListener('contextmenu',e=>e.preventDefault(),{signal:controller.signal});
+      });
+    }
     const emojiScroll=view.querySelector('.emoji-scroll');if(emojiScroll)emojiScroll.scrollTop=composerScroll.emoji;
     view.querySelectorAll('[data-emoji-page]').forEach(el=>el.onclick=()=>{emojiPage=Number(el.dataset.emojiPage);updateComposer();});
-    view.querySelectorAll('[data-emoji]').forEach(el=>el.onclick=()=>{const token=el.dataset.emoji;insertComposerText(token);act('emoji.use',{token}).then(()=>{if(panel==='emoji'&&route.name==='chat')updateComposer();}).catch(err=>toast(err.message));});
+    view.querySelectorAll('[data-emoji]').forEach(el=>el.onclick=()=>{const token=el.dataset.emoji;insertComposerText(token);recordEmojiUse(token);});
     view.querySelectorAll('[data-emoji-tab]').forEach(el=>el.onclick=()=>{emojiTab=el.dataset.emojiTab;updateComposer();if(emojiTab==='search')view.querySelector('#emoji-search')?.focus();});
     const emojiInput=view.querySelector('#emoji-search');if(emojiInput)bindFilterInput(emojiInput,value=>{emojiSearch=value;},updateComposer);
     view.querySelectorAll('[data-sticker]').forEach(el=>el.onclick=()=>{const sticker=state.stickers?.find(s=>s.id===el.dataset.sticker);if(sticker&&safeImage(sticker.image)){sendSticker(sticker);}});
-    const stickerFile=view.querySelector('#sticker-file');if(stickerFile)stickerFile.onchange=()=>uploadStickers(stickerFile);
+    const stickerFile=view.querySelector('#sticker-file');if(stickerFile)stickerFile.onchange=()=>uploadStickers([...stickerFile.files],route,authEpoch);
     const drag=view.querySelector('.emoji-drag-handle');if(drag){let startY=0,height=0;const resize=delta=>{const max=Math.max(220,document.querySelector('.phone-shell').clientHeight-180);emojiExpandedHeight=Math.max(220,Math.min(max,height+delta));const anchor=captureChatLayout();view.querySelector('.emoji-board').style.height=emojiExpandedHeight+'px';restoreChatLayout(anchor);};drag.onpointerdown=e=>{startY=e.clientY;height=view.querySelector('.emoji-board').clientHeight;drag.setPointerCapture(e.pointerId);};drag.onpointermove=e=>{if(drag.hasPointerCapture(e.pointerId))resize(startY-e.clientY);};drag.onkeydown=e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown'){e.preventDefault();height=view.querySelector('.emoji-board').clientHeight;resize(e.key==='ArrowUp'?30:-30);}};}
-    const file=view.querySelector('#chat-image-file'); if(file)file.onchange=async()=>{if(!file.files?.[0])return;const roleId=route.arg,origin=route,sequence=++chatImageSequence;try{const data=await prepareChatImage(file.files[0]);if(sequence!==chatImageSequence||route!==origin||route.name!=='chat'||route.arg!==roleId)return;composeImage=data.image;composeImageMeta={...(data.thumb?{thumb:data.thumb}:{}),...(data.modelImage?{modelImage:data.modelImage}:{})};composeStickerId='';panel='';updateComposer();if(!composeText.trim())sendMessage();}catch(err){toast(err.message);}};
+    const file=view.querySelector('#chat-image-file');
+    if(file)file.onchange=()=>useChatImage([...file.files],route,authEpoch);
     const record=view.querySelector('[data-record]');
     if(record)window.PipiVoiceHold.bind({button:record,host:view.closest('.phone-shell'),
       begin:controls=>startRecording('hold',controls),onError:error=>toast(error.message)});
@@ -1557,6 +1749,7 @@
     if(composeComposing||recordingSession||(!composeText.trim()&&!composeImage))return;
     const r=roleById(route.arg);if(!r)return;
     const draft={text:composeText,image:composeImage,imageMeta:composeImageMeta,stickerId:composeStickerId,quote:quoteId},text=draft.text.trim(),image=draft.image,quote=quotedMessage(draft.quote),failed=failedSends.get(r.id);
+    if(text.length>16000){toast('这条消息超出长度限制，可以分成几条发送');return;}
     // Resending an unchanged failed draft reuses its requestId, so a request that did reach the server is not stored twice.
     const requestId=failed&&failed.text===text&&failed.image===image&&failed.stickerId===draft.stickerId&&failed.quote===(quote?.id||'')&&JSON.stringify(failed.imageMeta||{})===JSON.stringify(draft.imageMeta||{})?failed.requestId:crypto.randomUUID();
     const restoreEmoji=keepEmoji&&panel==='emoji';
@@ -1807,13 +2000,18 @@
       return await readImage(converted,false,asBlob);
     }finally{bitmap.close();}
   }
-  async function uploadStickers(file){
-    if(file.disabled||!file.files.length)return;
-    const origin=route,before=new Set((state.stickers||[]).map(s=>s.id)),remaining=Math.max(0,200-before.size);
-    file.disabled=true;
+  async function uploadStickers(files,origin,epoch){
+    if(!files.length)return;
+    if(stickerUploadEpoch===epoch){toast('正在添加表情，请稍候',true);return;}
+    const before=new Set((state.stickers||[]).map(s=>s.id)),remaining=Math.max(0,200-before.size);
+    stickerUploadEpoch=epoch;
     try{
-      const files=[...file.files],images=[];
-      for(const item of files)images.push(await uploadImage(item,true));
+      const images=[];
+      for(const item of files){
+        if(authEpoch!==epoch)return;
+        images.push(await uploadImage(item,true));
+      }
+      if(authEpoch!==epoch)return;
       // Pictures already in the library are skipped by the server and do not use up the 200 places.
       const fresh=new Set(images.filter(image=>!(state.stickers||[]).some(s=>s.image===image))).size;
       if(fresh>remaining&&!(state.stickers||[]).some(sticker=>sticker.image.startsWith('data:'))){toast(`表情库最多 200 张，还能添加 ${remaining} 张，这次选了 ${fresh} 张新表情`);return;}
@@ -1821,7 +2019,8 @@
       const added=(state.stickers||[]).filter(s=>!before.has(s.id)).length;
       if(route===origin){if(route.name==='stickers')refresh();else if(route.name==='chat')updateComposer();}
       toast(added?added<files.length?`已添加 ${added} 个表情，${files.length-added} 个重复未添加`:`已添加 ${added} 个表情`:'所选表情已在表情库中，未重复添加');
-    }catch(err){toast(err.message);}finally{file.disabled=false;file.value='';}
+    }catch(err){if(authEpoch===epoch)toast(err.message);}
+    finally{if(stickerUploadEpoch===epoch)stickerUploadEpoch=-1;}
   }
   function paintSpeech(id){
     if(!id)return;
@@ -2181,7 +2380,12 @@
   }
   function renderAuth(setup, connectionError = '') {
     window.PipiSkins.configure(null);
-    stopSpeech();authSetup=setup;authEpoch++;state=null;window.PipiEngine?.stop();view.dataset.route='auth';
+    stopSpeech();authSetup=setup;authEpoch++;state=null;window.PipiEngine?.stop();
+    window.PipiAccount?.reset();window.PipiStorage?.reset();
+    profileAvatarImages.clear();previewWarmups.clear();chatImageSizes.clear();
+    clearTimeout(emojiRecentTimer);queuedEmojiRecents=[];emojiRecentsSaving=false;
+    systemFilePicker?.remove();systemFilePicker=null;
+    view.dataset.route='auth';
     view.innerHTML=`<div class="auth-content"><div class="auth-logo">${icons.chat}</div><h1>屁屁机</h1>${setup?'':'<p class="auth-subtitle">熟悉的人和日常，都在这里等你。</p>'}${connectionError?`<div class="inline-note">${esc(connectionError)}</div><button class="primary-btn weui-btn weui-btn_primary" id="retry-boot">重新连接</button>`:`<form id="auth-form">${setup?field('你的名字','displayName','','怎么称呼你'):''}${field(setup?'设置访问密码':'访问密码','password','',setup?'至少 8 个字符':'','password')}${setup?field('再次输入密码','confirmPassword','','再输入一次','password')+(setupTokenRequired?field('设置令牌','setupToken','','请输入服务器提供的设置令牌','password'):''):''}<div class="auth-error" role="alert"></div><button type="submit" class="primary-btn weui-btn weui-btn_primary">${setup?'开启我的小手机':'进入小手机'}</button></form>`}<div class="auth-bottom">${setup?'一个账号 · 一部独立小手机<br>请保存好密码，当前版本不提供邮箱找回':'你的数据保存在当前服务器<br>密码仅用于访问这部小手机'}<br>开源 · 非售卖 · 无内置模型密钥</div></div>`;
     view.querySelector('#retry-boot')?.addEventListener('click',boot);
     const form=view.querySelector('#auth-form');if(!form)return;
@@ -2243,10 +2447,12 @@
   let viewportFrame=0,lastViewportSize='';
   function sizeViewport(){
     viewportFrame=0;
-    // Pinch zoom is handled by the browser. Resizing the shell again would
-    // shrink its layout a second time and displace the composer.
-    if(viewport&&Math.abs(viewport.scale-1)>.01)return;
-    const height=Math.round(viewport?.height||innerHeight),top=Math.round(viewport?.offsetTop||0),size=height+':'+top;
+    // Convert the visible height back to layout pixels: a pinch changes the
+    // browser magnification, while a keyboard still reduces the usable area.
+    // Keep updating after blur even if Safari retains its focus magnification.
+    const zoomed=viewport&&Math.abs(viewport.scale-1)>.01;
+    const height=Math.round(viewport?Math.min(innerHeight,viewport.height*viewport.scale):innerHeight);
+    const top=Math.round(viewport&&!zoomed?viewport.offsetTop:0),size=height+':'+top;
     if(size===lastViewportSize)return;
     const anchor=captureChatLayout();
     document.documentElement.style.setProperty('--app-height',height+'px');
@@ -2256,8 +2462,14 @@
   }
   function scheduleViewport(){if(!viewportFrame)viewportFrame=requestAnimationFrame(sizeViewport);}
   viewport?.addEventListener('resize',scheduleViewport);viewport?.addEventListener('scroll',scheduleViewport);
-  window.addEventListener('resize',scheduleViewport);document.addEventListener('focusout',scheduleViewport);sizeViewport();
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)persistChatDrafts();if(document.hidden&&(recordingSession))stopRecording(true);else if(!document.hidden)syncVisibleChatRead();});window.addEventListener('pagehide',()=>{persistChatDrafts();saveBrowserPosition();if(recordingSession)stopRecording(true);});
+  window.addEventListener('resize',scheduleViewport);window.addEventListener('pageshow',scheduleViewport);
+  window.addEventListener('focus',scheduleViewport);
+  document.addEventListener('focusin',scheduleViewport);document.addEventListener('focusout',scheduleViewport);sizeViewport();
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden){persistChatDrafts();if(recordingSession)stopRecording(true);return;}
+    scheduleViewport();flushRender();syncVisibleChatRead();
+  });
+  window.addEventListener('pagehide',()=>{persistChatDrafts();saveBrowserPosition();if(recordingSession)stopRecording(true);});
   let polling=false;
   setInterval(async()=>{
     if(!state||sending||polling||recordingSession||composeComposing||searchComposing||document.hidden)return;

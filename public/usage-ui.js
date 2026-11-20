@@ -7,7 +7,7 @@
   const glyphs={refresh:'<path d="M20 7v5h-5M4 17v-5h5M6.2 6.2a8 8 0 0 1 13 2L20 12M4 12l.8 3.8a8 8 0 0 0 13 2"/>',info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-11v2"/>',down:'<path d="m5 8 7 7 7-7"/>',search:'<circle cx="10" cy="10" r="6.5"/><path d="m15 15 6 6"/>',success:'<path d="m5 12 4 4 10-10"/>',error:'<path d="m7 7 10 10M17 7 7 17"/>'};
   const icon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${glyphs[name]}</svg>`;
   const fresh=()=>({tab:'usage',range:'all',data:null,logs:null,busy:false,error:'',query:'',status:'all',purpose:'all',expanded:false,focus:null});
-  let ui=fresh();
+  let ui=fresh(),cache=new Map(),epoch=0;
   const format=value=>value.toLocaleString('zh-CN');
   const compact=value=>value>=10000?`${(value/10000).toFixed(1)}万`:format(value);
   const purposeLabel=value=>purposes[value]||value||'模型调用';
@@ -15,32 +15,35 @@
   const dateText=(at,timeOnly=false)=>new Intl.DateTimeFormat('zh-CN',{timeZone:ui.data.timezone,...(timeOnly?{}:{month:'2-digit',day:'2-digit'}),hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(at);
   const statusMark=success=>`<span class="usage-status-mark ${success?'':'error'}">${icon(success?'success':'error')}</span>`;
   async function load(page,range){
-    const data=await P().api(`/api/engine/usage?range=${range}`);
+    const session=epoch,data=await P().api(`/api/engine/usage?range=${range}`);
+    if(session!==epoch||page!==ui)return;cache.set(range,data);
     page.data=data;page.range=range;page.error='';if(range==='all')page.logs=data.logs;
   }
-  function open(){ui=fresh();P().showView('engine-usage');}
+  function open(){ui={...fresh(),data:cache.get('all')||null,logs:cache.get('all')?.logs||null};P().showView('engine-usage');void reload();}
   function getView(){
     const {tab,range,query,status,purpose,expanded}=ui;
     return {tab,range,query,status,purpose,expanded};
   }
   async function restoreView(view){
-    const page=ui={...fresh(),...view};
+    const page=ui={...fresh(),...view,data:cache.get(view?.range||'all')||null,logs:cache.get('all')?.logs||null};
     try{
-      await load(page,'all');
-      if(view?.range&&view.range!=='all')await load(page,view.range);
+      const range=view?.range||'all';
+      if(view?.tab==='logs'&&range!=='all'&&!page.logs)await load(page,'all');
+      if(page!==ui)return;
+      await load(page,range);
     }catch(error){page.error=error.message;}
   }
   async function reload(range=ui.range){
-    const page=ui;
+    const page=ui,session=epoch;
     if(page.busy)return;
     page.busy=true;P().refresh();
     try{
       if(page.tab==='logs'){
-        const data=await P().api('/api/engine/usage?range=all');page.logs=data.logs;
+        const data=await P().api('/api/engine/usage?range=all');if(session!==epoch||page!==ui)return;cache.set('all',data);page.logs=data.logs;
         if(page.range==='all')page.data=data;
       }else await load(page,range);
       page.error='';
-    }catch(error){page.error=error.message;if(ui===page&&$('#usage-page'))P().toast(error.message);}
+    }catch(error){if(session!==epoch)return;page.error=error.message;if(ui===page&&$('#usage-page'))P().toast(error.message);}
     finally{page.busy=false;if(ui===page&&$('#usage-page'))P().refresh();}
   }
   function chart(){
@@ -72,7 +75,7 @@
   function render(){
     const search=$('#usage-search');ui.focus=search&&document.activeElement===search?{start:search.selectionStart,end:search.selectionEnd}:null;
     if(!ui.data&&!ui.busy&&!ui.error)queueMicrotask(()=>{if(!ui.data&&!ui.busy&&!ui.error)void reload();});
-    return `<header class="topbar"><div class="header-leading"><button class="back-btn" data-action="back" aria-label="返回">${P().icons.back}</button></div><h2 class="title-centered">用量与日志</h2><div class="header-actions"><button class="icon-btn usage-refresh" data-usage-action="refresh" aria-label="刷新用量与日志" ${ui.busy?'disabled':''}>${icon('refresh')}</button></div></header><nav class="usage-tabs" aria-label="用量与日志" role="tablist"><button id="usage-summary-tab" role="tab" aria-controls="usage-page" aria-selected="${ui.tab==='usage'}" data-usage-tab="usage" ${ui.busy?'disabled':''}>用量</button><button id="usage-log-tab" role="tab" aria-controls="usage-page" aria-selected="${ui.tab==='logs'}" data-usage-tab="logs" ${ui.busy?'disabled':''}>日志</button></nav><div class="content page-content usage-content" id="usage-page" role="tabpanel" aria-labelledby="${ui.tab==='usage'?'usage-summary-tab':'usage-log-tab'}">${ui.data?(ui.tab==='usage'?usageBody():logsBody()):`<p class="usage-empty">${esc(ui.error||'正在读取用量…')}</p>`}</div>`;
+    return `<header class="topbar"><div class="header-leading"><button class="back-btn" data-action="back" aria-label="返回">${P().icons.back}</button></div><h2 class="title-centered">用量与日志</h2><div class="header-actions"><button class="icon-btn usage-refresh" data-usage-action="refresh" aria-label="刷新用量与日志" ${ui.busy?'disabled':''}>${icon('refresh')}</button></div></header><nav class="usage-tabs" aria-label="用量与日志" role="tablist"><button id="usage-summary-tab" role="tab" aria-controls="usage-page" aria-selected="${ui.tab==='usage'}" data-usage-tab="usage" ${ui.busy?'disabled':''}>用量</button><button id="usage-log-tab" role="tab" aria-controls="usage-page" aria-selected="${ui.tab==='logs'}" data-usage-tab="logs" ${ui.busy?'disabled':''}>日志</button></nav><div class="content page-content usage-content" id="usage-page" role="tabpanel" aria-labelledby="${ui.tab==='usage'?'usage-summary-tab':'usage-log-tab'}">${ui.data&&ui.error?`<p class="usage-empty" role="alert">更新失败：${esc(ui.error)}，当前显示上次成功结果。</p>`:''}${ui.data?(ui.tab==='usage'?usageBody():logsBody()):`<p class="usage-empty">${esc(ui.error||'正在读取用量…')}</p>`}</div>`;
   }
   function sheet(title,html){
     P().openModal(title,html,null);
@@ -104,5 +107,5 @@
     const search=$('#usage-search');if(search){search.oninput=()=>{ui.query=search.value;updateLogs();};if(ui.focus){search.focus({preventScroll:true});search.setSelectionRange(ui.focus.start,ui.focus.end);ui.focus=null;}}
     bindRecords();
   }
-  window.PipiUsage={open,render,bind,getView,restoreView,reset:()=>{ui=fresh();}};
+  window.PipiUsage={open,render,bind,getView,restoreView,reset:()=>{epoch++;cache.clear();ui=fresh();}};
 })();

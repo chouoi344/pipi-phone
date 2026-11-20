@@ -13,10 +13,10 @@ function context(code,values={}){const scope=vm.createContext({console,Map,Set,J
 const image='data:image/png;base64,aGVsbG8=';
 
 test('F1: repeated photo avatars share one short key and the source map stays bounded',()=>{
- const f=context(section(app,'  function avatarKey','  new MutationObserver')+section(app,'  function avatar(entity','  function toast'),{avatarKeys:new Map(),avatarSources:new Map(),avatarSequence:0,safeImage:s=>s?.startsWith('data:image/'),esc:escape,assetIcon:()=>'<i></i>'});
+ const f=context(section(app,'  function avatarKey','  new MutationObserver')+section(app,'  function avatar(entity','  function toast'),{state:null,avatarKeys:new Map(),avatarSources:new Map(),avatarSequence:0,safeImage:s=>s?.startsWith('data:image/'),esc:escape,assetIcon:()=>'<i></i>'});
  const one=f.avatar({name:'照片好友',avatar:image});assert.match(one,/data-avatar-key="1"/);assert.ok(!one.includes(image));assert.equal(f.avatarKey(image),'1');
  for(let i=0;i<600;i++)f.avatarKey(image+i);assert.equal(f.avatarKeys.size,512);assert.equal(f.avatarSources.size,512);assert.ok(!f.avatarKeys.has(image));
- const key=f.avatarKey(image),node={nodeType:1,dataset:{avatarKey:key},matches:()=>true};f.paintAvatars(node);assert.equal(node.src,image);
+ const key=f.avatarKey(image),node={nodeType:1,dataset:{avatarKey:key},matches:()=>true,hasAttribute:()=>false};f.paintAvatars(node);assert.equal(node.src,image);
 });
 
 test('F2: queued chat redraw preserves a nonempty draft, selection and focus; IME defers it',()=>{
@@ -60,9 +60,10 @@ test('F8: deleted, recalled and other-conversation quotes are rejected',()=>{
 });
 
 test('F13: duplicate pictures consume no additional sticker slots',async()=>{
- let sent=0,message='';const state={stickers:Array.from({length:199},(_,i)=>({id:'s'+i,image:'img'+i}))};const file={files:[{name:'old.png',data:'img1'},{name:'new.png',data:'new'}],disabled:false,value:'chosen'};
- const f=context(section(app,'  async function uploadStickers','  function paintSpeech'),{state,route:{name:'other'},uploadImage:async file=>file.data,act:async(_,payload)=>{sent++;assert.equal(payload.images.length,2);state.stickers.push({id:'new',image:'new'});},toast:text=>message=text,refresh(){},updateComposer(){}});
- await f.uploadStickers(file);assert.equal(sent,1);assert.match(message,/已添加 1 个表情，1 个重复/);file.files=[{name:'new2.png',data:'new2'}];await f.uploadStickers(file);assert.equal(sent,1);assert.match(message,/还能添加 0 张/);
+ let sent=0,message='';const state={stickers:Array.from({length:199},(_,i)=>({id:'s'+i,image:'img'+i}))};const files=[{name:'old.png',data:'img1'},{name:'new.png',data:'new'}];
+ const route={name:'other'},epoch=1;
+ const f=context(section(app,'  async function uploadStickers','  function paintSpeech'),{state,route,authEpoch:epoch,stickerUploadEpoch:-1,uploadImage:async file=>file.data,act:async(_,payload)=>{sent++;assert.equal(payload.images.length,2);state.stickers.push({id:'new',image:'new'});},toast:text=>message=text,refresh(){},updateComposer(){}});
+ await f.uploadStickers(files,route,epoch);assert.equal(sent,1);assert.match(message,/已添加 1 个表情，1 个重复/);await f.uploadStickers([{name:'new2.png',data:'new2'}],route,epoch);assert.equal(sent,1);assert.match(message,/还能添加 0 张/);
 });
 
 function featureFixture(initial={}){let current={roles:[{id:'a',name:'小甲'}],profile:{name:'我'},ledger:[],favorites:[],wallet:{balanceCents:100,transactions:[]},...initial};let timer;

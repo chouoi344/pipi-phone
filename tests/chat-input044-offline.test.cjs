@@ -25,6 +25,7 @@ function fixture(initialBubbles=[]){
   function buildComposer(model){
     const old=nodes.footer;if(old){if(old.contains(document.activeElement))document.activeElement?.blur();for(const item of old.children)item.isConnected=false;old.isConnected=false;}
     const form=node(),input=model.panel==='voice'?null:node({id:'compose-text',text:model.text,inputMode:model.panel==='emoji'?'none':'text',scrollHeight:160,hasSelection:false}),emoji=model.panel==='emoji'?node():null;
+    if(input)input.parentElement={classList:{toggle(){}}};
     if(input)Object.defineProperty(input,'innerHTML',{get(){return this.text;},set(value){this.text=value;}});
     const footer=node({children:[form,input,emoji].filter(Boolean),querySelector(selector){return selector==='#compose-text'?input:selector==='.emoji-scroll'?emoji:null;},contains(item){return this.children.includes(item);}});
     for(const child of footer.children)child.closest=selector=>selector==='.chat-composer'?footer:null;
@@ -33,7 +34,7 @@ function fixture(initialBubbles=[]){
   }
   const view={querySelector(selector){return {'#compose-form':nodes.form,'#compose-text':nodes.input,'.chat-composer':nodes.footer,'.emoji-scroll':nodes.emoji,'#chat-messages':nodes.list}[selector]||null;},querySelectorAll(selector){return selector==='[data-bubble]'?(nodes.bubbles||[]):[];}};
   document.getElementById=id=>view.querySelector('#'+id);
-  const context=vm.createContext({window,history,document,view,Event,AbortController,console,setTimeout:callback=>{jobs.push(callback);return callback;},clearTimeout:callback=>{const i=jobs.indexOf(callback);if(i>=0)jobs.splice(i,1);},requestAnimationFrame:callback=>{jobs.push(callback);return jobs.length;},cancelAnimationFrame(){},overlay:{replaceChildren(){}},buildComposer,
+  const context=vm.createContext({window,history,document,view,Event,AbortController,console,getSelection:()=>null,setTimeout:callback=>{jobs.push(callback);return callback;},clearTimeout:callback=>{const i=jobs.indexOf(callback);if(i>=0)jobs.splice(i,1);},requestAnimationFrame:callback=>{jobs.push(callback);return jobs.length;},cancelAnimationFrame(){},overlay:{replaceChildren(){}},buildComposer,
     buildScreen(name,model){if(name==='chat'){nodes.list=node({scrollHeight:3000,clientHeight:600,querySelectorAll:()=>[]});nodes.bubbles=initialBubbles;if(model.selecting){if(nodes.footer){nodes.footer.isConnected=false;for(const child of nodes.footer.children)child.isConnected=false;}Object.assign(nodes,{form:null,input:null,emoji:null,footer:null});}else buildComposer(model);}else{if(nodes.footer?.contains(document.activeElement))document.activeElement?.blur();nodes={};}},
     showMenu(){menus++;},showPayment(){payments++;}});
   vm.runInContext(`let imageVariants=false,composeImageMeta=null;
@@ -55,7 +56,7 @@ function fixture(initialBubbles=[]){
     function renderComposer(){return {text:composeText,panel,selecting:!!chatSelection};}
     function refresh(){buildScreen(route.name,renderComposer());if(route.name==='chat'){bindChat();scrollChat();}}
     window.PipiFeatures={walletTransaction:showPayment};
-    ${['trackModalHistory','openChildDialog','closeChildDialog','closeModal','showView','goBack','captureChatLayout','restoreChatLayout','persistChatDrafts','pressTimer','resizeComposeInput','paintComposer','syncComposerDraft','updateComposer','changeComposerMode','insertComposerText','scrollChat','startMessageSelection','finishMessageSelection','toggleSelectedMessage','handleAction','bindChat','bindComposer'].map(productFunction).join('\n')}
+    ${['trackModalHistory','openChildDialog','closeChildDialog','closeModal','showView','goBack','captureChatLayout','restoreChatLayout','persistChatDrafts','pressTimer','resizeComposeInput','paintComposer','syncComposerDraft','updateComposer','changeComposerMode','insertComposerText','scrollChat','startMessageSelection','finishMessageSelection','toggleSelectedMessage','handleAction','bindChatThumbnails','bindChat','bindComposer'].map(productFunction).join('\n')}
     ${popLine}
     refresh();
     globalThis.api={showView,goBack,handleAction,changeComposerMode,bindChat,startMessageSelection,finishMessageSelection,toggleSelectedMessage,selected:()=>chatSelection?[...chatSelection.ids]:null,setGlobalSearch:value=>{globalSearchTerm=value;},globalSearch:()=>globalSearchTerm,

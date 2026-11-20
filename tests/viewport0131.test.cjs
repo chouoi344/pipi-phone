@@ -13,6 +13,14 @@ test('viewport batches keyboard resize events, skips unchanged sizes and preserv
   frames.shift()();assert.deepEqual(writes.slice(-2),[['--app-height','460px'],['--viewport-top','0px']]);
   events.resize();frames.shift()();assert.equal(writes.length,4);
   viewport.scale=2;viewport.height=230;viewport.offsetTop=90;events.resize();frames.shift()();assert.equal(writes.length,4);
+  // Dismissal must restore the shell even while Safari retains a non-1 scale.
+  viewport.height=422;events.resize();frames.shift()();
+  assert.deepEqual(writes.slice(-2),[['--app-height','844px'],['--viewport-top','0px']]);
+  viewport.height=230;events['document:focusin']();frames.shift()();
+  assert.deepEqual(writes.slice(-2),[['--app-height','460px'],['--viewport-top','0px']]);
+  // Restoring the page from browser history must also refresh a stale height.
+  viewport.height=422;events['window:pageshow']();frames.shift()();
+  assert.deepEqual(writes.slice(-2),[['--app-height','844px'],['--viewport-top','0px']]);
   viewport.scale=1;viewport.height=844;viewport.offsetTop=0;events['document:focusout']();frames.shift()();
-  assert.deepEqual(writes.slice(-2),[['--app-height','844px'],['--viewport-top','0px']]);assert.equal(captures,3);assert.equal(restores,3);
+  assert.deepEqual(writes.slice(-2),[['--app-height','844px'],['--viewport-top','0px']]);assert.equal(captures,5);assert.equal(restores,5);
 });

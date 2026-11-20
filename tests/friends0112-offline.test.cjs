@@ -84,18 +84,18 @@ test('settings offer a direct usage route and both duplicate moments management 
 });
 function stickers(routeName='stickers'){
   const calls=[],notices=[],renders=[],file={files:[],disabled:false,isConnected:true,value:'selected'};
-  const scope=vm.createContext({calls,notices,renders});vm.runInContext(`const state={stickers:[]};let route={name:'${routeName}'},composeText='unfinished draft',composeImage='draft-image',quoteId='quote';
+  const scope=vm.createContext({calls,notices,renders});vm.runInContext(`const state={stickers:[]};let authEpoch=1,stickerUploadEpoch=-1,route={name:'${routeName}'},composeText='unfinished draft',composeImage='draft-image',quoteId='quote';
     let read=async file=>{if(file.error)throw new Error(file.error);return file.image;};async function uploadImage(file){return read(file);}
     let save=async(type,payload)=>{calls.push({type,payload});};async function act(type,payload){await save(type,payload);for(const image of payload.images)if(!state.stickers.some(sticker=>sticker.image===image))state.stickers.push({id:'sticker-'+state.stickers.length,image});}
     function toast(message){notices.push(message);}function refresh(){renders.push('page');}function updateComposer(){renders.push('composer');}
     ${productFunction('uploadStickers')}
-    globalThis.ui={uploadStickers,readWith(fn){read=fn;},saveWith(fn){save=fn;},leave(){route={name:'about'};},draft:()=>({composeText,composeImage,quoteId})};`,scope);
+    globalThis.ui={uploadStickers(file){return uploadStickers([...file.files],route,authEpoch);},readWith(fn){read=fn;},saveWith(fn){save=fn;},leave(){route={name:'about'};},draft:()=>({composeText,composeImage,quoteId})};`,scope);
   return {ui:scope.ui,calls,notices,renders,file};
 }
 for(const route of ['stickers','chat'])test('multi-sticker upload submits one full batch from '+route+' and keeps its draft',async()=>{
   const f=stickers(route);f.file.files=[{name:'sample.png',image:'first'},{name:'second.png',image:'second'}];await f.ui.uploadStickers(f.file);
   assert.equal(f.calls.length,1);assert.equal(f.calls[0].type,'sticker.add');assert.deepEqual([...f.calls[0].payload.images],['first','second']);
-  assert.deepEqual(f.renders,[route==='chat'?'composer':'page']);assert.equal(f.file.disabled,false);assert.equal(f.file.value,'');
+  assert.deepEqual(f.renders,[route==='chat'?'composer':'page']);
   assert.deepEqual({...f.ui.draft()},{composeText:'unfinished draft',composeImage:'draft-image',quoteId:'quote'});
 });
 test('one invalid image prevents any sticker request and server rejection produces no success',async()=>{

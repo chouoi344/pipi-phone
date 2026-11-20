@@ -280,9 +280,11 @@
   }
   function composeMoment(options = {}) {
     const images = [...(options.images || (options.image ? [options.image] : []))];
+    let imagesLoading = false;
     let privacy = { mode: options.visibility === 'self' ? 'self' : 'all', some: [], exclude: [] }, mentions = [];
     const privatePost = options.visibility === 'self';
     P().openModal(privatePost ? '私密发表' : '发表朋友圈', `<div class="moment-compose"><textarea name="content" class="moment-compose-text" rows="4" maxlength="3000" placeholder="这一刻的想法…" aria-label="动态内容"></textarea><div class="moment-compose-photos"${options.textOnly ? ' hidden' : ''}><div id="moment-photo-items" class="compose-photo-grid"></div><label class="moment-add-photo" aria-label="添加照片"><span aria-hidden="true">＋</span><input id="moment-image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple></label></div><div class="moment-compose-cells"><label class="moment-compose-cell">${icon('location')}<span>所在位置</span><input name="location" id="moment-location" maxlength="120" placeholder="不显示" aria-label="所在位置文字标签"></label><button type="button" class="moment-compose-cell" id="moment-visibility" aria-haspopup="dialog">${momentPrivacyIcon(privacy.mode)}<span>谁可以看</span><small>${privacy.mode === 'all' ? '公开' : '私密'}</small>${icon('chevron')}</button><button type="button" id="moment-mention" class="moment-compose-cell" aria-haspopup="dialog"><span class="moment-mention-mark" aria-hidden="true">@</span><span>提醒谁看</span><small>未选择</small>${icon('chevron')}</button></div></div>`, async form => {
+      if (imagesLoading) throw new Error('图片正在处理，请稍候再发表');
       const data = new FormData(form), content = String(data.get('content') || '').trim();
       if (!content && !images.length) throw new Error('写点什么，或添加照片');
       const visibility = momentVisibility(privacy);
@@ -305,9 +307,17 @@
     drawImages();
     on('#moment-image-input', 'change', e => run(async () => {
       const input = e.target, files = [...input.files];
+      if (!files.length || imagesLoading) return;
       if (images.length + files.length > 9) { input.value = ''; throw new Error('每条朋友圈最多 9 张照片'); }
-      const additions = await Promise.all(files.map(file => fileData(file)));
-      if (form.isConnected) { images.push(...additions); drawImages(); input.value = ''; }
+      const submit = form.querySelector('.modal-submit');
+      imagesLoading = input.disabled = submit.disabled = true;
+      try {
+        const additions = await Promise.all(files.map(file => fileData(file)));
+        if (form.isConnected) { images.push(...additions); drawImages(); }
+      } finally {
+        input.value = '';
+        imagesLoading = input.disabled = submit.disabled = false;
+      }
     }), form);
     const updateMentions = () => {
       form.querySelector('#moment-mention').hidden = privacy.mode === 'self';
@@ -1019,8 +1029,10 @@
   function editFavorite(id) {
     const item = id ? state().favorites.find(entry => entry.id === id) : null;
     const images = [...(item?.meta?.images || [])];
+    let imagesLoading = false;
     const open = document.querySelector('.page-editor') ? P().openNestedPage : P().openModal;
     open(id ? '编辑笔记' : '新建笔记', `<div class="favorite-note-editor"><textarea name="content" maxlength="10000" rows="8" placeholder="记录此刻的想法" aria-label="笔记正文">${esc(item?.content || '')}</textarea><div id="note-images" class="note-image-editor"></div><div class="note-todo-editor" id="note-todos">${(item?.meta?.todos || []).map(todo => `<div data-note-todo="${esc(todo.id)}"><input type="checkbox" aria-label="已完成"${todo.done ? ' checked' : ''}><input type="text" value="${esc(todo.text)}" maxlength="500" aria-label="待办内容"><button type="button" data-remove-todo aria-label="移除待办">×</button></div>`).join('')}</div><div class="note-editor-tools"><label>添加图片<input id="note-image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple></label><button type="button" id="note-add-todo">添加待办</button></div></div>`, async form => {
+      if (imagesLoading) throw new Error('图片正在处理，请稍候再保存');
       const content = String(new FormData(form).get('content') || '').trim();
       const todos = [...form.querySelectorAll('[data-note-todo]')].map(row => ({ id: row.dataset.noteTodo, text: row.querySelector('input[type=text]').value.trim(), done: row.querySelector('input[type=checkbox]').checked }));
       if (todos.some(todo => !todo.text)) throw new Error('请填写待办内容，或移除空待办');
@@ -1036,7 +1048,20 @@
       form.querySelector('.note-editor-tools > label').hidden = images.length === 9;
     };
     drawImages();
-    on('#note-image-input', 'change', e => run(async () => { const files = [...e.target.files]; if (images.length + files.length > 9) { e.target.value = ''; throw new Error('每篇笔记最多 9 张图片'); } const additions = await Promise.all(files.map(file => fileData(file))); if (form.isConnected) { images.push(...additions); e.target.value = ''; drawImages(); } }), form);
+    on('#note-image-input', 'change', e => run(async () => {
+      const input = e.target, files = [...input.files];
+      if (!files.length || imagesLoading) return;
+      if (images.length + files.length > 9) { input.value = ''; throw new Error('每篇笔记最多 9 张图片'); }
+      const submit = form.querySelector('.modal-submit');
+      imagesLoading = input.disabled = submit.disabled = true;
+      try {
+        const additions = await Promise.all(files.map(file => fileData(file)));
+        if (form.isConnected) { images.push(...additions); drawImages(); }
+      } finally {
+        input.value = '';
+        imagesLoading = input.disabled = submit.disabled = false;
+      }
+    }), form);
     on('#note-add-todo', 'click', () => { const row = document.createElement('div'); row.dataset.noteTodo = requestId(); row.innerHTML = '<input type="checkbox" aria-label="已完成"><input type="text" maxlength="500" aria-label="待办内容" placeholder="待办事项"><button type="button" data-remove-todo aria-label="移除待办">×</button>'; form.querySelector('#note-todos').append(row); row.querySelector('input[type=text]').focus(); }, form);
     form.querySelector('#note-todos').addEventListener('click', event => { if (event.target.closest('[data-remove-todo]')) event.target.closest('[data-note-todo]').remove(); });
   }

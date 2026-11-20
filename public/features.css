@@ -228,7 +228,7 @@
 .wallet-pay-amount>span{font-size:15px;color:#191919}
 .wallet-pay-amount>div{display:flex;align-items:center;gap:8px;padding:16px 0 18px;min-width:0}
 .wallet-pay-amount b{font-size:32px;font-weight:500;line-height:1.2}
-.wallet-pay-amount input{font-size:45px;font-weight:500;line-height:1.2;border:0;background:none;padding:0;width:100%;min-width:0;color:#191919;caret-color:#07c160;font-variant-numeric:tabular-nums}
+.wallet-pay-amount input{font-size:45px;--editable-font-size:45px;font-weight:500;line-height:1.2;border:0;background:none;padding:0;width:100%;min-width:0;color:#191919;caret-color:#07c160;font-variant-numeric:tabular-nums}
 .wallet-pay-amount input::placeholder{color:#c8c8c8;font-weight:400}
 .wallet-pay-note{display:flex;align-items:center;gap:14px;min-height:54px;border-top:1px solid #eee}
 .wallet-pay-note>span{font-size:14px;white-space:nowrap;color:#555}
@@ -297,7 +297,7 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .wallet-pay-amount>span{font-size:16px;line-height:24px}
 .wallet-pay-amount>div{gap:7px;padding:12px 0 11px;border-bottom:.5px solid #d8d8d8;min-height:79px;align-items:baseline}
 .wallet-pay-amount b{font-size:37px;font-weight:500}
-.wallet-pay-amount input{font-size:49px;font-weight:500;line-height:1.25;outline:none}
+.wallet-pay-amount input{font-size:49px;--editable-font-size:49px;font-weight:500;line-height:1.25;outline:none}
 .wallet-pay-note{border:0;min-height:45px;padding:0}
 .wallet-pay-note input{font-size:14px;padding:11px 0;color:#576b95;outline:none}
 .wallet-pay-note input::placeholder{color:#576b95}
@@ -320,7 +320,7 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .redpacket-amount-row{display:flex;align-items:center;min-height:50px;gap:16px;padding:10px;background:#fff;border-radius:8px}
 .redpacket-amount-row>span{font-size:15px;white-space:nowrap}
 .redpacket-amount-row>div{display:flex;align-items:baseline;justify-content:flex-end;flex:1;min-width:0;gap:2px}
-.redpacket-amount-row input{flex:0 1 auto;min-width:0;width:4ch;max-width:100%;text-align:right;background:none;border:0;padding:2px 0;font:inherit;font-size:17px;color:#191919;outline:none;caret-color:#f35a52;font-variant-numeric:tabular-nums}
+.redpacket-amount-row input{flex:0 1 auto;min-width:0;width:4ch;max-width:100%;text-align:right;background:none;border:0;padding:2px 0;font:inherit;font-size:17px;--editable-font-size:17px;color:#191919;outline:none;caret-color:#f35a52;font-variant-numeric:tabular-nums}
 .redpacket-amount-row input::placeholder{color:#b2b2b2}
 .redpacket-amount-row b{font-size:16px;font-weight:400;color:#777;margin-left:auto}
 .redpacket-blessing{display:flex;align-items:center;gap:15px;min-height:65px;background:#fff;border-radius:8px;padding:10px 14px 10px 10px}
@@ -365,7 +365,7 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .payment-message-detail.is-redpacket-detail .wallet-detail-note{margin:14px 0 30px;font-size:12px;line-height:1.6;color:#b2b2b2}
 .payment-message-detail.is-redpacket-detail .wallet-detail-amount{font-size:54px;color:#ceac75}
 .payment-message-detail.is-redpacket-detail .wallet-detail-status{margin:3px 0 0;font-size:13px;color:#9c703f}
-@media(max-width:350px){.wallet-pay-page{padding-left:16px;padding-right:16px}.wallet-pay-fields{padding-left:18px;padding-right:18px}.wallet-pay-amount input{font-size:43px}.redpacket-total>strong{font-size:43px}.wallet-detail-fields{padding-left:18px;padding-right:18px}.wallet-detail-row{gap:10px}}
+@media(max-width:350px){.wallet-pay-page{padding-left:16px;padding-right:16px}.wallet-pay-fields{padding-left:18px;padding-right:18px}.wallet-pay-amount input{font-size:43px;--editable-font-size:43px}.redpacket-total>strong{font-size:43px}.wallet-detail-fields{padding-left:18px;padding-right:18px}.wallet-detail-row{gap:10px}}
 
 /* Farm: a custom feature in the same flat cell language. */
 .farm-page{background:#ededed}

@@ -33,7 +33,7 @@ function fixture(messages=[]){
     function richText(text){return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
     function openPage(title,html){modalOpen=true;captureReader(title,html);}function closeModal(){modalOpen=false;}
     const window={PipiFeatures:{walletTransaction(){countPayment();}}};
-    ${['patChat','readTextMessage','cancelAvatarTaps','pressTimer','bindChat'].map(productFunction).join('\n')}
+    ${['patChat','readTextMessage','cancelAvatarTaps','pressTimer','bindChatThumbnails','bindChat'].map(productFunction).join('\n')}
     bindChat();globalThis.api={patChat,bindChat,cancelAvatarTaps,route:()=>route,modal:()=>modalOpen,closeModal};`,scope);
   const advance=ms=>{now+=ms;for(const [id,job]of [...jobs])if(job.at<=now){jobs.delete(id);job.callback();}};
   const event=(extra={})=>({button:0,clientX:20,clientY:20,detail:1,preventDefault(){this.prevented=true;},...extra});

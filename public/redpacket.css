@@ -10,7 +10,7 @@
 #overlay .is-redpacket .pay-amount.is-empty{color:#bfbfbf}
 #overlay .is-redpacket .pay-caret{background:#57be6a;margin-left:0}
 #overlay .is-redpacket .redpacket-blessing{position:relative;min-height:64px;padding:14px 16px;gap:12px;flex-wrap:wrap}
-#overlay .is-redpacket .redpacket-blessing>input{font-size:17px;caret-color:#57be6a}
+#overlay .is-redpacket .redpacket-blessing>input{font-size:17px;--editable-font-size:17px;caret-color:#57be6a}
 #overlay .is-redpacket #redpacket-emoji{position:relative;flex:0 0 26px;width:26px;height:28px;color:#777}
 #redpacket-emoji>.fw-feature-icon{width:22px;height:22px}
 #redpacket-emoji>span:last-child{position:absolute;right:-3px;bottom:-2px;font-size:20px;line-height:15px;background:#fff}

@@ -17,7 +17,7 @@
   // Reference artwork/fonts are not copied; this app reuses the GPL icon set below.
   // Masks are rendering derivatives: the upstream React SVG root fill is resolved
   // to black while original licensed SVG bytes remain intact in /icons.
-  const iconVersion = '0.13.6';
+  const iconVersion = '0.13.7';
   const assetIcon = (name, color = false, cls = '') => color
     ? `<img class="icon asset-icon ${cls}" src="/vendor/fake-world/icons/${name}.svg?v=${iconVersion}" alt="" aria-hidden="true">`
     : `<span class="icon mask-icon ${cls}" style="--icon-url:url('/vendor/fake-world/masks/${name}.svg?v=${iconVersion}')" aria-hidden="true"></span>`;

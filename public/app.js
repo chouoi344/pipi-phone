@@ -17,7 +17,7 @@
   // Reference artwork/fonts are not copied; this app reuses the GPL icon set below.
   // Masks are rendering derivatives: the upstream React SVG root fill is resolved
   // to black while original licensed SVG bytes remain intact in /icons.
-  const iconVersion = '0.13.3';
+  const iconVersion = '0.13.4';
   const assetIcon = (name, color = false, cls = '') => color
     ? `<img class="icon asset-icon ${cls}" src="/vendor/fake-world/icons/${name}.svg?v=${iconVersion}" alt="" aria-hidden="true">`
     : `<span class="icon mask-icon ${cls}" style="--icon-url:url('/vendor/fake-world/masks/${name}.svg?v=${iconVersion}')" aria-hidden="true"></span>`;
@@ -94,6 +94,7 @@
   let recordingSession=null,dictationBusy=false,composeComposing=false,searchComposing=false,deferredComposerUpdate=false;
   const routes = new Map();
   const navStack = restoredPage?.stack?.slice()||[], drafts = new Map(), chatScrolls = new Map();
+  const chatHistoryPageSize=120, chatHistoryWindows=new Map();
   const newChatMessageIds=new Set();
   let speechSession=null,syncImageViewer=null;
   const forwardDetails=new Map();
@@ -340,9 +341,10 @@
   function drainChatThumbnails(){
     while(thumbnailWorkers<2&&thumbnailQueue.length){const img=thumbnailQueue.shift();if(!img.isConnected)continue;thumbnailWorkers++;void backfillThumbnail(img).finally(()=>{thumbnailWorkers--;drainChatThumbnails();});}
   }
-  function chatImageMarkup(message,original,alt,sticker=false){
+  function chatImageMarkup(message,original,alt,sticker=false,prioritize=false){
     const source=!sticker&&safeImage(message.meta?.thumb)?message.meta.thumb:original,size=chatImageSizes.get(source);
-    return `<img class="message-image${sticker?'':' chat-photo'}" data-media-preview="${source===original?'original':'thumbnail'}" src="${esc(source)}" alt="${alt}" loading="lazy" decoding="async"${sticker?'':` width="${size?.width||120}" height="${size?.height||120}" style="width:${size?.width||120}px;height:${size?.height||120}px"`}>`;
+    const loading=prioritize&&source!==original?'loading="eager" fetchpriority="high"':'loading="lazy"';
+    return `<img class="message-image${sticker?'':' chat-photo'}" data-media-preview="${source===original?'original':'thumbnail'}" src="${esc(source)}" alt="${alt}" ${loading} decoding="async"${sticker?'':` width="${size?.width||120}" height="${size?.height||120}" style="width:${size?.width||120}px;height:${size?.height||120}px"`}>`;
   }
   function scheduleChatPreviewWarmup(roleIds){
     const connection=navigator.connection;
@@ -676,7 +678,11 @@
     const content=view.querySelector(route.name==='chat'?'#chat-messages':'.content');
     if(!content)return;
     const position=capturePagePosition(content);
-    if(route.name==='chat'&&chatNearBottom(content))position.bottom=true;
+    if(route.name==='chat'){
+      const historyWindow=chatHistoryWindows.get(route.arg);
+      position.bottom=!historyWindow?.endId&&chatNearBottom(content);
+      if(!position.bottom&&historyWindow)position.chatHistoryWindow=historyWindow;
+    }
     if(route.name==='providers'){
       position.modelCategory=window.PipiModels.getCategory();
       position.modelProvider=window.PipiModels.getExpanded();
@@ -700,7 +706,10 @@
     if(['engine-home','providers','engine-functions','engine-module'].includes(route.name))await window.PipiEngine.refreshConfig();
     if(route.name==='providers'&&position?.modelCategory)window.PipiModels.restoreCategory(position.modelCategory,position.modelProvider);
     if(route.name==='engine-usage')await window.PipiUsage.restoreView(position?.usage);
-    if(position&&route.name==='chat'&&!position.bottom)chatScrolls.set(route.arg,position.top);
+    if(position&&route.name==='chat'&&!position.bottom){
+      chatScrolls.set(route.arg,position.top);
+      if(Number.isSafeInteger(position.chatHistoryWindow?.limit)&&position.chatHistoryWindow.limit>=chatHistoryPageSize)chatHistoryWindows.set(route.arg,position.chatHistoryWindow);
+    }
     refresh();
     if(route.name==='providers'&&position?.modelAdvanced){const details=view.querySelector('.inline-provider-options');if(details)details.open=true;}
     if(position&&route.name===restoredPage.route.name&&route.name!=='chat'&&route.name!=='role-config'){
@@ -721,7 +730,7 @@
     if(previousContacts)contactsReturn={top:view.dataset.contactsTerm===searchTerm?previousContacts.scrollTop:0,term:searchTerm};
     if(route.name==='settings'&&view.dataset.route==='settings')route.scrollTop=view.querySelector('.settings-content').scrollTop;
     const previousChat=view.querySelector('#chat-messages');
-    if(previousChat&&view.dataset.chatRole===route.arg&&route.name==='chat'&&forceBottomRole!==route.arg){if(previousChat.scrollHeight-previousChat.scrollTop-previousChat.clientHeight<100)chatScrolls.delete(route.arg);else chatScrolls.set(route.arg,previousChat.scrollTop);}
+    if(previousChat&&view.dataset.chatRole===route.arg&&route.name==='chat'&&forceBottomRole!==route.arg){if(!chatHistoryWindows.get(route.arg)?.endId&&chatNearBottom(previousChat))chatScrolls.delete(route.arg);else chatScrolls.set(route.arg,previousChat.scrollTop);}
     pendingRender = false;
     const name = route.name;
     view.dataset.route = name;
@@ -1027,11 +1036,31 @@
   }
   function renderChat() {
     const r=roleById(route.arg); if(!r) return header('聊天',{back:true})+'<div class="empty">联系人不存在，请返回通讯录。</div>';
-    const messages=(state.messages||[]).filter(m=>m.roleId===r.id);
+    const history=(state.messages||[]).filter(m=>m.roleId===r.id);
+    if(forceBottomRole===r.id)chatHistoryWindows.delete(r.id);
+    const historyWindow=chatHistoryWindows.get(r.id);
+    let limit=historyWindow?.limit||chatHistoryPageSize;
+    let end=historyWindow?.endId?history.findIndex(message=>message.id===historyWindow.endId)+1:history.length;
+    if(!end&&history.length){end=history.length;chatHistoryWindows.delete(r.id);}
+    if(focusMessageId){
+      const target=history.findIndex(message=>message.id===focusMessageId);
+      if(target>=0&&(target<end-limit||target>=end)){
+        // Keep a small window around a search or quote target, even in old conversations.
+        limit=chatHistoryPageSize;
+        end=Math.min(history.length,target+Math.floor(limit/2)+1);
+        chatHistoryWindows.set(r.id,{limit,endId:end<history.length?history[end-1].id:''});
+      }
+    }
+    const start=Math.max(0,end-limit),messages=history.slice(start,end);
+    const older=start>0?'<button type="button" data-chat-older class="chat-history-more">查看更早消息</button>':'';
+    const latest=end<history.length?'<button type="button" data-chat-latest class="chat-history-more">回到最新消息</button>':'';
+    const prioritizeLatest=!latest&&!focusMessageId&&(!chatScrolls.has(r.id)||forceBottomRole===r.id);
     let previousDate='',previousTimestamp=0;
-    const body=messages.map(m=>{
+    const body=messages.map((m,index)=>{
+      const prioritize=prioritizeLatest&&index>=messages.length-4;
       const date=new Date(m.createdAt), day=Number.isFinite(date.getTime())?`${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`:'';
       const timeLabel=day!==previousDate||date.getTime()-previousTimestamp>=300000 ? `<div class="message-date">${esc(shortTime(m.createdAt,true))}</div>`:''; previousDate=day;previousTimestamp=date.getTime();
+      if(m.meta?.kind==='payment-receipt') return timeLabel+renderPaymentReceipt(m,r);
       if(m.sender==='system') return timeLabel+`<div class="system-message" data-message="${esc(m.id)}" ${m.meta?.kind==='pat'&&m.meta.author==='me'?'role="button" tabindex="0" data-bubble="'+esc(m.id)+'"':''}>${esc(m.content)}${m.meta?.kind==='recalled'&&m.meta.recalledText?` <button class="recall-edit" data-reedit="${esc(m.id)}">重新编辑</button>`:''}</div>`;
       const mine=m.sender==='user', entity=mine?state.profile:r;
       const voiceSeconds=Math.max(1,Math.round((Number(m.meta?.durationMs)||1000)/1000));
@@ -1041,7 +1070,7 @@
         const sticker=Boolean(m.meta?.stickerId);
         imageClass=sticker?'image-bubble sticker-bubble':'image-bubble';
         if(m.meta?.expired?.kind==='image')imageClass+=' expired-media-bubble';
-        bubble=m.meta?.expired?.kind==='image'?renderExpiredImage(m.meta.thumb):safeImage(m.content)?chatImageMarkup(m,m.content,sticker?'聊天表情':'聊天图片',sticker):'[无法显示的图片]';
+        bubble=m.meta?.expired?.kind==='image'?renderExpiredImage(m.meta.thumb):safeImage(m.content)?chatImageMarkup(m,m.content,sticker?'聊天表情':'聊天图片',sticker,prioritize):'[无法显示的图片]';
       }
       if(m.type==='voice') bubble=m.meta?.expired?.kind==='voice'?`<span class="voice-message expired-voice"><span>${voiceSeconds}″</span><small>语音已过期</small></span>`:`<span class="voice-message ${mine?'voice-mine':''}">${icons.voiceBubbleWave}<span>${voiceSeconds}″</span></span>`;
       if(m.type==='forward'){transferClass='forward-card';bubble=`<span class="forward-title">聊天记录</span><span class="forward-summary">${(m.meta?.entries||[]).slice(0,3).map(entry=>`<span>${esc(entry.senderName)}：${esc(preview(entry))}</span>`).join('')}</span><span class="forward-footer">聊天记录 · ${(m.meta?.entries||[]).length} 条</span>`;}
@@ -1090,11 +1119,41 @@
       }
       const chunks=null;
       const bubbles=chunks&&chunks.length>1?chunks.map(chunk=>`<div class="message-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}" aria-label="${esc(chunk.slice(0,80))}，长按或右键操作">${richText(chunk)}</div>`).join(''):`<div class="message-bubble ${imageClass} ${transferClass}" role="button" tabindex="0" data-bubble="${esc(m.id)}" aria-label="${m.type==='image'?(m.meta?.stickerId?'表情':'图片'):m.type==='voice'?`语音消息，${voiceSeconds}秒`:m.type==='forward'?'聊天记录':paymentLabel?esc(paymentLabel):esc(String(m.content).slice(0,80))}，长按或右键操作">${bubble}</div>`;
-      const attachedImage=m.type==='text'&&m.meta?.expired?.kind==='image'?`<div class="message-bubble image-bubble expired-media-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}">${renderExpiredImage(m.meta.thumb)}</div>`:m.type==='text'&&safeImage(m.meta?.image)?`<div class="message-bubble image-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}">${chatImageMarkup(m,m.meta.image,'附带的聊天图片')}</div>`:'';
+      const attachedImage=m.type==='text'&&m.meta?.expired?.kind==='image'?`<div class="message-bubble image-bubble expired-media-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}">${renderExpiredImage(m.meta.thumb)}</div>`:m.type==='text'&&safeImage(m.meta?.image)?`<div class="message-bubble image-bubble" role="button" tabindex="0" data-bubble="${esc(m.id)}">${chatImageMarkup(m,m.meta.image,'附带的聊天图片',false,prioritize)}</div>`:'';
       return timeLabel+`<div class="message-row ${mine?'mine':''} ${m.meta?.expired?'message-expired':''} ${chatSelection?.ids.has(m.id)?'message-selected':''}" data-message="${esc(m.id)}">${chatSelection?`<button class="message-select" data-select-message="${esc(m.id)}" aria-label="选择消息" aria-pressed="${chatSelection.ids.has(m.id)}">${chatSelection.ids.has(m.id)?'✓':''}</button>`:''}<button class="message-avatar" data-chat-avatar="${mine?'self':'contact'}" aria-label="${mine?'我的头像':'朋友头像'}：单击查看资料，双击拍一拍">${avatar(entity,43)}</button><div class="message-body ${m.type==='voice'?'voice-body':''}" ${m.type==='voice'?`style="--voice-width:${voiceWidth}px"`:''}>${bubbles}${attachedImage}${m.type==='text'&&m.meta?.expired?.kind==='voice'?'<p class="expired-voice-note">语音已过期</p>':''}${m.type==='text'&&m.sender==='assistant'&&m.status!=='demo'&&!chatSelection&&!m.meta?.expired?speechIndicator(m.id):''}${m.meta?.quote?renderMessageQuote(m.meta.quote,r):''}${m.type==='voice'?renderVoiceTranscript(m):''}${chatSelection?`<button class="message-range" data-select-range="${esc(m.id)}">选择到这里</button>`:''}${m.status==='error'?`<button class="message-failure" data-retry="${esc(m.id)}" aria-label="发送失败，点击重试">!</button>`:''}</div></div>`;
     }).join('');
     const pending=outgoing?.roleId===r.id?`<div class="message-row mine"><span>${avatar(state.profile,43)}</span><div class="message-body">${outgoing.image?`<div class="message-bubble image-bubble"><img class="message-image" src="${esc(outgoing.image)}" alt="正在发送的图片"></div>`:''}${outgoing.text?`<div class="message-bubble">${esc(outgoing.text)}</div>`:''}<div class="message-label" style="text-align:right;margin-top:5px">发送中…</div></div></div>`:'';
-    return header(chatSelection?`已选择 ${chatSelection.ids.size} 条消息`:window.PipiEngine?.isTyping(r.id)?'对方正在输入…':roleName(r),{back:true,right:chatSelection?'':iconButton('more','chat-details','聊天信息')})+`<div class="chat-messages ${chatSelection?'chat-selecting':''}" id="chat-messages" ${safeImage(r.chatBackground)?`style="background-image:url('${esc(r.chatBackground)}')"`:''}>${messages.some(m=>m.status==='demo')?'<div class="system-message demo-notice">这里保留了用于介绍界面的示例对话，非模型生成。</div>':''}${body}${pending}</div>${chatSelection?'':'<div class="chat-notice-slot"><button type="button" class="chat-new-messages" hidden></button></div>'}${chatSelection?renderMessageSelection():renderComposer()}`;
+    return header(chatSelection?`已选择 ${chatSelection.ids.size} 条消息`:window.PipiEngine?.isTyping(r.id)?'对方正在输入…':roleName(r),{back:true,right:chatSelection?'':iconButton('more','chat-details','聊天信息')})+`<div class="chat-messages ${chatSelection?'chat-selecting':''}" id="chat-messages" ${safeImage(r.chatBackground)?`style="background-image:url('${esc(r.chatBackground)}')"`:''}>${older}${history.some(m=>m.status==='demo')?'<div class="system-message demo-notice">这里保留了用于介绍界面的示例对话，非模型生成。</div>':''}${body}${latest}${pending}</div>${chatSelection?'':'<div class="chat-notice-slot"><button type="button" class="chat-new-messages" hidden></button></div>'}${chatSelection?renderMessageSelection():renderComposer()}`;
+  }
+  function showOlderChatMessages(){
+    const roleId=route.arg,list=view.querySelector('#chat-messages'),previous=list.querySelector('[data-message]');
+    const id=previous.dataset.message,top=previous.getBoundingClientRect().top-list.getBoundingClientRect().top;
+    const historyWindow=chatHistoryWindows.get(roleId);
+    chatHistoryWindows.set(roleId,{limit:(historyWindow?.limit||chatHistoryPageSize)+chatHistoryPageSize,endId:historyWindow?.endId});
+    refresh();
+    const nextList=view.querySelector('#chat-messages'),anchor=nextList.querySelector(`[data-message="${CSS.escape(id)}"]`);
+    requestAnimationFrame(()=>{
+      if(!nextList.isConnected||!anchor)return;
+      nextList.scrollTop+=anchor.getBoundingClientRect().top-nextList.getBoundingClientRect().top-top;
+      chatScrolls.set(roleId,nextList.scrollTop);
+    });
+  }
+  function showLatestChatMessages(){
+    const roleId=route.arg;
+    chatHistoryWindows.delete(roleId);
+    chatScrolls.delete(roleId);
+    newChatMessageIds.clear();
+    forceBottomRole=roleId;
+    refresh();
+  }
+  function renderPaymentReceipt(message,role){
+    const {transactionId,paymentType,amountCents}=message.meta;
+    const packet=paymentType==='redpacket', title=packet?'已领取红包':'已收款';
+    const transaction=state.wallet.transactions.find(item=>item.id===transactionId&&item.roleId===role.id);
+    const interactive=transaction&&!chatSelection;
+    const tag=interactive?'button':'div';
+    const attributes=interactive?` type="button" data-receipt-payment="${esc(transactionId)}"`:'';
+    return `<div class="payment-receipt-row" data-message="${esc(message.id)}"><${tag} class="payment-receipt"${attributes}><span class="payment-receipt-icon" aria-hidden="true">${icons.check}</span><span class="payment-receipt-copy"><strong>${title}</strong><span>来自 ${esc(roleName(role))}</span></span><strong class="payment-receipt-amount">¥${(amountCents/100).toFixed(2)}</strong></${tag}></div>`;
   }
   function speechIndicator(id){
     return `<button type="button" class="message-speech" data-message-speech="${esc(id)}" hidden>${icons.voiceWave}<span class="speech-spinner" aria-hidden="true"></span></button>`;
@@ -1534,7 +1593,8 @@
   function chatNearBottom(list){return list.scrollHeight-list.scrollTop-list.clientHeight<100;}
   function trackNewChatMessages(previous,next){
     const list=view.querySelector('#chat-messages');
-    if(!previous||route.name!=='chat'||list?.dataset.scrollReady!=='true'||chatNearBottom(list))return;
+    if(!previous||route.name!=='chat'||list?.dataset.scrollReady!=='true')return;
+    if(!chatHistoryWindows.get(route.arg)?.endId&&chatNearBottom(list))return;
     const previousIds=new Set(previous.messages.map(message=>message.id));
     for(const message of next.messages){
       if(message.roleId===route.arg&&message.sender!=='user'&&message.meta?.author!=='me'&&!previousIds.has(message.id))newChatMessageIds.add(message.id);
@@ -1548,6 +1608,8 @@
   function bindChat() {
     bindChatThumbnails();
     bindComposer();
+    const older=view.querySelector('[data-chat-older]');if(older)older.onclick=showOlderChatMessages;
+    const latest=view.querySelector('[data-chat-latest]');if(latest)latest.onclick=showLatestChatMessages;
     const cancelReply=view.querySelector('[data-chat-cancel]');if(cancelReply)cancelReply.onclick=()=>cancelChatReply(cancelReply);
     for(const button of view.querySelectorAll('[data-message-speech]')){
       button.onclick=()=>{
@@ -1561,11 +1623,11 @@
     if(chatList&&newMessageNotice){
       paintNewChatNotice();
       chatList.addEventListener('scroll',()=>{
-        if(chatList.isConnected&&chatList.dataset.scrollReady==='true'&&newChatMessageIds.size&&chatNearBottom(chatList)){
+        if(chatList.isConnected&&chatList.dataset.scrollReady==='true'&&newChatMessageIds.size&&!chatHistoryWindows.get(route.arg)?.endId&&chatNearBottom(chatList)){
           newChatMessageIds.clear();paintNewChatNotice();
         }
       },{passive:true});
-      newMessageNotice.onclick=()=>{chatList.scrollTop=chatList.scrollHeight;chatScrolls.delete(route.arg);newChatMessageIds.clear();paintNewChatNotice();};
+      newMessageNotice.onclick=()=>{if(chatHistoryWindows.get(route.arg)?.endId){showLatestChatMessages();return;}chatList.scrollTop=chatList.scrollHeight;chatScrolls.delete(route.arg);newChatMessageIds.clear();paintNewChatNotice();};
     }
     view.querySelectorAll('[data-select-range]').forEach(el=>el.onclick=()=>selectMessageRange(el.dataset.selectRange));
     view.querySelectorAll('[data-reedit]').forEach(el=>el.onclick=()=>reeditMessage(el.dataset.reedit));
@@ -1590,7 +1652,13 @@
       el.ondblclick=event=>event.preventDefault();
     });
     view.querySelectorAll('[data-select-message]').forEach(el=>el.onclick=()=>toggleSelectedMessage(el.dataset.selectMessage));
-    view.querySelectorAll('[data-quote-message]').forEach(el=>el.onclick=()=>{if(!chatSelection&&el.dataset.quoteMessage)scrollChat(el.dataset.quoteMessage);});
+    view.querySelectorAll('[data-quote-message]').forEach(el=>el.onclick=()=>{
+      if(chatSelection||!el.dataset.quoteMessage)return;
+      const target=el.dataset.quoteMessage;
+      if(view.querySelector(`[data-message="${CSS.escape(target)}"]`))scrollChat(target);
+      else{focusMessageId=target;refresh();}
+    });
+    view.querySelectorAll('[data-receipt-payment]').forEach(el=>el.onclick=()=>window.PipiFeatures.walletTransaction(el.dataset.receiptPayment,undefined,{fromChat:true}));
     // Message-area taps dismiss input, as in the native chat references above.
     // Cards, avatars and long-press targets keep their own click behaviour.
     const list=view.querySelector('#chat-messages');
@@ -1905,16 +1973,55 @@
     const pointers=new Map(),parent=captureModalParent();modalCloseCallback=parent?()=>restoreModalParent(parent):null;modalReturnFocus=document.activeElement;modalOpen=true;trackModalHistory(!!parent);
     overlay.innerHTML=`<div class="lightbox image-viewer" role="dialog" aria-modal="true" aria-label="查看图片"><div class="image-stage" tabindex="0" aria-label="图片，可双击放大或用下方按钮缩放"><img alt="${esc(alt)}" draggable="false"></div><button class="lightbox-close" aria-label="关闭图片">${icons.close}</button><button class="image-more" aria-label="图片操作" aria-expanded="false" aria-controls="image-actions">${icons.more}</button><div id="image-actions" class="image-actions" role="menu" hidden><button type="button" data-image-forward role="menuitem" hidden>转发给朋友</button><button type="button" data-image-favorite role="menuitem" hidden>收藏</button><button type="button" class="image-save" role="menuitem">保存图片</button><button type="button" data-image-menu-cancel role="menuitem">取消</button></div><span class="image-counter" aria-live="polite"></span><div class="lightbox-controls"><div class="image-gallery-controls"><button type="button" data-image-prev aria-label="上一张图片">‹</button><button type="button" data-image-next aria-label="下一张图片">›</button></div><div class="image-zoom-controls"><button type="button" data-image-out aria-label="缩小图片">−</button><button type="button" data-image-reset aria-label="恢复原始大小">100%</button><button type="button" data-image-in aria-label="放大图片">＋</button></div></div></div>`;
     mountModalParent(parent);
-    const box=overlay.querySelector(':scope > .image-viewer'),stage=box.querySelector('.image-stage'),img=stage.querySelector('img'),reset=box.querySelector('[data-image-reset]'),save=box.querySelector('.image-save');
+    const box=overlay.querySelector(':scope > .image-viewer'),stage=box.querySelector('.image-stage'),reset=box.querySelector('[data-image-reset]'),save=box.querySelector('.image-save');
+    let img=stage.querySelector('img');
+    const loading=document.createElement('span');
+    loading.className='image-loading-label';loading.textContent='图片加载中…';loading.setAttribute('role','status');loading.hidden=true;stage.append(loading);
     const menu=box.querySelector('.image-actions'),more=box.querySelector('.image-more'),forward=box.querySelector('[data-image-forward]'),favorite=box.querySelector('[data-image-favorite]');
     const currentMedia=()=>options.getMedia?options.getMedia(index):state.messages?.find(m=>m.id===options.messageIds?.[index]);
     const hideMenu=()=>{menu.hidden=true;more.setAttribute('aria-expanded','false');};
     more.onclick=()=>{menu.hidden=!menu.hidden;more.setAttribute('aria-expanded',String(!menu.hidden));if(!menu.hidden)menu.querySelector('button:not([hidden])').focus({preventScroll:true});};
     box.querySelector('[data-image-menu-cancel]').onclick=()=>{hideMenu();more.focus({preventScroll:true});};stage.onclick=hideMenu;
     const transform=()=>{img.style.transform=`translate(${x}px,${y}px) scale(${scale})`;reset.textContent=Math.round(scale*100)+'%';};
-    const zoom=value=>{if(stage.matches('.media-expired,.media-unavailable'))return;scale=Math.max(1,Math.min(4,value));if(scale===1){x=0;y=0;}transform();};
-    img.onerror=()=>{if(currentMedia()?.meta?.expired)return;stage.classList.add('media-unavailable');img.hidden=true;more.hidden=true;save.disabled=true;box.querySelectorAll('.image-zoom-controls button').forEach(button=>button.disabled=true);const label=document.createElement('span');label.className='unavailable-viewer-label';label.textContent='图片不可用';stage.append(label);};
-    const paint=()=>{scale=1;x=0;y=0;hideMenu();stage.classList.remove('media-unavailable');stage.querySelector('.unavailable-viewer-label')?.remove();const media=currentMedia(),expired=Boolean(media?.meta?.expired),source=expired?media.meta.thumb:images[index];stage.classList.toggle('media-expired',expired);img.hidden=!source;if(source)img.src=source;else img.removeAttribute('src');let label=stage.querySelector('.expired-viewer-label');if(expired&&!label){label=document.createElement('span');label.className='expired-viewer-label';label.textContent='图片已过期';stage.append(label);}if(label)label.hidden=!expired;more.hidden=expired;save.disabled=expired;box.querySelectorAll('.image-zoom-controls button').forEach(button=>button.disabled=expired);box.querySelector('.image-counter').textContent=images.length>1?`${index+1} / ${images.length}`:'';box.querySelector('[data-image-prev]').disabled=index===0;box.querySelector('[data-image-next]').disabled=index===images.length-1;const message=currentMedia(),messageId=options.messageIds?.[index];forward.hidden=expired||!messageId||!message||message.sender==='system'||message.status!=='sent';favorite.hidden=expired||!messageId||!message||message.sender==='system';const extMatch=/^data:image\/([^;]+)/.exec(images[index])||/\.([a-z0-9]+)$/i.exec(images[index]);downloadName=`pipi-image-${index+1}.${({png:'png',jpeg:'jpg',jpg:'jpg',webp:'webp',gif:'gif'})[extMatch?.[1]?.toLowerCase()]||'png'}`;transform();};
+    const zoom=value=>{if(img.hidden||stage.matches('.media-expired,.media-unavailable'))return;scale=Math.max(1,Math.min(4,value));if(scale===1){x=0;y=0;}transform();};
+    const allowImageActions=allowed=>{
+      more.hidden=!allowed;save.disabled=!allowed;
+      box.querySelectorAll('.image-zoom-controls button').forEach(button=>button.disabled=!allowed);
+    };
+    const paint=()=>{
+      scale=1;x=0;y=0;hideMenu();stage.classList.remove('media-unavailable');stage.querySelector('.unavailable-viewer-label')?.remove();
+      const message=currentMedia(),expired=Boolean(message?.meta?.expired),source=expired?message.meta.thumb:images[index];
+      stage.classList.toggle('media-expired',expired);
+      // The same image element can keep painting the preceding source while the next one loads.
+      const nextImage=document.createElement('img');
+      nextImage.alt=alt;nextImage.draggable=false;nextImage.hidden=true;
+      img.replaceWith(nextImage);img=nextImage;
+      loading.hidden=expired||!source;
+      allowImageActions(false);
+      const loaded=()=>{
+        if(img!==nextImage||!box.isConnected)return;
+        nextImage.hidden=false;loading.hidden=true;
+        allowImageActions(!expired);
+      };
+      nextImage.onload=loaded;
+      nextImage.onerror=()=>{
+        if(img!==nextImage||!box.isConnected||expired)return;
+        loading.hidden=true;stage.classList.add('media-unavailable');
+        const label=document.createElement('span');label.className='unavailable-viewer-label';label.textContent='图片不可用';stage.append(label);
+      };
+      let expiryLabel=stage.querySelector('.expired-viewer-label');
+      if(expired&&!expiryLabel){expiryLabel=document.createElement('span');expiryLabel.className='expired-viewer-label';expiryLabel.textContent='图片已过期';stage.append(expiryLabel);}
+      if(expiryLabel)expiryLabel.hidden=!expired;
+      if(source){nextImage.src=source;if(nextImage.complete&&nextImage.naturalWidth)loaded();}
+      box.querySelector('.image-counter').textContent=images.length>1?`${index+1} / ${images.length}`:'';
+      box.querySelector('[data-image-prev]').disabled=index===0;
+      box.querySelector('[data-image-next]').disabled=index===images.length-1;
+      const messageId=options.messageIds?.[index];
+      forward.hidden=expired||!messageId||!message||message.sender==='system'||message.status!=='sent';
+      favorite.hidden=expired||!messageId||!message||message.sender==='system';
+      const extMatch=/^data:image\/([^;]+)/.exec(images[index])||/\.([a-z0-9]+)$/i.exec(images[index]);downloadName=`pipi-image-${index+1}.${({png:'png',jpeg:'jpg',jpg:'jpg',webp:'webp',gif:'gif'})[extMatch?.[1]?.toLowerCase()]||'png'}`;
+      transform();
+    };
     save.onclick=async()=>{if(currentMedia()?.meta?.expired){toast('图片已过期');return;}hideMenu();const data=images[index];let blob;if(data.startsWith('data:')){const comma=data.indexOf(','),binary=atob(data.slice(comma+1)),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);blob=new Blob([bytes],{type:data.slice(5,data.indexOf(';'))});}else{const resp=await fetch(data,{credentials:'same-origin'});blob=await resp.blob();}const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=downloadName;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);};
     forward.onclick=async()=>{const id=options.messageIds[index];closeModal(false);await afterOverlayBack();await forwardMessages([id]);};
     favorite.onclick=async()=>{if(currentMedia()?.meta?.expired){toast('图片已过期，无法收藏。');return;}hideMenu();try{await act('message.favorite',{id:options.messageIds[index]});toast('已加入收藏');}catch(err){toast(err.message);}};
@@ -2389,6 +2496,7 @@
     stopSpeech();authSetup=setup;authEpoch++;state=null;window.PipiEngine?.stop();
     window.PipiAccount?.reset();window.PipiStorage?.reset();
     profileAvatarImages.clear();previewWarmups.clear();chatImageSizes.clear();
+    chatHistoryWindows.clear();
     clearTimeout(emojiRecentTimer);queuedEmojiRecents=[];emojiRecentsSaving=false;
     systemFilePicker?.remove();systemFilePicker=null;
     view.dataset.route='auth';

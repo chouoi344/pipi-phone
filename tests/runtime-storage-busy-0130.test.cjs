@@ -57,6 +57,42 @@ test('无到期提醒时少读一次快照，暂停期间到期的提醒恢复�
   }finally{await f.runtime.close();}
 });
 
+test('后台同轮复用修订快照，跨await的外部写入及本轮写入立即刷新',async t=>{
+  let revision=0,reads=0;
+  const held=deferred(),resume=deferred();
+  const f=fixture({getRevision:()=>revision,getState:()=>{reads++;return structuredClone(f.state);},mutate:fn=>{const value=fn(f.state);revision++;return {state:f.state,value};}});
+  t.mock.method(R,'runJobs',async ctx=>{
+    assert.equal(ctx.getState(),ctx.getState());assert.equal(reads,1);
+    held.resolve();await resume.promise;
+    assert.equal(ctx.getState().profile.name,'外部保存');assert.equal(reads,2);
+    ctx.mutate(s=>{s.profile.name='后台保存';});
+    assert.equal(ctx.getState().profile.name,'后台保存');assert.equal(reads,3);
+  });
+  try{
+    const tick=f.runtime.tick();await held.promise;
+    f.state.profile.name='外部保存';revision++;
+    resume.resolve();await tick;
+  }finally{resume.resolve();await f.runtime.close();}
+});
+
+test('修订快照不跨tick保留，未发生写入也按时间送达提醒并读取新配置',async t=>{
+  let at=Date.now(),revision=0,reads=0;
+  const f=fixture({now:()=>at,getRevision:()=>revision,getState:()=>{reads++;return structuredClone(f.state);},mutate:fn=>{const value=fn(f.state);revision++;return {state:f.state,value};}});
+  t.mock.method(R,'runJobs',async()=>{});
+  const scheduler=require('../lib/engine/scheduler.cjs');
+  scheduler.add(f.state,f.roleId,{note:'按时到达',userRequested:true,schedule:{type:'once',at:at+1000}},at);
+  try{
+    await f.runtime.tick();assert.equal(reads,1);
+    at+=1000;await f.runtime.tick();assert.equal(f.state.messages.at(-1).content,'按时到达');
+    R.apply(f.state,'memory',{enabled:false});revision++;
+    let enabled;
+    t.mock.method(R,'runJobs',async ctx=>{enabled=R.isEnabled(ctx.getState(),'memory');});
+    await f.runtime.tick();assert.equal(enabled,false);
+    R.apply(f.state,'memory',{enabled:true});revision++;
+    await f.runtime.tick();assert.equal(enabled,true);
+  }finally{await f.runtime.close();}
+});
+
 test('延迟日程微调的计时和模型任务都计忙，恢复期间到期不调用模型',async t=>{
   const f=fixture(),timers=[],original=setTimeout,check=deferred(),model=deferred();let calls=0;
   f.state.settings.ai.sources.push({id:'busy-test',baseUrl:'http://127.0.0.1:1',key:'isolated'});

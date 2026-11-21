@@ -1324,7 +1324,8 @@ function createApp(options={}){
   server.requestTimeout=0;
   server.headersTimeout=15000;
   server.keepAliveTimeout=5000;
-  runtime=Runtime.create({getState:read,mutate,publish,isInitialized:async()=>Boolean(getMeta('password'))&&storageOperation!=='restore'&&!await updateMaintenance()&&storageOperation!=='restore',externalBusy:()=>inFlight,demoModel:options.demoModel,dataDir});
+  const revisionQuery=db.prepare('SELECT total_changes() AS revision');
+  runtime=Runtime.create({getState:read,getRevision:()=>revisionQuery.get().revision,mutate,publish,isInitialized:async()=>Boolean(getMeta('password'))&&storageOperation!=='restore'&&!await updateMaintenance()&&storageOperation!=='restore',externalBusy:()=>inFlight,demoModel:options.demoModel,dataDir});
   stickerQueue=Stickers.create({getState:read,mutate,dataDir,onUsage:runtime.onUsage});
   try{stickerQueue.recover();}catch(error){console.error('Unable to resume sticker analysis during startup:',error?.stack||String(error));}
   return {

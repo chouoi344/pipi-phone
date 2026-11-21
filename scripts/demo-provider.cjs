@@ -54,9 +54,10 @@ function createDemoProvider({host='127.0.0.1',port=0,appUrl='',password=''}={}){
       if(req.headers.authorization!=='Bearer '+KEY){json(res,401,{error:'本地演示只接受演示密钥'});return;}
       const raw=await read(req,20*1024*1024),isMultipart=String(req.headers['content-type']).startsWith('multipart/form-data');
       const body=raw.length?(isMultipart?null:JSON.parse(raw)):null;
+      const started=performance.now();
       const event={id:++sequence,path:route,mode,startedAt:Date.now(),status:'处理中',bytes:raw.length,body:snapshot(body)};
       requests.push(event);if(requests.length>40)requests.shift();
-      const finish=status=>{if(event.status==='处理中'){event.status=status;event.elapsedMs=Date.now()-event.startedAt;}};
+      const finish=status=>{if(event.status==='处理中'){event.status=status;event.elapsedMs=Math.round(performance.now()-started);}};
       res.on('finish',()=>finish('HTTP '+res.statusCode));res.on('close',()=>finish('连接关闭'));
       const selected=mode,currentAttempt=++attempt;
       if(queued.length){

@@ -737,7 +737,16 @@
       const actions=incoming&&paymentStatus==='pending'?'<div class="payment-handle-actions"><button type="button" class="primary-btn weui-btn weui-btn_primary" data-payment-handle="receive">领取</button><button type="button" class="secondary-btn" data-payment-handle="return">退还</button></div>':'';
       detailPage(redpacket ? '红包详情' : '转账详情', `<div class="wallet-transaction-detail payment-message-detail ${redpacket ? 'is-redpacket-detail' : 'is-transfer-detail'}" data-payment-status="${esc(paymentStatus)}"><div class="payment-detail-summary">${summary}</div>${actions}<div class="payment-detail-record"><span>${incoming ? '收到时间' : '发送时间'}</span><time>${esc(new Date(item.createdAt).toLocaleString('zh-CN'))}</time></div><button type="button" class="payment-detail-bill" id="payment-detail-bill">查看零钱明细${icon('chevron')}</button><p class="feature-bottom-note">虚拟互动记录，不涉及真实支付</p></div>`, back);
       on('#payment-detail-bill', 'click', () => walletTransaction(id, () => walletTransaction(id, back, options)));
-      on('[data-payment-handle]','click',event=>run(async()=>{const button=event.currentTarget;button.disabled=true;try{await P().act('wallet.handle',{id,action:button.dataset.paymentHandle});walletTransaction(id,back,options);P().refresh();}finally{if(button.isConnected)button.disabled=false;}}));
+      on('[data-payment-handle]','click',event=>run(async()=>{
+        const button=event.currentTarget,chat=document.querySelector('#chat-messages');
+        button.disabled=true;
+        try{
+          await P().act('wallet.handle',{id,action:button.dataset.paymentHandle});
+          const stillOpen=button.isConnected;
+          if(stillOpen)walletTransaction(id,back,options);
+          if(stillOpen||chat?.isConnected)P().preserveChatLayout(()=>P().refresh());
+        }finally{if(button.isConnected)button.disabled=false;}
+      }));
       watchPayment(id,back,options);
       return;
     }

@@ -113,6 +113,17 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-me
   margin-bottom: 10px;
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .message-row:last-child { margin-bottom: 0; }
+.chat-history-more {
+  display:block; min-height:44px; margin:0 auto 8px; padding:0 16px;
+  border-radius:24px; background:#fff; color:#52617b; font-size:13px;
+}
+html[data-skin="waterdrop"] .chat-history-more { background:rgba(255,255,255,.74); }
+/* Both skins use a 40px voice bubble and a 36px avatar. Keep that original
+ * centering when the transcript makes the message body taller. */
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .message-row:has(> .voice-body > .voice-transcript) > .message-avatar {
+  align-self: flex-start;
+  margin-top: 2px;
+}
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .message-row .avatar {
   --avatar-size: 36px;
   width: 36px;

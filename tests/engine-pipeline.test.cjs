@@ -171,6 +171,34 @@ test('统一正文过滤独立推理、完整和截断标签，同时保留metad
   for(const tag of ['<','<t','<thi','<think','<thinking','<think data-test='])assert.equal(visibleText('你好'+tag),'你好');
 });
 
+test('Gemini 以 thought 开头漏出的推理不当作回复，正文里的 thought 一词照常保留',()=>{
+  const {visibleText,leakedThought}=require('../lib/engine/response.cjs');
+  for(const text of ['thought\nThe user wants a selfie. The tool failed.','  Thought:\n分析一下','_thought\nplan','_thought The user...','THOUGHTS\n...','thought'])assert.equal(leakedThought(text),true,text),assert.equal(visibleText(text),'',text);
+  assert.equal(visibleText('<thought>内部计划</thought>好呀'),'好呀');
+  assert.equal(visibleText('好呀<thoughts>未闭合'),'好呀');
+  assert.equal(visibleText('好呀<thou'),'好呀');
+  for(const text of ['thought you were busy','I thought so','thoughtful 的礼物','我在想thought这个词'])assert.equal(leakedThought(text),false,text),assert.equal(visibleText(text),text,text);
+});
+
+test('历史里的旧泄漏消息不回传给模型',async()=>{
+  const f=fixture({messages:[m('1','user','拍张自拍'),m('2','assistant','thought\nThe user wants a selfie. The tool returned ok:false.'),m('3','user','怎么了')]});
+  await P.run(f.opts);
+  const sent=f.requests.at(-1).messages.map(x=>typeof x.content==='string'?x.content:JSON.stringify(x.content)).join('\n');
+  assert.doesNotMatch(sent,/The user wants a selfie/);assert.match(sent,/拍张自拍/);assert.match(sent,/怎么了/);
+});
+
+test('模型返回泄漏推理时按空回复重试，重试后的正常回复才送达',async t=>{
+  t.mock.method(require('node:timers/promises'),'setTimeout',async()=>{});
+  const models=require('../lib/engine/models.cjs'),providers=require('../lib/providers.cjs');
+  let calls=0;
+  t.mock.method(providers,'request',async()=>({choices:[{message:{role:'assistant',content:++calls===1?'thought\nI should apologize.':'抱歉，刚才没拍好'}}]}));
+  const state={settings:{preset:{},providers:{}},roles:[]};models.migrate(state);
+  // A known capacity skips the public model catalog, so this test cannot cache it for the others.
+  models.save(state,{sources:[...models.sanitize(state.settings.ai).sources,{id:'custom',name:'隔离测试',baseUrl:'https://example.invalid/v1',key:'k',builtin:false}],models:[{id:'g',sourceId:'custom',model:'gemini-3-flash',kind:'chat',capabilities:['text'],maxContextTokens:8000,temperature:null,maxTokens:null,timeoutSeconds:2,extraBody:{},voice:'alloy'}],assign:{chat:'g',chatFallbacks:[],compress:'',caption:'',stt:'',tts:'',image:'',embedding:''}});
+  const result=await models.call(state,{purpose:'chat',messages:[{role:'user',content:'hi'}],modelId:'g'});
+  assert.equal(result.message.content,'抱歉，刚才没拍好');assert.equal(calls,2);
+});
+
 test('模型回显的消息编号不进入回复，原消息 ID 和用户原话保留',async()=>{
   const S=require('../lib/state.cjs');
   const id='90d98e57-a309-444a-895d-db9c2cfc97ff',tag=`[消息编号：${id}] `;

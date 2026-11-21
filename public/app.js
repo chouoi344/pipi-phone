@@ -2515,8 +2515,11 @@
     };
   }
   async function boot() {
+    if(boot.running)return;
+    boot.running=true;
     try{const status=await api('/api/status');sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;imageVariants=binaryMedia&&status.imageVariants===true;storageMaintenance=status.storageMaintenance===true;streamingBackup=status.streamingBackup===true;accountSecurity=status.accountSecurity===true;setupTokenRequired=status.setupTokenRequired===true;momentExclusions=status.momentExclusions===true;window.PipiMessageLimit?.configure(status.messageLimit);rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){window.PipiSkins.configure(status.appearance);const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
     catch(err){renderAuth(false,`暂时无法连接这部小手机。${err.message}`);}
+    finally{boot.running=false;}
   }
   window.PipiExpiry={sync:syncExpiredMedia};
   window.Pipi={getState:()=>state,supportsMomentExclusions:()=>momentExclusions,api,apiRaw,act,receiveState,updateTyping,syncChatProgress,readImage,readProfileImage,uploadMedia,uploadImage,uploadImageData,uploadProfileImage,showView,goBack,openWhenReady,openChatMessage:(roleId,messageId)=>{focusMessageId=messageId;showView('chat',roleId);},preserveChatLayout:callback=>{const snapshot=captureChatLayout();callback();restoreChatLayout(snapshot);},scrollChatToBottom:(roleId)=>{forceBottomRole=roleId;chatScrolls.delete(roleId);if(route.name==='chat'&&route.arg===roleId)scrollChat();},openModal,closeModal,openPage,openNestedPage,openChildDialog,closeChildDialog,closePage:closeModal,openPhoto:lightbox,actionSheet,confirmDialog,toast,esc,avatar,icons,refresh,setState,registerRoute:(name,renderer)=>routes.set(name,renderer)};
@@ -2584,6 +2587,8 @@
     scheduleViewport();flushRender();syncVisibleChatRead();
   });
   window.addEventListener('pagehide',()=>{persistChatDrafts();saveBrowserPosition();if(recordingSession)stopRecording(true);});
+  // Restored from the back/forward cache: the page is shown instantly, then state is refreshed in the background.
+  window.addEventListener('pageshow',event=>{if(event.persisted&&state)boot();});
   let polling=false;
   setInterval(async()=>{
     if(!state||sending||polling||recordingSession||composeComposing||searchComposing||document.hidden)return;

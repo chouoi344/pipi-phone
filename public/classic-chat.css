@@ -107,11 +107,20 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .message
   font-size: 10px;
   line-height: 16px;
 }
+/* WeChat keeps the avatar at the top of the message. The 2px offset centres
+ * the 36px avatar against a single-line 40px bubble; taller bubbles (long
+ * text, images, cards, voice transcripts) then grow downward only. */
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .message-row {
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   margin-bottom: 10px;
 }
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .message-row > :is(.message-avatar, span:first-child) {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .message-row > .message-select { align-self: center; }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .message-row:last-child { margin-bottom: 0; }
 .chat-history-more {
   display:block; min-height:44px; margin:0 auto 8px; padding:0 16px;

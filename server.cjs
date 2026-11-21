@@ -16,6 +16,11 @@ const JsonResponse=require('./lib/json-response.cjs');
 const Waterdrop=require('./lib/waterdrop-activation.cjs');
 const scrypt=promisify(crypto.scrypt),VERSION=require('./package.json').version;
 const MAX_BACKUP_BYTES=88*1024*1024;
+const zlib=require('node:zlib');
+const compressibleStatic=new Set(['.html','.js','.css','.svg','.webmanifest']),staticCache=new Map();
+const brotliAsync=promisify(zlib.brotliCompress),gzipAsync=promisify(zlib.gzip);
+// Static files never change while running, so spend more CPU once (quality 9) and serve the cached bytes afterwards.
+const staticCompress=(bytes,encoding)=>encoding==='br'?brotliAsync(bytes,{params:{[zlib.constants.BROTLI_PARAM_QUALITY]:9,[zlib.constants.BROTLI_PARAM_SIZE_HINT]:bytes.length}}):gzipAsync(bytes,{level:9});
 const UPDATE_MAINTENANCE_PHASES=new Set(['backing-up','installing','verifying','rolling-back']);
 const safeEqual=(a,b)=>{
   const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));
@@ -315,12 +320,24 @@ function createApp(options={}){
       ...row,hash
     }:null;
   }
+  // Static files revalidate with ETag, so a return visit reuses the cached page instead of reloading it.
+  // Everything else (API responses, backups, the issuer page) carries private data and must never be cached.
+  function cacheControl(pathname,method){
+    if(method!=='GET'&&method!=='HEAD')return 'no-store';
+    let decoded;
+    try{decoded=decodeURIComponent(pathname);}catch{return 'no-store';}
+    const file=decoded.endsWith('/')?decoded+'index.html':decoded;
+    const ext=path.extname(file);
+    if(ext&&ext!=='.html'&&ext!=='.webmanifest')return 'no-store';
+    if(file!=='/index.html'&&file!=='/life-preview.html')return 'no-store';
+    return 'public, max-age=0, must-revalidate';
+  }
   function security(req,res){
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Referrer-Policy','no-referrer');
     res.setHeader('X-Frame-Options','DENY');
     res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
-    res.setHeader('Cache-Control','no-store');
+    res.setHeader('Cache-Control',cacheControl(String(req.url||'').split('?')[0],req.method));
     const raw=req.headers.host;
     if(typeof raw!=='string'||/[\s/@\\]/.test(raw))S.fail('无效 Host',400,'HOST');
     let u;
@@ -1292,18 +1309,35 @@ function createApp(options={}){
     };
     const contentType=types[path.extname(file)];
     if(!contentType)S.fail('文件类型不允许',404);
-    if(['.woff2','.svg','.css','.js'].includes(path.extname(file))){
-      const etag=`"${stat.size}-${Math.trunc(stat.mtimeMs)}"`;
+    const ext=path.extname(file),baseTag=`${stat.size}-${Math.trunc(stat.mtimeMs)}`;
+    // Text assets are compressed once per file version and kept in memory; on a small server this cuts the first load from ~1.5MB to a few hundred KB.
+    const encoding=compressibleStatic.has(ext)&&stat.size>1024?JsonResponse.negotiate(req.headers['accept-encoding']).encoding:null;
+    if(compressibleStatic.has(ext))res.setHeader('Vary','Accept-Encoding');
+    if(['.woff2','.svg','.css','.js'].includes(ext)){
+      const etag=`"${baseTag}${encoding?'-'+encoding:''}"`;
       const versionedIcon=/^\/vendor\/(?:fake-world\/(?:icons|masks)|native-icons)\/[^/]+\.svg$/.test(pathname)&&searchParams.get('v')===VERSION;
       res.setHeader('Cache-Control',versionedIcon?'public, max-age=604800, immutable':'public, max-age=0, must-revalidate');
       res.setHeader('ETag',etag);
       if(req.headers['if-none-match']===etag){res.writeHead(304);res.end();return;}
     }
+    if(encoding)return compressedStatic(file,baseTag,encoding).then(payload=>{
+      if(res.destroyed||res.writableEnded)return;
+      res.writeHead(200,{'Content-Type':contentType,'Content-Length':payload.length,'Content-Encoding':encoding});
+      res.end(req.method==='HEAD'?undefined:payload);
+    });
     res.writeHead(200,{
       'Content-Type':contentType,'Content-Length':stat.size
     });
     if(req.method==='HEAD')res.end();
     else fs.createReadStream(file).on('error',()=>res.destroy()).pipe(res);
+  }
+  function compressedStatic(file,tag,encoding){
+    const key=file+'|'+encoding,hit=staticCache.get(key);
+    if(hit?.tag===tag)return hit.payload;
+    const payload=fs.promises.readFile(file).then(bytes=>staticCompress(bytes,encoding));
+    staticCache.set(key,{tag,payload});
+    payload.catch(()=>{if(staticCache.get(key)?.payload===payload)staticCache.delete(key);});
+    return payload;
   }
   const server=http.createServer((req,res)=>{
     let deadline;

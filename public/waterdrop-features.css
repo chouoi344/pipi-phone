@@ -56,10 +56,21 @@ html[data-skin="waterdrop"] :is(.moment-media-grid img,.note-image-item,.sticker
 html[data-skin="waterdrop"] .moment-status-current {width:calc(100% - 24px);margin:10px 12px;border-radius:22px;background:var(--wd-panel);}
 html[data-skin="waterdrop"] :is(.sticker-library-item,.sticker-semantic-fields) {border:var(--wd-rim);border-radius:16px;background:#fff;box-shadow:var(--pt-group-shadow);}
 html[data-skin="waterdrop"] .sticker-library-tools button {border-radius:22px;}
+html[data-skin="waterdrop"] :is(.status-picker-surface,.status-editor-surface) {color:var(--wd-ink);}
+html[data-skin="waterdrop"] .status-picker-header h2 {color:inherit;}
+html[data-skin="waterdrop"] :is(.status-group h3,.status-length,.status-note) {color:#505965;}
 html[data-skin="waterdrop"] :is(.status-dismiss,.status-selected,.status-save,.status-history-entry) {
   border-radius:24px;box-shadow:inset 0 1px 2px #ffffff80,0 2px 8px #15223618;
 }
-html[data-skin="waterdrop"] .status-tile {border-radius:18px;background:#ffffff16;border:1px solid #ffffff2e;}
+html[data-skin="waterdrop"] :is(.status-dismiss,.status-selected,.status-history-entry) {color:inherit;background:#fff;}
+html[data-skin="waterdrop"] .status-history-entry {min-width:44px;min-height:44px;top:10px;right:12px;}
+html[data-skin="waterdrop"] .status-selected {padding-inline:12px;}
+html[data-skin="waterdrop"] .status-tile {border-radius:18px;background:#fff;border:1px solid #d7dfe8;color:inherit;}
+html[data-skin="waterdrop"] .status-tile:active {background:#e1edf3;}
+html[data-skin="waterdrop"] .status-description-field textarea {color:inherit;}
+html[data-skin="waterdrop"] .status-description-field textarea::placeholder {color:#505965;opacity:1;}
+html[data-skin="waterdrop"] .status-save {background:#0b7544;color:#fff;}
+html[data-skin="waterdrop"] .status-error:not(:empty) {color:#812534;background:#fce8ea;}
 html[data-skin="waterdrop"] .status-current {padding-block:28px;}
 html[data-skin="waterdrop"] :is(.auth-content,.boot-screen) {
   background: radial-gradient(ellipse at 45% 0%,#e1effb,transparent 45%),linear-gradient(160deg,#f8fafc,#f8f3f7);

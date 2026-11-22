@@ -17,7 +17,7 @@
   // Reference artwork/fonts are not copied; this app reuses the GPL icon set below.
   // Masks are rendering derivatives: the upstream React SVG root fill is resolved
   // to black while original licensed SVG bytes remain intact in /icons.
-  const iconVersion = '0.13.7';
+  const iconVersion = '0.13.9';
   const assetIcon = (name, color = false, cls = '') => color
     ? `<img class="icon asset-icon ${cls}" src="/vendor/fake-world/icons/${name}.svg?v=${iconVersion}" alt="" aria-hidden="true">`
     : `<span class="icon mask-icon ${cls}" style="--icon-url:url('/vendor/fake-world/masks/${name}.svg?v=${iconVersion}')" aria-hidden="true"></span>`;
@@ -647,6 +647,17 @@
     const release=()=>{window.removeEventListener('pointerup',release,true);window.removeEventListener('pointercancel',release,true);setTimeout(()=>{backdrop.style.pointerEvents='';},350);};
     window.addEventListener('pointerup',release,true);window.addEventListener('pointercancel',release,true);
   }
+  // Leaving the status picker/editor returns to the page that opened the flow
+  // (for example 我 or 我的状态) as a real history step, so the transition runs
+  // backwards and the system back button does not reopen the editor.
+  function leaveStatusFlow(includeStatusPage=false){
+    const flow=new Set(['status-picker','status-editor',...(includeStatusPage?['status']:[])]);
+    if(!flow.has(route.name)){refresh();return;}
+    let depth=1;
+    for(let i=navStack.length-1;i>=0&&flow.has(navStack[i].name);i--)depth++;
+    if(depth>navStack.length||overlayBackPending||modalOpen||childDialog){showView('me');return;}
+    history.go(-depth);
+  }
   function goBack(){if(overlayBackPending){queuedBack=true;return;}if(childDialog){closeChildDialog();return;}if(modalOpen){closeModal();return;}if(window.PipiFeatures?.handleBack?.('button'))return;if(chatSelection){finishMessageSelection();return;}if(navStack.length){history.back();}else showView('chats',undefined,true);}
   function refresh({resetScroll=false}={}) {
     const pageKey=JSON.stringify([route.name,route.arg]);
@@ -946,7 +957,7 @@
       if(!statusDraft.preset){error.textContent='请先选择一个状态';return;}
       if([...statusDraft.description.trim()].length>60){error.dataset.kind='length';error.textContent='状态说明最多 60 字';return;}
       statusSaving=true;form.inert=true;const submitted=statusDraft,button=view.querySelector('.status-save');button.disabled=true;
-      try{await act('status.save',submitted);if(statusDraft===submitted)statusDraft=null;if(form.isConnected)showView('me');toast('状态已设置');}
+      try{await act('status.save',submitted);if(statusDraft===submitted)statusDraft=null;if(form.isConnected)leaveStatusFlow();toast('状态已设置');}
       catch(err){if(form.isConnected)error.textContent=err.message;else toast(err.message);}
       finally{statusSaving=false;button.disabled=false;form.inert=false;const activeForm=view.querySelector('#status-form');if(activeForm){activeForm.inert=false;activeForm.querySelector('.status-save').disabled=false;}view.querySelector('.status-editor-header .status-dismiss')?.removeAttribute('disabled');}
     };
@@ -1029,7 +1040,7 @@
   function editProfileField(key){const labels={name:'名字',wechatId:'微信号',region:'地区',bio:'个性签名',patText:'拍一拍'},p=state.profile||{};openModal(labels[key],field(labels[key],key,p[key]||'','',key==='bio'?'textarea':'text',key==='patText'?'填写“拍了拍自己的”后面的内容。留空可恢复默认。':''),async form=>{const raw=formValues(form)[key],value=key==='wechatId'&&raw===p[key]?raw:raw.trim();if(key==='name'&&!value)throw new Error('名字不能为空');if(key==='wechatId')checkWechatId(value,p.wechatId);await act('profile.save',{[key]:value});if(form.isConnected){closeModal();refresh();}});if(key==='patText')overlay.querySelector('[name=patText]').maxLength=100;}
   function renderAbout() {
     const sourceRow=sourceUrl?`<a class="cell plain-cell" href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer"><span class="cell-body"><span class="cell-title">源代码</span></span><span class="cell-value">查看</span>${icons.chevron}</a>`:`<div class="cell plain-cell"><span class="cell-body"><span class="cell-title">源代码</span></span><span class="cell-value">随安装包提供</span></div>`;
-    return header('关于屁屁机',{back:true})+`<div class="content page-content"><div class="about-logo"><div class="auth-logo">${icons.chat}</div><h3>屁屁机</h3><p>v${esc(globalThis.__pipiVersion||'0.13.0')}</p></div>${globalThis.__pipiUpdatesEnabled?(globalThis.PipiUpdates?.markup()||''):''}<div class="about-text">一个独立账号，一部只属于你的小手机。<br>聊天、日常与共同记忆，都留在你的服务器。<br><br>首次安装时，通讯录和聊天记录为空。真实回复需要配置模型服务；调用与费用由你选择的服务商决定。钱包与红包仅为虚拟互动，不涉及真实资金。<br><br>本项目为开源、非售卖项目。界面复用 MIT 许可的 WeUI 与 GPL-3.0-only 许可的 LiangNiang/fake-world；本项目整体以 AGPL-3.0-only 发布。原生菜单尺寸、聊天信息分组与面板分页参考 alexiscn/WeChatSwift（MIT 代码）；未复制其截图素材、头像或字体。</div><section class="section">${sourceRow}</section><p class="page-note">尚未开放：群聊、扫码、音视频通话等展示入口。不会将未完成的功能伪装为真实能力。</p></div>`;
+    return header('关于屁屁机',{back:true})+`<div class="content page-content"><div class="about-logo"><div class="auth-logo">${icons.chat}</div><h3>屁屁机</h3><p>v${esc(globalThis.__pipiVersion||'0.13.9')}</p></div>${globalThis.__pipiUpdatesEnabled?(globalThis.PipiUpdates?.markup()||''):''}<div class="about-text">一个独立账号，一部只属于你的小手机。<br>聊天、日常与共同记忆，都留在你的服务器。<br><br>首次安装时，通讯录和聊天记录为空。真实回复需要配置模型服务；调用与费用由你选择的服务商决定。钱包与红包仅为虚拟互动，不涉及真实资金。<br><br>本项目为开源、非售卖项目。界面复用 MIT 许可的 WeUI 与 GPL-3.0-only 许可的 LiangNiang/fake-world；本项目整体以 AGPL-3.0-only 发布。原生菜单尺寸、聊天信息分组与面板分页参考 alexiscn/WeChatSwift（MIT 代码）；未复制其截图素材、头像或字体。</div><section class="section">${sourceRow}</section><p class="page-note">尚未开放：群聊、扫码、音视频通话等展示入口。不会将未完成的功能伪装为真实能力。</p></div>`;
   }
   function renderBackup() {
     return header('备份与恢复',{back:true})+`<div class="content page-content"><section class="section">${cell('导出完整备份','backupExport','download-backup','','#5382b3','包括聊天、角色、记忆、图片和日常记录')}${cell('从备份恢复','backupRestore','restore-backup','','#5382b3','恢复前会再次提示确认')}</section><p class="page-note">导出时可包含模型 API Key。恢复会覆盖当前业务资料，并保留当前登录密码。密钥只用于与备份匹配的服务商地址。</p></div>`;
@@ -1406,8 +1417,8 @@
       case 'edit-status':{const current=activeStatus();statusDraft={preset:current?.preset||'',description:current?.description||''};showView(current?'status-editor':'status-picker');break;}
       case 'choose-status':showView('status-picker');break;
       case 'status-history':{const origin=route,result=await api('/api/state');setState(result.state||result);if(route===origin)showView('status-history');break;}
-      case 'cancel-status':statusDraft=null;showView('me');break;
-      case 'end-status':confirmDialog('结束状态？','结束后将不再展示当前状态。',async isCurrent=>{await act('status.end');if(isCurrent())showView('me');},'结束状态');break;
+      case 'cancel-status':statusDraft=null;leaveStatusFlow();break;
+      case 'end-status':confirmDialog('结束状态？','结束后将不再展示当前状态。',async isCurrent=>{await act('status.end');if(isCurrent())leaveStatusFlow(true);},'结束状态');break;
       case 'storage': showView('storage');break;
       case 'account-security': showView('account-security');break;
       case 'back': goBack(); break;

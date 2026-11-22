@@ -183,6 +183,44 @@ test('拍照等待时继续接收新消息，成图先于确认，完成后再�
   }finally{release(testPhoto);await f.runtime.close();}
 });
 
+test('自拍失败后模型把推理当正文时，丢弃推理改发兜底文案',async t=>{
+  const f=fixture({capabilities:['text','tool_use']});
+  f.state().settings.ai.assign.image='test-image';
+  let chatCalls=0;
+  t.mock.method(require('../lib/providers.cjs'),'generateImage',async()=>{throw new Error('upstream diagnostic text');});
+  f.api.call=async()=>{
+    if(++chatCalls===1)return {message:selfieCall(),model:f.config,modelId:'isolated'};
+    return {message:{content:'等着。不对，她肯定想要现在这张！而且系统有 [媒体编号：11111111-2222-4333-8444-555555555555]，但我不能再次拍摄（工具要求：不要说已发出失败的照片，不要再次拍摄）。到时候我再用 send_selfie(action: "resend")。'},model:f.config,modelId:'isolated'};
+  };
+  try{
+    f.send('拍张照');
+    await until(()=>!f.runtime.isBusy(f.roleId));
+    const sent=replies(f);
+    assert.equal(sent.at(-1),'刚才没拍成，改天我再补给你。');
+    assert.ok(!sent.some(s=>typeof s==='string'&&/媒体编号|send_selfie|不要再次拍摄/.test(s)));
+    assert.equal(chatCalls,2);
+  }finally{await f.runtime.close();}
+});
+
+test('自拍失败后回复中途垮成推理时，保留前面完整的台词',async t=>{
+  const f=fixture({capabilities:['text','tool_use']});
+  f.state().settings.ai.assign.image='test-image';
+  let chatCalls=0;
+  t.mock.method(require('../lib/providers.cjs'),'generateImage',async()=>{throw new Error('upstream diagnostic text');});
+  f.api.call=async()=>{
+    if(++chatCalls===1)return {message:selfieCall(),model:f.config,modelId:'isolated'};
+    return {message:{content:'刚才阅读角这盏灯接触不太稳，按快门那一下正好闪黑了。\n不对，她肯定想要现在这张！（工具要求：不要再次拍摄）\n句子设计：灯太暗了。'},model:f.config,modelId:'isolated'};
+  };
+  try{
+    f.send('拍张照');
+    await until(()=>!f.runtime.isBusy(f.roleId));
+    const sent=replies(f).filter(s=>typeof s==='string');
+    assert.ok(sent.some(s=>s.includes('按快门那一下正好闪黑了')),JSON.stringify(sent));
+    assert.ok(!sent.some(s=>/不对，她|工具要求|句子设计|不要再次拍摄/.test(s)),JSON.stringify(sent));
+    assert.ok(!sent.includes('刚才没拍成，改天我再补给你。'));
+  }finally{await f.runtime.close();}
+});
+
 test('连拍只保留成功照片，失败交给当前人设收尾',async t=>{
   const f=fixture({capabilities:['text','tool_use']});
   f.state().settings.ai.assign.image='test-image';

@@ -180,6 +180,28 @@ test('Gemini 以 thought 开头漏出的推理不当作回复，正文里的 tho
   for(const text of ['thought you were busy','I thought so','thoughtful 的礼物','我在想thought这个词'])assert.equal(leakedThought(text),false,text),assert.equal(visibleText(text),text,text);
 });
 
+test('中途垮成推理的回复被识别，内部令牌不出现在可见正文',()=>{
+  const {visibleText,leakedReasoning}=require('../lib/engine/response.cjs');
+  const leaked='等着，这次不欠你了。\n不对，她肯定想要现在这张！而且系统有 `[媒体编号：11111111-2222-4333-8444-555555555555]`，但我不能再次拍摄或发图了（工具要求：接下来按你自己的人设，用一句自然的生活化消息告诉对方。不要说已发出失败的照片，不要提到模型、接口、工具或技术原因，也不要再次拍摄）。\n到时候我再用 `send_selfie(action: "resend")`。';
+  assert.equal(leakedReasoning(leaked),true);
+  for(const marker of ['[媒体编号：11111111-2222-4333-8444-555555555555]','不要说已发出失败的照片','不要再次拍摄','send_selfie(action: "resend")','action: "continue"','send_image('])assert.equal(leakedReasoning(marker),true,marker);
+  assert.equal(leakedReasoning('主卧这会儿只留了盏阅读灯，刚拍出来背光黑了一半。'),false);
+  assert.equal(visibleText('好的，编号是 [媒体编号：11111111-2222-4333-8444-555555555555] 哦'),'好的，编号是  哦');
+  assert.equal(visibleText('动态见 [动态编号：abc] 和【照片编号：p-1】'),'动态见  和');
+});
+
+test('中途垮成推理时只保留前面完整的台词，正常台词不受影响',()=>{
+  const {leakedReasoning,beforeLeak}=require('../lib/engine/response.cjs');
+  const leaked='等着，这次不欠你了。刚才灯闪黑了。\n\n先别急，等会儿再试试？\n\n不对，她肯定想要现在这张！（工具要求：不要再次拍摄）\n\n句子设计：\n灯太暗了。';
+  assert.equal(beforeLeak(leaked),'等着，这次不欠你了。刚才灯闪黑了。\n\n先别急，等会儿再试试？');
+  assert.equal(beforeLeak('用户想要一张自拍，但工具失败了。\n抱歉'),'');
+  assert.equal(beforeLeak('半句话没说完send_image('),'');
+  for(const text of ['句子设计','检查气泡断句','The user wants a selfie.','下轮她肯定会问','按你自己的人设回应'])assert.equal(leakedReasoning(text),true,text);
+  for(const text of ['不对，是我记错了，今天周四。','不对，他应该是周三走的。','我们产品的用户想要更简单的界面。','你自己的人设别崩哈','下轮你请我吃饭。','The user is always right.','按你说的做，明早八点叫你。']){
+    assert.equal(leakedReasoning(text),false,text);assert.equal(beforeLeak(text),text,text);
+  }
+});
+
 test('历史里的旧泄漏消息不回传给模型',async()=>{
   const f=fixture({messages:[m('1','user','拍张自拍'),m('2','assistant','thought\nThe user wants a selfie. The tool returned ok:false.'),m('3','user','怎么了')]});
   await P.run(f.opts);

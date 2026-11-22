@@ -106,9 +106,9 @@
     title.classList.add('moment-album-title');
     on('[data-album-tab]', 'click', event => { ui.albumTab = event.currentTarget.dataset.albumTab; P().refresh({resetScroll:true}); });
     on('#moment-album-timeline', 'click', () => P().showView('moments', { roleId: 'me' }));
-    on('#moment-current-status', 'click', () => P().showView('status'));
-    on('#moment-status-history', 'click', () => run(async () => { const page = document.querySelector('.moment-status-album'), result = await P().api('/api/state'); P().setState(result.state || result); if (page?.isConnected) P().showView('status-history'); }));
-    on('#moment-set-status', 'click', () => P().showView('status-picker'));
+    on('#moment-current-status', 'click', () => { navStack.push(route); history.pushState(route, '', window.location.href); P().showView('status'); });
+    on('#moment-status-history', 'click', () => run(async () => { const page = document.querySelector('.moment-status-album'), result = await P().api('/api/state'); P().setState(result.state || result); if (page?.isConnected) { navStack.push(route); history.pushState(route, '', window.location.href); P().showView('status-history'); } }));
+    on('#moment-set-status', 'click', () => { navStack.push(route); history.pushState(route, '', window.location.href); P().showView('status-picker'); });
     on('[data-album-photo]', 'click', event => {
       const item = state().moments.find(entry => entry.id === event.currentTarget.dataset.albumPhoto), images = momentImages(item), index = Number(event.currentTarget.dataset.albumIndex);
       P().openPhoto(images[index], '我的朋友圈照片', { images, index });

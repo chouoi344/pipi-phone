@@ -27,6 +27,19 @@ const safeEqual=(a,b)=>{
   return x.length===y.length&&crypto.timingSafeEqual(x,y);
 };
 const digest=x=>crypto.createHash('sha256').update(x).digest('hex');
+// Limit concurrent scrypt operations to prevent DoS on low-memory systems
+const scryptSemaphore={count:0,max:2,queue:[]};
+function acquireScryptSlot(){
+  return new Promise(resolve=>{
+    if(scryptSemaphore.count<scryptSemaphore.max){scryptSemaphore.count++;resolve();}
+    else scryptSemaphore.queue.push(resolve);
+  });
+}
+function releaseScryptSlot(){
+  scryptSemaphore.count--;
+  const next=scryptSemaphore.queue.shift();
+  if(next){scryptSemaphore.count++;next();}
+}
 function createApp(options={}){
   const proxy=require('./lib/trusted-proxy.cjs').create(options.trustProxy??process.env.TRUST_PROXY??'');
   const updateDir=options.updates?.updateDir??process.env.PIPI_UPDATE_DIR;
@@ -292,6 +305,17 @@ function createApp(options={}){
   const allowedHosts=new Set(['localhost','127.0.0.1','[::1]',host,...String(process.env.ALLOWED_HOSTS||'').split(',').map(x=>x.trim()).filter(Boolean)]);
   const buckets=new Map();
   let inFlight=0,activeUploads=0,closed=false;
+  // Aggregate IPv6 addresses to /64 for rate limiting to prevent DDoS from large IPv6 subnets
+  function rateLimitKey(clientAddr){
+    const addr=String(clientAddr||'').split('%')[0];
+    // IPv4 and IPv4-mapped IPv6 (::ffff:1.2.3.4) stay per-address.
+    if(!require('node:net').isIPv6(addr)||addr.includes('.'))return clientAddr;
+    // Expand "::" so compressed and full spellings of one /64 share a bucket.
+    const [head,tail='']=addr.toLowerCase().split('::');
+    const left=head?head.split(':'):[],right=addr.includes('::')&&tail?tail.split(':'):[];
+    const groups=addr.includes('::')?[...left,...Array(8-left.length-right.length).fill('0'),...right]:left;
+    return groups.slice(0,4).map(g=>parseInt(g,16).toString(16)).join(':')+'::/64';
+  }
   function rate(key,max=15,window=60000){
     const now=Date.now();
     if(buckets.size>5000){
@@ -449,9 +473,12 @@ function createApp(options={}){
     return auth;
   }
   async function passwordHash(password,salt){
-    return (await scrypt(password,salt,64,{
-      N:16384,r:8,p:1,maxmem:64*1024*1024
-    })).toString('hex');
+    await acquireScryptSlot();
+    try{
+      return (await scrypt(password,salt,64,{
+        N:16384,r:8,p:1,maxmem:64*1024*1024
+      })).toString('hex');
+    }finally{releaseScryptSlot();}
   }
   function makeSession(req,res){
     const token=crypto.randomBytes(32).toString('hex'),csrf=crypto.randomBytes(24).toString('hex');
@@ -507,7 +534,7 @@ function createApp(options={}){
       });
     }
     if(req.method==='POST'&&(p==='/api/setup'||p==='/api/login')){
-      rate('auth:'+clientAddress,10,15*60000);
+      rate('auth:'+rateLimitKey(clientAddress),10,15*60000);
       const b=await body(req,65536);
       const password=S.text(b.password,256);
       if(p==='/api/setup'){

@@ -391,10 +391,12 @@ test('engine tools HTTP: permission gates reach provider, yuan payment executes,
   const unsupportedStart=f.requests.length;await send('没有工具能力也请回应','无工具能力完成。');assert.equal(f.requests[unsupportedStart].body.tools,undefined);
 });
 
-test('voice tool is optional, uses the friend voice and sends complete text when synthesis cannot run',async t=>{
+test('voice tool uses the friend voice, ends on success and requests a text reply on failure',async t=>{
   const say='今天下午三点（北京时间）再聊。';
   const middle='听我说。我今天想早点睡。';
   const long='这段约定要完整发出去。'.repeat(90)+'\n最后一句也保留。';
+  const recovery={long:'我先把约定的重点写给你。',failure:'刚想到你，就发条消息问问。',offDuringTts:'我打字告诉你。'};
+  const queuedVoiceCases=['offSame','offOnly','offDifferent'];
   let mode='text',releaseReply;
   const f=await fixture(t,(body,res,requests)=>{
     if(requests.at(-1).url.includes('/text-to-speech/')){
@@ -404,13 +406,18 @@ test('voice tool is optional, uses the friend voice and sends complete text when
       if(mode==='offDuringTts')releaseReply=sendAudio;else sendAudio();
       return;
     }
-    const spoken=mode==='short'?say:mode==='long'?long:mode==='middle'?middle:mode==='different'?'周六我在书店等你。':mode==='offDuringTts'?'合成时关闭语音也能收到这句。':'我想念你（今天尤其想）。';
+    const spoken=mode==='short'?say:mode==='long'?long:mode==='middle'?middle:mode==='singleWithText'?'周六我在书店等你。':mode==='offDuringTts'?'合成时关闭语音也能收到这句。':'我想念你（今天尤其想）。';
     const authored=mode==='middle'?'听我说。[耳语]我今天想早点睡。[轻笑]':'[轻笑][停顿][耳语]'+spoken;
     const tool=body.tools?.some(t=>t.function.name==='send_voice');
-    const message=mode!=='text'&&tool&&body.messages.at(-1).role!=='tool'
-      ?{role:'assistant',content:null,tool_calls:[{id:'voice',type:'function',function:{name:'send_voice',arguments:JSON.stringify({text:authored})}}]}
-      :{role:'assistant',content:mode==='text'?'普通的文字回复。':mode==='different'?'周日我在车站等你。':spoken};
-    if(body.messages.at(-1).role==='tool'&&['offSame','offOnly','offDifferent'].includes(mode)){
+    const afterTool=body.messages.at(-1).role==='tool';
+    const message=mode!=='text'&&tool&&!afterTool
+      ?{role:'assistant',content:mode==='singleWithText'?'周日我在车站等你。':null,tool_calls:[{id:'voice',type:'function',function:{name:'send_voice',arguments:JSON.stringify({text:authored})}}]}
+      :{role:'assistant',content:mode==='text'?'普通的文字回复。':recovery[mode]||spoken};
+    // A second, read-only tool keeps these queued-voice tests in a live turn.
+    if(message.tool_calls&&queuedVoiceCases.includes(mode)){
+      message.tool_calls.push({id:'lookup',type:'function',function:{name:'select_message_targets',arguments:JSON.stringify({action:'reply_quote'})}});
+    }
+    if(afterTool&&queuedVoiceCases.includes(mode)){
       if(mode==='offOnly')message.content='';
       if(mode==='offDifferent')message.content='我明天再问你。';
       releaseReply=()=>res.end(JSON.stringify({choices:[{message}]}));
@@ -443,15 +450,26 @@ test('voice tool is optional, uses the friend voice and sends complete text when
   assert.equal(switched.body.state.settings.ai.assign.chat,'main');
   assert.equal(switched.body.state.settings.ai.sources.find(source=>source.id==='voice-provider').keySet,true);
   const syntheses=()=>f.requests.filter(r=>r.url.includes('/text-to-speech/'));
+  const waitCompleted=targetId=>until(()=>{
+    const data=JSON.parse(f.app.db.prepare('SELECT json FROM app WHERE id=1').get().json);
+    return Object.values(data.engine.data.execution.runs).some(run=>run.targetId===targetId&&run.status==='completed');
+  },'语音测试回合完成');
+  const assertModelRecovery=(requestFrom,message)=>{
+    assert.equal(message.type,'text');
+    assert.ok(!message.meta?.audio&&!message.meta?.degradedFromVoice);
+    const replies=f.requests.slice(requestFrom).map(r=>r.body.messages?.at(-1)).filter(m=>m?.role==='tool'&&m.tool_call_id==='voice');
+    assert.equal(replies.length,1);
+    const result=JSON.parse(replies[0].content);
+    assert.equal(result.delivered,'failed');
+    assert.match(result.error,/普通文字/);
+  };
   const send=async(phase,expected)=>{
     mode=phase;
     const before=(await f.read()).messages.filter(m=>m.sender==='assistant'&&m.status==='sent').length;
     const sent=await f.request('/api/chat',{roleId:f.roleId,text:'测试 '+phase,requestId:randomUUID()});
     assert.equal(sent.status,200);
-    const answer=await until(async()=>{
-      const messages=(await f.read()).messages.filter(m=>m.sender==='assistant'&&m.status==='sent').slice(before);
-      return messages.length&&messages;
-    },phase);
+    await waitCompleted(sent.body.messageId);
+    const answer=(await f.read()).messages.filter(m=>m.sender==='assistant'&&m.status==='sent').slice(before);
     assert.equal(answer.length,1);
     assert.equal(answer[0].content,expected);
     return answer[0];
@@ -466,34 +484,32 @@ test('voice tool is optional, uses the friend voice and sends complete text when
   assert.equal(syntheses()[0].body.text,'[轻笑]'+say);
   assert.equal((await send('middle',middle)).type,'voice');
   assert.equal(syntheses()[1].body.text,middle);
-  assert.equal((await send('long',long)).meta.degradedFromVoice,true);
+  let requestFrom=f.requests.length;
+  assertModelRecovery(requestFrom,await send('long',recovery.long));
   assert.equal(syntheses().length,2);
-  assert.equal((await send('failure','我想念你（今天尤其想）。')).meta.degradedFromVoice,true);
+  requestFrom=f.requests.length;
+  assertModelRecovery(requestFrom,await send('failure',recovery.failure));
   assert.ok(syntheses().length>2);
-  mode='different';
-  const beforeDifferent=(await f.read()).messages.length;
-  assert.equal((await f.request('/api/chat',{roleId:f.roleId,text:'时间和地点',requestId:randomUUID()})).status,200);
-  const different=await until(async()=>{
-    const msgs=(await f.read()).messages.slice(beforeDifferent).filter(m=>m.sender==='assistant');
-    return msgs.length>=2&&msgs;
-  },'语音与内容不同的文字');
-  assert.deepEqual(different.map(m=>[m.type,m.content]).sort(),[['text','周日我在车站等你。'],['voice','周六我在书店等你。']]);
-  for(const phase of ['offSame','offOnly','offDifferent','offDuringTts']){
+  requestFrom=f.requests.length;
+  assert.equal((await send('singleWithText','周六我在书店等你。')).type,'voice');
+  const singleVoiceRequests=f.requests.slice(requestFrom).map(r=>r.body.messages?.at(-1));
+  assert.equal(singleVoiceRequests.filter(m=>m?.role==='user').length,1);
+  assert.ok(!singleVoiceRequests.some(m=>m?.role==='tool'&&m.tool_call_id==='voice'));
+  for(const phase of [...queuedVoiceCases,'offDuringTts']){
     mode=phase;releaseReply=undefined;
+    requestFrom=f.requests.length;
     const previous=(await f.read()).messages.length;
     const sent=await f.request('/api/chat',{roleId:f.roleId,text:'在途关闭 '+phase,requestId:randomUUID()});
     assert.equal(sent.status,200);
     await until(()=>releaseReply,'等待关闭语音的时机 '+phase);
     assert.equal((await setGlobal(false)).status,200);
     releaseReply();
-    await until(()=>{
-      const data=JSON.parse(f.app.db.prepare('SELECT json FROM app WHERE id=1').get().json);
-      return Object.values(data.engine.data.execution.runs).some(run=>run.targetId===sent.body.messageId&&run.status==='completed');
-    },'原回复完整送达');
+    await waitCompleted(sent.body.messageId);
     const received=(await f.read()).messages.slice(previous).filter(m=>m.sender==='assistant');
-    const texts=phase==='offDifferent'?['我想念你（今天尤其想）。','我明天再问你。']:phase==='offDuringTts'?['合成时关闭语音也能收到这句。']:['我想念你（今天尤其想）。'];
+    const texts=phase==='offDifferent'?['我想念你（今天尤其想）。','我明天再问你。']:phase==='offDuringTts'?[recovery.offDuringTts]:['我想念你（今天尤其想）。'];
     assert.deepEqual(received.map(m=>m.content).sort(),texts.sort(),phase);
     assert.ok(received.every(m=>m.type==='text'&&!m.meta?.audio));
+    if(phase==='offDuringTts')assertModelRecovery(requestFrom,received[0]);
     assert.equal((await setGlobal(true)).status,200);
   }
   assert.equal((await f.request('/api/action',{type:'role.save',payload:{id:f.roleId,voiceMode:'off'}})).status,200);

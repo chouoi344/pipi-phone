@@ -108,7 +108,7 @@ test('schedule circadian clamp + night lock + online-only sanitizer + mandatory 
   assert.match(ctx.messages[0].content,/线上聊天/);
 });
 
-test('voice dual-track VOICE_TAGS, strip on text bubbles, 503 history recovery, disk cache, and live fallback',async t=>{
+test('voice dual-track VOICE_TAGS, strip on text bubbles, 503 history recovery, disk cache, and live failure handoff',async t=>{
   const prepared=Voice.prepareSpeech('[轻笑]（轻轻抱住你）早安呀[停顿][耳语]睡得好吗');
   assert.equal(prepared.ttsText,'[轻笑]早安呀睡得好吗');
   assert.equal(prepared.displayText,'早安呀睡得好吗');
@@ -169,14 +169,19 @@ test('voice dual-track VOICE_TAGS, strip on text bubbles, 503 history recovery, 
   assert.equal(a2,a1);
   assert.equal(ttsHits,1);
 
-  // Live chat graceful text fallback when deferChatActions=true and TTS errors
+  // A synthesis failure leaves the next reply to the chat model.
   failTts=true;
   const rid=s.roles[0].id;
+  const messageCount=s.messages.length;
   s.engine.data.execution={runs:{'run-1':{id:'run-1',roleId:rid,pendingActionMessages:[]}},actions:[]};
-  const fallbackRes=await A.execute('send_voice',{text:'晚安好梦'},{getState:()=>s,mutate,roleId:rid,executionId:'run-1',deferChatActions:true,dataDir:dir,settings:R.values(s,'actions')});
-  assert.equal(fallbackRes.delivered,'text_fallback');
-  assert.equal(s.engine.data.execution.runs['run-1'].pendingActionMessages[0].type,'text');
-  assert.equal(s.engine.data.execution.runs['run-1'].pendingActionMessages[0].content,'晚安好梦');
+  const failedVoice=await A.execute('send_voice',{text:'晚安好梦'},{getState:()=>s,mutate,roleId:rid,executionId:'run-1',deferChatActions:true,dataDir:dir,settings:R.values(s,'actions')});
+  assert.equal(failedVoice.delivered,'failed');
+  assert.match(failedVoice.error,/用普通文字自然回复/);
+  assert.match(failedVoice.error,/不要声称发出了语音/);
+  assert.deepEqual(s.engine.data.execution.runs['run-1'].pendingActionMessages,[]);
+  assert.equal(s.messages.length,messageCount);
+  assert.equal(ttsHits,2);
+  assert.match(s.engine.data.voice.lastError.message,/HTTP 500/);
 });
 
 test('photo-core reference selection, applyFaceLock, multipart /images/edits, 4K->2K step-down, resend & media URL',async t=>{

@@ -37,10 +37,17 @@ test('防抖：停顿结束才开始判断，慢判断在整轮上限停止，�
   });
 });
 
-test('快速防抖：及时返回的半句话判断延长等待，随后正常回复',async()=>{
+test('快速防抖：及时返回的半句话判断延长等待，随后正常回复',async t=>{
+  t.mock.timers.enable({apis:['setTimeout','Date'],now:Date.now()});
   let checks=0;
   await withDecision(async()=>{checks++;return {complete:false,probability:0};},async()=>{
-    const f=fixture();try{f.send('如果明天');await until(()=>checks===1);await sleep(85);assert.equal(f.requests.length,0);await until(()=>f.requests.length===1);await until(()=>!f.runtime.isBusy(f.roleId));assert.equal(f.requests.length,1);}finally{await f.runtime.close();}
+    const f=fixture();R.apply(f.state(),'segments',{enabled:false});
+    try{
+      f.send('如果明天');t.mock.timers.tick(49);await new Promise(setImmediate);assert.equal(checks,0);
+      t.mock.timers.tick(1);await new Promise(setImmediate);assert.equal(checks,1);assert.equal(f.requests.length,0);
+      t.mock.timers.tick(129);await new Promise(setImmediate);assert.equal(f.requests.length,0);
+      t.mock.timers.tick(1);await new Promise(setImmediate);assert.equal(f.requests.length,1);assert.equal(f.runtime.isBusy(f.roleId),false);
+    }finally{await f.runtime.close();}
   });
 });
 

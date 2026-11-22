@@ -39,7 +39,7 @@ function fixture(extra={}){
   const state={profile:{name:'我'},roles:[{id:'a',name:'甲',tags:['同学','朋友']},{id:'b',name:'乙',tags:['同学']},{id:'c',name:'丙',tags:['家人']}],moments:[],statusHistory:[],...extra};
   const pages=[],calls=[],toasts=[];
   const open=(title,html,submit,label)=>{
-    const form=new Element();form.innerHTML=html;const section=new Element();section.querySelector=selector=>selector==='.modal-form'?form:Element.prototype.querySelector.call(section,selector);
+    const form=new Element();form.innerHTML=html;const section=new Element();form.parentElement=section;section.querySelector=selector=>selector==='.modal-form'?form:Element.prototype.querySelector.call(section,selector);
     pages.push({title,html,submit,label,form,section});
   };
   const P={getState:()=>state,esc:value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),avatar:person=>`<span class="avatar">${person.name}</span>`,icons:{chevron:'<svg></svg>',camera:'<svg></svg>',search:'<svg></svg>',more:'<svg></svg>'},openModal:open,openNestedPage:open,openPage:open,closePage:()=>pages.pop(),act:async(type,payload)=>calls.push([type,payload]),refresh(){},toast:message=>toasts.push(message),openPhoto:(...args)=>calls.push(['photo',...args]),showView:(...args)=>calls.push(['view',...args])};

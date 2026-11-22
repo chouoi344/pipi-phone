@@ -17,6 +17,7 @@ class Node {
 function fixture(input={},runtime={}){
   const data={profile:{name:'我'},roles:[{id:'a',name:'阿甲',permissions:{}},{id:'b',name:'阿乙',permissions:{}}],moments:[],messages:[],favorites:[],momentNotifications:[],...input};
   const doc=new Node(),form=new Node(),calls=[],entries=[{route:{name:'favorites'}}];let modal=null,index=0;
+  form.parentElement={classList:new Set()};
   doc.querySelector=selector=>selector==='.page-editor'?null:selector==='#overlay > .page-editor .modal-form'?form:Node.prototype.querySelector.call(doc,selector);
   const history={get state(){return entries[index];},pushState(value){entries.splice(++index);entries.push(value);},back(){index=Math.max(0,index-1);calls.push(['back']);}};
   const P={getState:()=>data,esc:x=>String(x).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),avatar:(p,size)=>`<span class="avatar">${p.name}</span>`,icons:{},refresh:()=>calls.push(['refresh']),toast:message=>calls.push(['toast',message]),act:async(type,payload)=>{calls.push([type,payload]);},closePage:()=>calls.push(['close']),openPhoto:(...args)=>calls.push(['photo',...args]),showView:(...args)=>calls.push(['view',...args])};

@@ -2,7 +2,7 @@
 
 把 APK 装到手机，就能登录自己的小手机。好友、模型、图片、语音和聊天记录继续使用原服务器。聊天页面和两套皮肤随安装包一起交付，Android 负责系统返回、切后台、保存草稿、选择文件和消息通知。
 
-正式安装包发布后可从 [GitHub Releases](https://github.com/chouoi344/pipi-phone/releases) 的附件获取。仓库推送源码和发布安装包是两个独立步骤；发布页没有 APK 时，开发者可以按下方步骤自行构建。自行签名的 App 后续需要使用自己的原签名覆盖安装。
+首次安装可下载[安卓 App 0.1.4 安装包](https://github.com/chouoi344/pipi-phone/releases/download/v0.13.10/pipi-phone-android-0.1.4-5.apk)。后续正式版见 [GitHub Releases](https://github.com/chouoi344/pipi-phone/releases)。自行签名的 App 后续需要使用自己的原签名覆盖安装。
 
 ## 第一次使用
 

@@ -4,9 +4,9 @@
 
 自己部署的 AI 角色小手机，支持聊天、朋友圈、语音、日程与共同记忆。
 
-网页正式版 **v0.13.9** · 安卓源码 **0.1.3** · Node.js 24+ · AGPL-3.0-only
+网页正式版 **v0.13.10** · 安卓 App **0.1.4** · Node.js 24+ · AGPL-3.0-only
 
-[快速开始](#快速开始) · [安装与升级](INSTALL.zh-CN.md) · [使用说明](docs/USAGE.zh-CN.md) · [更新记录](CHANGELOG.md) · [问题反馈](https://github.com/chouoi344/pipi-phone/issues)
+[下载安卓 App](https://github.com/chouoi344/pipi-phone/releases/download/v0.13.10/pipi-phone-android-0.1.4-5.apk) · [快速开始](#快速开始) · [安装与升级](INSTALL.zh-CN.md) · [使用说明](docs/USAGE.zh-CN.md) · [更新记录](CHANGELOG.md) · [问题反馈](https://github.com/chouoi344/pipi-phone/issues)
 
 </div>
 
@@ -90,7 +90,7 @@ Windows 也可以双击 `start.cmd`。打开 [http://127.0.0.1:18766/](http://12
 
 ## 更新与数据
 
-当前源码版本为 **0.13.9**。首装默认免令牌，登录加了并发与 IPv6 网段限速，修复 Gemini 思考内容泄漏到回复，网页文件压缩传输。升级已有安装前，先导出备份，保留原部署目录、数据卷与环境变量。[0.13.0 数据升级说明](升级说明_0.13.0.md) · [更新记录](CHANGELOG.md)
+当前网页版本为 **0.13.10**，支持将官方安卓更新转发到用户自己的手机。升级已有安装前，先导出备份，保留原部署目录、数据卷与环境变量。[0.13.0 数据升级说明](升级说明_0.13.0.md) · [更新记录](CHANGELOG.md)
 
 - **备份与恢复**　在「我 → 设置 → 聊天记录管理」导出 TAR 备份，可恢复 TAR 和旧版 JSON。导出默认包含模型 API Key、图片和语音，可取消相应选项。含密钥的备份请妥善保管。
 - **媒体保存**　聊天图片和语音默认保存 7 天，可在「存储空间」调整。服务器剩余空间不足时，会按时间清理最旧的聊天媒体。

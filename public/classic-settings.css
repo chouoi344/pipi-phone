@@ -6,7 +6,7 @@ body.wechat-classic {
   --pt-card: #fff;
   --pt-ink: #191919;
   --pt-secondary: #6e737d;
-  --pt-empty: #999da5;
+  --pt-empty: #6a7079;
   --pt-line: #0000001a;
   --pt-accent: #1ec96b;
   --pt-selected: #eefbf3;
@@ -186,7 +186,7 @@ body.wechat-classic .pt-profile .lb-image-avatar .lb-image-action {
   padding: 0 0 2px;
   border: 0;
   background: transparent;
-  color: #16994f;
+  color: #087b41;
   font-size: 11px;
   line-height: 17px;
   font-weight: 500;
@@ -416,7 +416,7 @@ body.wechat-classic .pt-voice-form .primary {
   padding: 12px 16px;
   border: 0;
   border-radius: 16px;
-  background: var(--pt-accent);
+  background: #087e40;
   color: #fff;
   font-size: 14px;
   line-height: 20px;
@@ -803,7 +803,7 @@ body.wechat-classic .rp-replace-dialog p {color: var(--pt-secondary); font-size:
 }
 
 /* Provider model names keep the full card width; row controls have their own line. */
-body.wechat-classic .pt-config-content.model-ui .inline-model-item:has(.model-actions) {
+body.wechat-classic .pt-config-content.model-ui .configured-model-item {
   display: grid;
   grid-template-columns: minmax(0,1fr);
   gap: 6px;

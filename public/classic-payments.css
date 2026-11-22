@@ -107,7 +107,7 @@ body.wechat-classic .wallet-index-group { margin:6px 14px;border:var(--classic-p
 body.wechat-classic .wallet-index-row { background:transparent;color:var(--classic-pay-ink); }
 body.wechat-classic .wallet-index-row+.wallet-index-row::before { background:#cbbbad66; }
 body.wechat-classic .wallet-index-row>.fw-feature-icon { color:#ac8356; }
-body.wechat-classic .wallet-index-row>small { color:var(--classic-pay-muted); }
+body.wechat-classic .wallet-index-row>small { color:#79665e; }
 body.wechat-classic .wallet-footer { color:var(--classic-pay-muted); }
 body.wechat-classic #overlay .page-editor:has(:is(.wallet-balance-page,.wallet-bills-page,.wallet-transaction-detail,.wallet-recipients)) .modal-body {
   background:linear-gradient(170deg,#faf7f2,#f4ede5);
@@ -210,8 +210,7 @@ body.wechat-classic .payment-message-detail.is-redpacket-detail .wallet-detail-s
 body.wechat-classic .wallet-transaction-detail .feature-bottom-note { color:#9c8e80; }
 
 /* Payment composition, recipient selection and numeric input. */
-body.wechat-classic #overlay .page-editor:has(.wallet-pay-page) :is(.modal-header,.modal-body,.modal-error) { background:#f6f0e9;border-color:#e2d4c8; }
-body.wechat-classic #overlay .page-editor:has(.wallet-pay-page.is-transfer) .modal-header h3 { visibility:visible; }
+body.wechat-classic #overlay .page-editor [data-payment-form] :is(.modal-header,.modal-body,.modal-error) { background:#f6f0e9;border-color:#e2d4c8; }
 body.wechat-classic #overlay .wallet-pay-page { background:linear-gradient(165deg,#f8f3ed,#f2e9df);color:var(--classic-pay-ink); }
 body.wechat-classic .transfer-head { background:transparent; }
 body.wechat-classic .transfer-to strong { color:#191919; }
@@ -228,7 +227,7 @@ body.wechat-classic .transfer-sheet .pay-amount-text.pay-amount-long { font-size
 body.wechat-classic .pay-caret { background:#07c160; }
 body.wechat-classic #overlay .wallet-pay-note#transfer-note-editor { color:#576b95;min-height:44px;margin-top:10px;padding:12px 0; }
 body.wechat-classic #overlay .wallet-pay-note#transfer-note-editor.has-note { color:#191919; }
-body.wechat-classic #overlay .page-editor:has(.wallet-pay-page.is-transfer) :is(.modal-header,.modal-body,.modal-error),
+body.wechat-classic #overlay .page-editor [data-payment-form="transfer"] :is(.modal-header,.modal-body,.modal-error),
 body.wechat-classic #overlay .wallet-pay-page.is-transfer { background:#ededed;border-color:#ddd;color:#191919; }
 body.wechat-classic .pay-keypad {
   background:#f2f2f2;border-color:#ddd;box-shadow:none;

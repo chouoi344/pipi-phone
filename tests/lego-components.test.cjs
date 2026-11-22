@@ -124,8 +124,21 @@ test('system-one & cloud debounce: evaluates OpenRouter/TypeSafe Jev, holds inco
     const m3=mutate(s=>S.message(s,S.role(s,roleId),'user','刚才的问题我说完了','text',{status:'pending'})).value;
     runtime.enqueue(roleId,m3.id);
     await until(()=>!runtime.isBusy(roleId));
-    assert.equal(state.engine.data.waiting.lastError,undefined);
+    assert.match(state.engine.data.waiting.lastError.message,/超时/);
     assert.equal(requests.filter(r=>r.url.endsWith('/chat/completions')).length,2);
+
+    // The round cap cancels a slow judge before that model's own timeout.
+    delete state.engine.data.waiting.lastError;
+    state.settings.ai.models.find(m=>m.id==='jev-m').timeoutSeconds=5;
+    R.apply(state,'waiting',{maxWaitSeconds:1,incompleteWaitSeconds:1});
+    const m4=mutate(s=>S.message(s,S.role(s,roleId),'user','到等待上限时直接回复','text',{status:'pending'})).value;
+    const cappedAt=Date.now();runtime.enqueue(roleId,m4.id);
+    await until(()=>!runtime.isBusy(roleId));
+    assert.ok(Date.now()-cappedAt>=950&&Date.now()-cappedAt<2500);
+    assert.equal(state.engine.data.waiting.lastError,undefined);
+    assert.equal(requests.filter(r=>r.url.endsWith('/chat/completions')).length,3);
+    assert.equal(S.find(state.messages,m4.id).status,'sent');
+    state.settings.ai.models.find(m=>m.id==='jev-m').timeoutSeconds=1;
     await assert.rejects(SystemOne.testConnection(state,{modelId:'jev-m'}),{code:'PROVIDER_TIMEOUT'});
   }finally{await runtime.close();}
 });

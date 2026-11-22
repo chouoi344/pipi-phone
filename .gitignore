@@ -18,3 +18,11 @@ artifacts/
 *.db
 *.db-*
 .DS_Store
+
+# Local skin issuer: keep the owner's original paths, outside the public source tree.
+/scripts/issue-waterdrop-code.cjs
+/scripts/start-waterdrop-issuer.ps1
+/scripts/waterdrop-issuer.cjs
+/scripts/waterdrop-issuer.html
+/scripts/waterdrop-signing.local.cjs
+/tests/waterdrop-issuer.test.cjs

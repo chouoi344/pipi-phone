@@ -10,7 +10,7 @@
 .me-status-button .chevron{width:10px;height:10px;color:#b2b2b2}
 .me-status-button.has-status{color:#656565}
 .status-plus{font-size:17px;line-height:1}
-.me-status-description{color:#999;font-size:12px;line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.me-status-description{color:#646b74;font-size:12px;line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .status-current{background:#fff;text-align:center;padding:36px 24px 30px}
 .status-current>.avatar{margin:auto}
 .status-owner{margin:10px 0 28px;color:#888;font-size:14px;overflow-wrap:anywhere}

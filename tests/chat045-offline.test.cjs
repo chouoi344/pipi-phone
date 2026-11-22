@@ -156,7 +156,7 @@ test('global search includes older hidden-conversation text and preserves contac
 
 function readFixture(hidden=false,name='chat'){
   const calls=[],pending=[],toasts=[],document={hidden},scope=vm.createContext({document,calls,pending,toasts});
-  vm.runInContext(`let state=null,route={name:${JSON.stringify(name)},arg:'alice'},modalOpen=false,pendingRender=false,refreshes=0;const readRequests=new Set();function trackNewChatMessages(){}function roleById(id){return state?.roles.find(r=>r.id===id);}function refresh(){refreshes++;}
+  vm.runInContext(`let state=null,route={name:${JSON.stringify(name)},arg:'alice'},modalOpen=false,childDialog=null,pendingRender=false,refreshes=0;const readRequests=new Set();function trackNewChatMessages(){}function roleById(id){return state?.roles.find(r=>r.id===id);}function refresh(){refreshes++;}
     function toast(text){toasts.push(text);}function act(type,payload){calls.push({type,...payload});return new Promise((resolve,reject)=>pending.push({resolve:()=>{state.roles.find(r=>r.id===payload.roleId).unread=0;resolve();},reject}));}
     let composeComposing=false,searchComposing=false,recordingSession=null;
     const view={querySelector:()=>null};function captureChatLayout(){}function restoreChatLayout(){}
@@ -173,6 +173,11 @@ test('new state marks only the visible current conversation read and deduplicate
 test('hidden and non-chat pages keep unread counts; becoming visible can sync without re-rendering',async()=>{
   const f=readFixture(true);f.deliver();assert.equal(f.calls.length,0);f.document.hidden=false;f.api.syncVisibleChatRead();assert.equal(f.calls.length,1);await f.settle();
   const other=readFixture(false,'chats');other.deliver();assert.equal(other.calls.length,0);
+});
+
+test('an editor covering a conversation preserves unread until that conversation becomes visible',async()=>{
+  const f=readFixture();vm.runInContext('modalOpen=true',f.scope);f.deliver();assert.equal(f.calls.length,0);assert.equal(f.api.state().roles[0].unread,2);
+  vm.runInContext('modalOpen=false',f.scope);f.api.syncVisibleChatRead();assert.equal(f.calls.length,1);await f.settle();assert.equal(f.api.state().roles[0].unread,0);
 });
 test('failed read sync exposes the error, keeps unread counts and permits the next state update retry',async()=>{
   const f=readFixture();f.deliver();await f.settle('read failed');assert.deepEqual(f.toasts,['read failed']);assert.equal(f.api.state().roles[0].unread,2);f.deliver();assert.equal(f.calls.length,2);await f.settle();

@@ -183,7 +183,7 @@ button svg{pointer-events:none}
 .chat-search-filters input{min-width:0;max-width:100%;border:0;background:#f5f5f5;border-radius:4px;padding:6px 10px;color:#191919}
 .contact-star{margin-left:8px;color:#e7b858;font-size:14px}
 .global-search-results>h3{padding:16px 16px 8px;font-size:14px;color:#777;font-weight:400}
-.search-empty{padding:16px;color:#999;font-size:14px}
+.search-empty{padding:16px;color:#646b74;font-size:14px}
 .chat-messages{background-size:cover;background-position:center}
 .message-quote{display:block;text-align:left;cursor:pointer}
 .message-quote:disabled{opacity:1;cursor:default}
@@ -277,11 +277,21 @@ button svg{pointer-events:none}
 .lightbox img{width:100%;height:100%;object-fit:contain}
 .lightbox button{position:absolute;top:20px;right:17px;color:#fff;background:#3338;border-radius:50%;padding:8px}
 .badge{font-size:10px;color:#999;border:1px solid #ddd;border-radius:3px;padding:1px 5px;line-height:16px}
-.about-logo{display:flex;align-items:center;flex-direction:column;padding:35px 20px 25px;gap:12px}
-.about-logo .auth-logo{margin:0}
-.about-logo h3{font-size:24px;font-weight:550;margin:0;letter-spacing:2px}
-.about-logo p{font-size:12px;color:#999;margin:0}
-.about-text{padding:18px;font-size:13px;line-height:1.9;color:#777;background:white}
+.about-logo{display:flex;align-items:center;flex-direction:column;padding:28px 16px 0;gap:4px}
+.about-logo .auth-logo{margin:0 0 6px}
+.about-logo h3{font-size:24px;font-weight:550;line-height:1.35;margin:0}
+.about-logo p{font-size:13px;line-height:1.5;color:#62676c;margin:0}
+.about-intro{padding:16px 16px 22px;text-align:center;font-size:14px;line-height:1.75;color:#484c50}
+.about-intro p,.about-copy p,.about-credits dd{margin:0}
+.about-intro p:first-child{margin-bottom:4px;font-size:16px;font-weight:550;color:var(--ink)}
+.about-copy{padding:18px 16px;font-size:14px;line-height:1.7;color:#484c50;overflow-wrap:break-word}
+.about-copy h3{margin:0 0 10px;font-size:16px;line-height:1.5;font-weight:600;color:var(--ink)}
+.about-copy p+p,.about-credits>div+div{margin-top:8px}
+.about-credits{margin:12px 0 0}
+.about-credits dt{display:flex;align-items:baseline;flex-wrap:wrap;column-gap:8px;font-weight:550;color:var(--ink)}
+.about-license{white-space:nowrap}
+.about-credits .about-license{font-size:12px;font-weight:400;color:#62676c}
+.about-copy+.cell{border-top:1px solid var(--line)}
 .setting-result{font-size:13px;line-height:1.8;color:#777;white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f7f7;border-radius:0;padding:10px;margin-bottom:14px}
 .setting-result.error{color:#bf5b51}
 .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
@@ -625,6 +635,7 @@ to{opacity:1}
 .view[data-route=contacts]>.bottom-tabs{grid-area:4/1}
 .view[data-route=contacts]>.contact-index-rail{position:relative;grid-area:3/1;align-self:stretch;justify-self:end;top:auto;right:2px;transform:none;height:100%;max-height:100%;justify-content:flex-start;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}
 .contact-index-rail::-webkit-scrollbar{display:none}
+.contact-index-rail.index-scrollable,.contact-index-rail.index-scrollable button{touch-action:pan-y}
 .contact-index-rail button{flex-shrink:0}
 .contact-index-rail button:first-child{margin-top:auto}
 .contact-index-rail button:last-child{margin-bottom:auto}

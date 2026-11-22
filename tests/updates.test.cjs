@@ -37,6 +37,23 @@ test('stable release accepts only its attached canonical digest image and makes 
   assert.equal(compareVersions('0.12.10','0.12.9'),1);assert.equal(compareVersions('0.12.0','0.12.0'),0);assert.equal(compareVersions('0.9.0','0.12.0'),-1);
 });
 
+test('an Android-only latest release leaves server discovery and install available',async t=>{
+  const android={tag_name:'android-v0.1.2',draft:false,prerelease:false};
+  const f=await fixture(t);
+  const fetchImpl=async url=>{
+    if(url.endsWith('/latest'))return Response.json(android);
+    if(url.includes('page=20&page=1'))return Response.json([android],{headers:{Link:'<https://api.github.com/>; rel="next"'}});
+    if(url.includes('page=20&page=2'))return Response.json([{...f.remote.metadata,prerelease:true},f.remote.metadata]);
+    assert.equal(url,f.remote.metadata.assets[0].browser_download_url);
+    return Response.json({version,image});
+  };
+  const service=createUpdateService({...f.config,fetchImpl});
+  assert.equal((await service.check()).release.version,version);
+  assert.equal((await service.request({version})).job.version,version);
+  const onlyApp=await getRelease({repository,fetchImpl:async url=>Response.json(url.endsWith('/latest')?android:[android])});
+  assert.equal(onlyApp,null);
+});
+
 test('release rejects prereleases, drafts, inconsistent tags, misdirected assets and mismatched manifests',async()=>{
   const examples=[
     {release:{draft:true}},{release:{prerelease:true}},{release:{tag_name:'v0.13.0-beta.1'}},

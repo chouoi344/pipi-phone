@@ -83,11 +83,19 @@ test('role native contact fields: trim, deduplicate, retain on partial saves and
 
 test('stickers: count and total-byte caps reject without revision or partial changes',async t=>{
   const f=await fixture(t),base=await backup(f),pixels=Buffer.from(PNG.split(',')[1],'base64');
+  async function restoreWhenIdle(backup){
+    const deadline=Date.now()+5000;
+    for(;;){
+      const result=await f.request('/api/restore',{backup,confirm:true});
+      if(result.status!==409||result.json?.code!=='BUSY'||Date.now()>=deadline){ok(result);return;}
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+  }
   const image=i=>'data:image/png;base64,'+Buffer.concat([pixels,Buffer.from(String(i))]).toString('base64');
   base.state.stickers=Array.from({length:200},(_,i)=>({id:randomUUID(),image:image(i),createdAt:Date.now()}));
-  ok(await f.request('/api/restore',{backup:base,confirm:true}));let before=await f.state();rejected(await f.action('sticker.add',{image:image('extra')}));assert.deepEqual(await f.state(),before);
+  await restoreWhenIdle(base);let before=await f.state();rejected(await f.action('sticker.add',{image:image('extra')}));assert.deepEqual(await f.state(),before);
   const large=await backup(f),largeImage=i=>'data:image/png;base64,'+Buffer.concat([pixels,Buffer.alloc(4*1024*1024,i)]).toString('base64');
-  large.state.stickers=[0,1,2].map(i=>({id:randomUUID(),image:largeImage(i),createdAt:Date.now()}));ok(await f.request('/api/restore',{backup:large,confirm:true}));before=await f.state();
+  large.state.stickers=[0,1,2].map(i=>({id:randomUUID(),image:largeImage(i),createdAt:Date.now()}));await restoreWhenIdle(large);before=await f.state();
   rejected(await f.action('sticker.add',{image:largeImage(3)}));assert.deepEqual(await f.state(),before);
 });
 
@@ -224,12 +232,14 @@ test('model context: role history, explicit memory and personas isolate; ledger 
   ok(await f.action('ledger.save',{amountCents:765432,type:'expense',category:'private',merchant:'LEDGER_MERCHANT_SECRET',date:'2026-11-14',note:'LEDGER_NOTE_SECRET'}));
   ok(await chat(f,'/api/chat',{roleId:b.id,text:'HISTORY_B_PRIVATE',requestId:randomUUID()}));
   ok(await chat(f,'/api/chat',{roleId:a.id,text:'HISTORY_A_ONLY',requestId:randomUUID()}));
+  const beforeCurrent=m.requests.length;
   ok(await chat(f,'/api/chat',{roleId:a.id,text:'CURRENT_A_ONLY',requestId:randomUUID()}));
-  const sent=JSON.stringify(m.requests.at(-1).body);
+  const request=m.requests.slice(beforeCurrent).find(r=>r.url.endsWith('/chat/completions')&&r.body.messages?.some(message=>message.role==='user'&&JSON.stringify(message.content).includes('CURRENT_A_ONLY')));
+  assert.ok(request,'the current chat reached the provider');
+  const sent=JSON.stringify(request.body);
   for(const value of ['ROLE_A_ONLY','PERSONA_A_PRIVATE','MEMORY_A_ONLY','HISTORY_A_ONLY','CURRENT_A_ONLY'])assert.ok(sent.includes(value),value);
   for(const value of ['ROLE_B_ONLY','MEMORY_B_PRIVATE','HISTORY_B_PRIVATE','LEDGER_MERCHANT_SECRET','LEDGER_NOTE_SECRET'])assert.equal(sent.includes(value),false,value);
-  assert.ok(m.requests.at(-1).url.endsWith('/chat/completions'));
-  assert.ok(Array.isArray(m.requests.at(-1).body.messages));
+  for(const r of m.requests)assert.doesNotMatch(JSON.stringify(r.body),/LEDGER_MERCHANT_SECRET|LEDGER_NOTE_SECRET/);
   const mem=(await f.state()).memories.find(x=>x.roleId===a.id);
   rejected(await f.action('memory.save',{id:mem.id,roleId:b.id,content:'move across roles'}));
 });
@@ -390,7 +400,9 @@ test('restoring a changed AI source clears its key and legacy fields cannot over
 });
 
 test('hidden summaries remain internal across ordinary APIs and failed engine restore stays atomic',async t=>{
-  const f=await fixture(t),m=await mock(t);await configure(f,m);const saved=await backup(f),roleId=saved.state.roles[0].id,marker='PRIVATE_SUMMARY_ONLY_IN_BACKUP';
+  const f=await fixture(t),m=await mock(t);await configure(f,m);
+  ok(await f.request('/api/engine/modules',{id:'schedule',values:{autoGenerate:false}}));
+  const saved=await backup(f),roleId=saved.state.roles[0].id,marker='PRIVATE_SUMMARY_ONLY_IN_BACKUP';
   saved.state.engine.summaries[roleId]={text:marker,coveredUntil:0,updatedAt:Date.now()};
   const restored=await f.request('/api/restore',{backup:saved,confirm:true});ok(restored);assert.equal(restored.text.includes(marker),false);
   for(const response of [await f.request('/api/state'),await f.request('/api/engine/config'),await f.request('/api/engine/jobs?roleId='+roleId),await f.request('/api/status'),await f.request('/api/providers/models',{capability:'chat'}),await f.request('/api/providers/test',{capability:'chat'}),await f.action('profile.save',{bio:'PUBLIC_CHANGE'}),await f.request('/api/login',{password:PASSWORD})]){

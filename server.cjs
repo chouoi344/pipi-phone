@@ -12,6 +12,7 @@ const Stickers=require('./lib/engine/stickers.cjs');
 const {Readable}=require('node:stream'),{pipeline}=require('node:stream/promises');
 const requestDeadline=Symbol('pipi.requestDeadline');
 const {createUpdateService}=require('./lib/updates.cjs');
+const {createAndroidUpdateService}=require('./lib/android-updates.cjs');
 const JsonResponse=require('./lib/json-response.cjs');
 const Waterdrop=require('./lib/waterdrop-activation.cjs');
 const scrypt=promisify(crypto.scrypt),VERSION=require('./package.json').version;
@@ -49,6 +50,7 @@ function createApp(options={}){
     ...options.updates,
     updateDir
   });
+  const androidUpdates=createAndroidUpdateService(options.androidUpdates);
   const updateMaintenance=()=>updateDir
     ? updates.status().then(status=>UPDATE_MAINTENANCE_PHASES.has(status.job?.phase),()=>false)
     : false;
@@ -97,6 +99,11 @@ function createApp(options={}){
   };
   const storedJson=()=>db.prepare('SELECT json FROM app WHERE id=1').get().json;
   const read=()=>parse(storedJson());
+  const androidFcm=require('./lib/android-fcm.cjs').create({
+    credentialFile:process.env.PIPI_FCM_SERVICE_ACCOUNT_FILE,...options.fcm,getMeta,setMeta,getState:read,
+    sessionValid:hash=>Boolean(db.prepare('SELECT hash FROM sessions WHERE hash=? AND expires>?').get(hash,Date.now())),
+    sessionScope:androidSessionScope
+  });
   const clients=new Set();let runtime,stickerQueue;
   const providerUrls=options.providerUrlAllowlist&&new Set(options.providerUrlAllowlist);
   function checkProviderUrls(state){
@@ -131,8 +138,10 @@ function createApp(options={}){
     }
   }
   function mutate(fn){
+    let notificationSnapshot;
     const result=transaction(()=>{
       const json=storedJson(),state=S.limitBaseline(parse(json),Buffer.byteLength(json));
+      notificationSnapshot=androidFcm.snapshot(state);
       const previous=Media.mediaSnapshot(state),value=fn(state);
       Media.externalize(dataDir,state,{previous});
       checkProviderUrls(state);
@@ -144,6 +153,7 @@ function createApp(options={}){
       };
     });
     publish('revision',{revision:result.state.revision});
+    androidFcm.publish(notificationSnapshot,result.state);
     return result;
   }
   const {migrateLegacy,diskSpace,prepareLargeLegacyBackup}=require('./lib/media-migration.cjs');
@@ -485,14 +495,16 @@ function createApp(options={}){
     db.prepare('DELETE FROM sessions WHERE expires<?').run(Date.now());
     db.prepare('INSERT INTO sessions(hash,csrf,expires) VALUES(?,?,?)').run(digest(token),csrf,Date.now()+7*86400000);
     res.setHeader('Set-Cookie',`pipi_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800${proxy.context(req).secure||process.env.COOKIE_SECURE==='1'?'; Secure':''}`);
-    return csrf;
+    return {csrfToken:csrf,appSessionScope:androidSessionScope(digest(token))};
   }
+  function androidSessionScope(hash){return digest('pipi-android-cache-v1:'+hash);}
   function account(auth){
     const sessionCount=Number(db.prepare('SELECT COUNT(*) AS count FROM sessions WHERE expires>?').get(Date.now()).count);
     return {sessionCount,otherSessionCount:sessionCount-(db.prepare('SELECT hash FROM sessions WHERE hash=? AND expires>?').get(auth.hash,Date.now())?1:0)};
   }
   function revokeOthers(auth){
     db.prepare('DELETE FROM sessions WHERE hash<>?').run(auth.hash);
+    androidFcm.prune();
     for(const client of clients)if(client.hash!==auth.hash){client.res.end();clients.delete(client);}
   }
   function publish(event,data){
@@ -525,11 +537,12 @@ function createApp(options={}){
     }
     const p=u.pathname;
     if(!p.startsWith('/api/'))return staticFile(req,res,p,u.searchParams);
+    if(req.method==='GET'&&p==='/api/android-shell-manifest')return json(res,200,await require('./lib/android-assets.cjs').manifest());
     if(req.method==='GET'&&p==='/api/status'){
       const auth=session(req);
       return json(res,200,{
         setupRequired:!getMeta('password'),authenticated:!!auth,...(auth?{
-          csrfToken:auth.csrf,appearance:appearance()
+          csrfToken:auth.csrf,appSessionScope:androidSessionScope(auth.hash),appearance:appearance()
         }:{}),version:VERSION,sourceUrl,rolePanel:true,softwareUpdates:true,binaryMedia:true,imageVariants:true,storageMaintenance:true,streamingBackup:true,accountSecurity:true,setupTokenRequired:setupTokenRequired(),messageLimit:50000,momentExclusions:true
       });
     }
@@ -562,7 +575,7 @@ function createApp(options={}){
         }
         catch{}
         return json(res,200,{
-          csrfToken:makeSession(req,res),state:S.publicState(read()),appearance:appearance()
+          ...makeSession(req,res),state:S.publicState(read()),appearance:appearance()
         });
       }
       const stored=getMeta('password');
@@ -574,12 +587,29 @@ function createApp(options={}){
       if(closed)S.fail('服务器正在关闭',503,'CLOSING');
       if(getMeta('password')!==stored)S.fail('密码已更新，请重新登录',401,'INVALID_PASSWORD');
       return json(res,200,{
-        csrfToken:makeSession(req,res),state:S.publicState(read()),appearance:appearance()
+        ...makeSession(req,res),state:S.publicState(read()),appearance:appearance()
       });
     }
     const mutating=!['GET','HEAD'].includes(req.method),auth=authorized(req,mutating);
     if(req.method==='GET'&&p==='/api/account')return json(res,200,account(auth));
     if(mutating&&p!=='/api/logout')assertWritable();
+    if(req.method==='GET'&&p==='/api/android-updates/latest'){
+      rate('android-update-check:'+clientAddress,15);
+      const release=await androidUpdates.latest();authorized(req);
+      return json(res,200,release);
+    }
+    if(req.method==='GET'&&p.startsWith('/api/android-updates/apk/')){
+      rate('android-update-download:'+clientAddress,6);
+      const asset=await androidUpdates.open(p.slice('/api/android-updates/apk/'.length));
+      try{
+        authorized(req);
+        if(res.destroyed)return;
+        res.writeHead(200,{'Content-Type':'application/vnd.android.package-archive','Content-Length':asset.release.size,'Content-Disposition':'attachment; filename="'+asset.release.name+'"'});
+        try{await pipeline(asset.stream,res);}
+        catch(error){if(error.code==='ERR_STREAM_PREMATURE_CLOSE'&&(res.destroyed||closed))return;throw error;}
+      }finally{asset.stream.destroy();}
+      return;
+    }
     if(req.method==='GET'&&p==='/api/updates/status')return json(res,200,await updates.status());
     if(req.method==='GET'&&p==='/api/updates/check'){
       rate('update-check:'+clientAddress,15);
@@ -592,6 +622,12 @@ function createApp(options={}){
     }
     if(mutating&&p!=='/api/logout'&&await updateMaintenance())S.fail('小手机正在更新，请稍后再试',503,'UPDATE_IN_PROGRESS');
     if(mutating&&p!=='/api/logout'&&storageOperation==='restore')S.fail('资料正在恢复，请稍后重试',409,'BUSY');
+    if(req.method==='POST'&&['/api/android/fcm/register','/api/android/fcm/unregister'].includes(p)){
+      rate('android-fcm:'+auth.hash,60,60000);
+      const input=await body(req,8192),currentAuth=authorized(req,true);assertWritable();
+      const origin=new URL(req.headers.origin||`${proxy.context(req).secure?'https':'http'}://${req.headers.host}`).origin;
+      return json(res,200,p.endsWith('/register')?androidFcm.register(currentAuth,input,origin):androidFcm.unregister(currentAuth,input));
+    }
     if(req.method==='GET'&&p==='/api/appearance')return json(res,200,appearance());
     if(req.method==='POST'&&p==='/api/appearance/waterdrop'){
       const input=await body(req,4096);authorized(req,true);assertWritable();
@@ -648,6 +684,12 @@ function createApp(options={}){
 
     if(req.method==='GET'&&p==='/api/storage'){
       return json(res,200,storageView());
+    }
+    if(req.method==='GET'&&p==='/api/android/notifications'){
+      return json(res,200,require('./lib/android-notifications.cjs').view(read(),u.searchParams.get('cursor')));
+    }
+    if(req.method==='GET'&&p==='/api/android/fcm'){
+      return json(res,200,{...androidFcm.status(auth),appSessionScope:androidSessionScope(auth.hash),csrfToken:auth.csrf});
     }
     if(req.method==='GET'&&p==='/api/state'){
       // Background refresh sends the revision it already has; an unchanged revision skips re-sending the whole state.
@@ -852,6 +894,7 @@ function createApp(options={}){
         return json(res,200,{state:S.publicState(read())});
       }
       case '/api/logout':db.prepare('DELETE FROM sessions WHERE hash=?').run(auth.hash);
+      androidFcm.removeSession(auth.hash);
       for(const client of clients)if(client.hash===auth.hash){client.res.end();clients.delete(client);}
       res.setHeader('Set-Cookie',`pipi_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${proxy.context(req).secure||process.env.COOKIE_SECURE==='1'?'; Secure':''}`);
       return json(res,200,{
@@ -1408,6 +1451,8 @@ function createApp(options={}){
       await stickerQueue.close();
       for(const client of clients)client.res.end();clients.clear();
       await runtime.close();
+      await androidFcm.close();
+      await androidUpdates.close();
       if(server.listening)await new Promise(resolve=>{
         server.close(resolve);
         server.closeIdleConnections();

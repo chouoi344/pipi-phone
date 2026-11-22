@@ -80,7 +80,15 @@ fs.mkdirSync(out, { recursive: true });
           )
             await page.locator('[data-action=toggle-panel]').click();
           await page.locator('[data-action=chat-' + type + ']').click();
-          await page.locator('.wallet-pay-page').waitFor();
+          const paymentForm = page.locator('form[data-payment-form="' + type + '"]');
+          await paymentForm.waitFor();
+          assert.equal(await paymentForm.locator('button[type=submit]').count(), 1);
+          assert.equal(await paymentForm.locator('.modal-header button[type=submit]').count(), 0);
+          const pay = paymentForm.locator(type === 'redpacket'
+            ? '.wallet-pay-page > .wallet-pay-confirm'
+            : '.pay-keypad > .wallet-pay-confirm');
+          assert.equal(await pay.isVisible(), true);
+          assert.equal(await pay.isDisabled(), true);
         };
         const amount = async (type) => {
           if (type === 'redpacket')

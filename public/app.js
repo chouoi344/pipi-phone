@@ -87,6 +87,12 @@
   const initialView=document.body.dataset.initialView==='life-workbench'?'life-workbench':'chats';
   const browserPositionKey='pipi.browser-position';
   let rolePanelAvailable=false;
+  const androidInboxEntry=Boolean(window.PipiAndroidPage && new URLSearchParams(location.search).get('android_entry')==='chats');
+  if(androidInboxEntry){
+    const url=new URL(location.href);
+    url.searchParams.delete('android_entry');
+    history.replaceState(null,'',url);
+  }
   const restoredPage=history.state?.pipi&&typeof history.state.route?.name==='string'?history.state:null;
   let state = null, csrf = '', authEpoch = 0, route = restoredPage?{...restoredPage.route}:{name:initialView,arg:null}, authSetup = false, modalOpen = false, searchTerm = '', searchOpen = false;
   let sourceUrl = '',binaryMedia=false,imageVariants=false,storageMaintenance=false,streamingBackup=false,accountSecurity=false,setupTokenRequired=false,momentExclusions=false;
@@ -95,6 +101,7 @@
   const routes = new Map();
   const navStack = restoredPage?.stack?.slice()||[], drafts = new Map(), chatScrolls = new Map();
   const chatHistoryPageSize=120, chatHistoryWindows=new Map();
+  const androidReadings=new Map();
   const newChatMessageIds=new Set();
   let speechSession=null,syncImageViewer=null;
   const forwardDetails=new Map();
@@ -204,7 +211,7 @@
     toastEl.classList.add('visible');
     toastTimer = setTimeout(() => toastEl.classList.remove('visible'), subtle ? 1800 : 3200);
   }
-  function setState(next) { if (next && typeof next === 'object') {if(state&&next.revision<state.revision)return;const foreign=state&&next.revision>state.revision+1;globalThis.window?.WaterdropChat?.observeState(state,next,view);trackNewChatMessages(state,next);state = next;globalThis.window?.PipiMessageLimit?.check(state);globalThis.window?.PipiStickers?.syncDetail();globalThis.window?.PipiExpiry?.sync();syncVisibleChatRead();globalThis.window?.PipiEngine?.start();if(foreign)scheduleRender();} }
+  function setState(next) { if (next && typeof next === 'object') {if(state&&next.revision<state.revision)return;const foreign=state&&next.revision>state.revision+1;globalThis.window?.WaterdropChat?.observeState(state,next,view);globalThis.window?.PipiChatNotice?.observeState(state,next);trackNewChatMessages(state,next);state = next;globalThis.window?.PipiMessageLimit?.check(state);globalThis.window?.PipiStickers?.syncDetail();globalThis.window?.PipiExpiry?.sync();syncVisibleChatRead();globalThis.window?.PipiEngine?.start();if(foreign)scheduleRender();} }
   function receiveState(next) {
     if(!state||next.revision<=state.revision)return;
     setState(next);pendingRender=true;flushRender(true);
@@ -221,6 +228,7 @@
     const focused=!!input&&active===input,anchor=captureChatLayout();
     if(input){composeText=readComposerText(input);composerSelection=readComposerSelection(input);composerScroll.input=input.scrollTop;}
     refresh();restoreChatLayout(anchor);
+    syncVisibleChatRead();globalThis.window?.PipiChatNotice?.navigated();
     if(focused){const nextInput=view.querySelector('#compose-text');if(nextInput){nextInput.focus({preventScroll:true});setComposerSelection(nextInput,composerSelection.start,composerSelection.end);}}
   }
   function updateTyping(roleId=route.arg,slow=false) {
@@ -250,7 +258,7 @@
     finally{button.disabled=false;}
   }
   function syncVisibleChatRead(){
-    const roleId=route.name==='chat'&&!document.hidden?route.arg:null;
+    const roleId=route.name==='chat'&&!document.hidden&&!modalOpen&&!childDialog?route.arg:null;
     if(!roleId||!roleById(roleId)?.unread||readRequests.has(roleId))return;
     readRequests.add(roleId);
     act('conversation.read',{roleId}).then(()=>{readRequests.delete(roleId);pendingRender=true;flushRender(true);syncVisibleChatRead();}).catch(err=>{readRequests.delete(roleId);toast(err.message);});
@@ -281,6 +289,7 @@
     if (result.csrfToken) csrf = result.csrfToken;
     if (!response.ok) {
       if (result.state) setState(result.state);
+      if(response.status===401&&window.PipiAndroidPage){csrf='';closeModal(false);renderAuth(false);}
       const error = new Error(result.error || `请求失败（${response.status}）`); error.status = response.status; throw error;
     }
     return result;
@@ -425,7 +434,10 @@
     modalReturnFocus=document.activeElement;modalOpen = true;
     trackModalHistory();
     const isPage = navigation === 'back';
-    overlay.innerHTML = `<section class="modal-sheet page-editor" data-navigation="${isPage ? 'back' : 'cancel'}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><form class="modal-form"><div class="modal-header"><button type="button" class="modal-close${isPage ? ' modal-back' : ''}" data-close aria-label="${isPage ? '返回' : '取消'}">${isPage ? icons.back : '取消'}</button><h3>${esc(title)}</h3>${onSubmit ? `<button type="submit" class="primary-btn modal-submit">${esc(submitLabel)}</button>` : '<span></span>'}</div><div class="modal-body">${html}</div><div class="modal-error" role="alert"></div></form></section>`;
+    const headerAction = onSubmit && submitLabel !== null
+      ? `<button type="submit" class="primary-btn modal-submit">${esc(submitLabel)}</button>`
+      : '<span></span>';
+    overlay.innerHTML = `<section class="modal-sheet page-editor" data-navigation="${isPage ? 'back' : 'cancel'}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><form class="modal-form"><div class="modal-header"><button type="button" class="modal-close${isPage ? ' modal-back' : ''}" data-close aria-label="${isPage ? '返回' : '取消'}">${isPage ? icons.back : '取消'}</button><h3>${esc(title)}</h3>${headerAction}</div><div class="modal-body">${html}</div><div class="modal-error" role="alert"></div></form></section>`;
     overlay.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', closeModal));
     const form = overlay.querySelector('form');
     form.addEventListener('submit', async event => {
@@ -433,7 +445,7 @@
       const button = form.querySelector('[type=submit]'); if (button.disabled) return;
       const closeButton=lockWhileSaving?form.querySelector('[data-close]'):null;
       if(closeButton){modalSaveInProgress=true;closeButton.disabled=true;form.setAttribute('aria-busy','true');}
-      button.disabled = true; const oldText = button.textContent; button.textContent = lockWhileSaving?'正在保存…':'请稍候…';const body=form.querySelector('.modal-body');if(body)body.inert=true;
+      button.disabled = true; const oldText = button.textContent; button.textContent = lockWhileSaving?'保存中':'处理中';const body=form.querySelector('.modal-body');if(body)body.inert=true;
       try { form.querySelector('.modal-error').textContent = ''; await onSubmit(form); }
       catch (err) { if (form.isConnected) form.querySelector('.modal-error').textContent = err.message; else toast(err.message); }
       finally {
@@ -492,6 +504,9 @@
     return `<label class="form-field"><span class="field-label">${esc(label)}</span><select name="${esc(name)}">${options.map(o => `<option value="${esc(o.value)}" ${o.value===selected?'selected':''}>${esc(o.label)}</option>`).join('')}</select>${help ? `<span class="field-help">${esc(help)}</span>` : ''}</label>`;
   }
   const formValues = form => Object.fromEntries(new FormData(form));
+  function changedFields(original, values) {
+    return Object.fromEntries(Object.entries(values).filter(([key, value]) => original[key] !== value));
+  }
   function cell(title, icon, action, value = '', color = '', description = '') {
     return `<button class="cell list-item" data-action="${esc(action)}"><span class="cell-icon" style="color:${color || '#555'}">${icons[icon] || icons.services}</span><span class="cell-main"><span class="cell-body"><span class="cell-title">${esc(title)}</span>${description ? `<span class="cell-desc">${esc(description)}</span>` : ''}</span>${value ? `<span class="cell-value">${esc(value)}</span>` : ''}${icons.chevron}</span></button>`;
   }
@@ -579,6 +594,7 @@
     if(overlayBackPending){queuedView={name,arg,fromBack};return;}
     if(chatSelection&&(name!=='chat'||(arg?.roleId||arg?.id||arg)!==chatSelection.roleId)){finishMessageSelection();if(overlayBackPending){queuedView={name,arg,fromBack};return;}}
     if(modalOpen&&history.state?.overlay&&!fromBack){closeModal(false);queuedView={name,arg,fromBack};return;}
+    globalThis.window?.PipiAndroidPage?.leaving(route);
     resetComposerPointerState();
     composerPanelFrom=null;
     if(composeComposing){const input=view.querySelector('#compose-text');if(input)composeText=readComposerText(input);composeComposing=false;deferredComposerUpdate=false;}
@@ -634,6 +650,8 @@
     playTransition?.();
     if(name==='skins')refreshSkinActivation();
     if(name==='chat'){syncVisibleChatRead();syncChatProgress();}
+    globalThis.window?.PipiAndroidPage?.navigated();
+    globalThis.window?.PipiChatNotice?.navigated();
   }
   // A long-press menu opens while the finger is still down. The release must not
   // count as a tap on the backdrop, otherwise the menu closes the moment it appears.
@@ -664,11 +682,23 @@
     const preserve=!resetScroll&&!['chat','contacts','settings','role-config','life-workbench'].includes(route.name)&&view.dataset.pageKey===pageKey;
     const content=preserve?view.querySelector('.content'):null;
     const position=content?capturePagePosition(content):null;
-    const restoreActivationFocus=route.name==='skins'&&document.activeElement?.matches('[data-action="activate-waterdrop"]');
+    const active=document.activeElement;
+    let focusSelector='';
+    if(view.dataset.pageKey===pageKey&&view.contains(active)&&active.matches('button,a[href],summary')){
+      if(active.id)focusSelector='#'+CSS.escape(active.id);
+      else{
+        const attributes=[...active.attributes].filter(a=>a.name.startsWith('data-')||a.name==='aria-label');
+        if(attributes.length)focusSelector=active.localName+attributes.map(a=>'['+CSS.escape(a.name)+'='+(a.value?CSS.escape(a.value):'""')+']').join('');
+      }
+      if(focusSelector&&view.querySelectorAll(focusSelector).length!==1)focusSelector='';
+    }
     renderView();
     view.dataset.pageKey=JSON.stringify([route.name,route.arg]);
     if(position&&view.dataset.pageKey===pageKey)restorePagePosition(view.querySelector('.content'),position);
-    if(restoreActivationFocus)view.querySelector('[data-action="activate-waterdrop"]')?.focus({preventScroll:true});
+    if(focusSelector&&document.activeElement===document.body&&view.dataset.pageKey===pageKey){
+      const targets=view.querySelectorAll(focusSelector);
+      if(targets.length===1)targets[0].focus({preventScroll:true});
+    }
   }
   function capturePagePosition(content){
     const position={top:content.scrollTop,left:content.scrollLeft,details:[...content.querySelectorAll('details.engine-details,details.model-context-details')].map(node=>node.open)};
@@ -704,7 +734,45 @@
   }
   function persistChatDrafts(){if(!state)return;const saved={};for(const [roleId,draft] of drafts)if(draft.text||draft.quote)saved[roleId]={text:draft.text||'',quote:draft.quote||''};if(route.name==='chat'){delete saved[route.arg];if(composeText||quoteId)saved[route.arg]={text:composeText,quote:quoteId};}try{if(Object.keys(saved).length)sessionStorage.setItem(chatDraftKey,JSON.stringify(saved));else sessionStorage.removeItem(chatDraftKey);}catch{}}
   function restoreChatDrafts(){let saved;try{saved=JSON.parse(sessionStorage.getItem(chatDraftKey)||'{}');}catch{return;}for(const [roleId,draft] of Object.entries(saved||{}))if(roleById(roleId)&&typeof draft?.text==='string'&&!drafts.has(roleId))drafts.set(roleId,{text:draft.text,quote:typeof draft.quote==='string'?draft.quote:''});const draft=route.name==='chat'?drafts.get(route.arg):null;if(draft&&!composeText&&!quoteId){composeText=draft.text;quoteId=draft.quote;composerSelection={start:composeText.length,end:composeText.length};}}
+  function captureAndroidPage(){
+    if(route.name==='chat'&&view.dataset.chatRole===route.arg){
+      const input=view.querySelector('#compose-text');if(input)composeText=readComposerText(input);
+      const list=view.querySelector('#chat-messages'),role=roleById(route.arg);
+      if(list?.dataset.scrollReady==='true'&&role){
+        const rect=list.getBoundingClientRect(),rows=[...list.querySelectorAll('[data-message]')].filter(row=>{const box=row.getBoundingClientRect();return box.bottom>rect.top&&box.top<rect.bottom;}),anchor=rows[0],historyWindow=chatHistoryWindows.get(route.arg);
+        const ids=new Set(rows.map(row=>row.dataset.message)),previous=androidReadings.get(route.arg)?.messages||[];
+        const visible=state.messages.filter(message=>ids.has(message.id)&&message.type==='text'&&['user','assistant'].includes(message.sender)).map(message=>({id:message.id,sender:message.sender,content:message.content}));
+        const messages=[...new Map([...previous,...visible].map(message=>[message.id,message])).values()].slice(-24);
+        androidReadings.delete(route.arg);androidReadings.set(route.arg,{roleId:route.arg,name:roleName(role),top:list.scrollTop,bottom:!historyWindow?.endId&&chatNearBottom(list),anchor:anchor?.dataset.message||'',offset:anchor?anchor.getBoundingClientRect().top-rect.top:0,limit:historyWindow?.limit||chatHistoryPageSize,endId:historyWindow?.endId||'',messages});
+        if(androidReadings.size>8)androidReadings.delete(androidReadings.keys().next().value);
+      }
+    }
+    const savedDrafts=[...drafts].map(([roleId,draft])=>({roleId,text:draft.text||''})).filter(draft=>draft.roleId!==route.arg||route.name!=='chat');
+    if(route.name==='chat')savedDrafts.push({roleId:route.arg,text:composeText});
+    return {route,stack:navStack,drafts:savedDrafts.filter(draft=>roleById(draft.roleId)),chats:[...androidReadings.values()].filter(chat=>roleById(chat.roleId)),chatsTop:route.name==='chats'?view.querySelector('.content')?.scrollTop||0:chatsReturn,contactsTop:route.name==='contacts'?view.querySelector('.content')?.scrollTop||0:contactsReturn?.top||0};
+  }
+  function restoreAndroidPage(){
+    const saved=window.PipiAndroidPage?.restore();if(!saved)return null;
+    for(const draft of saved.drafts)if(roleById(draft.roleId))drafts.set(draft.roleId,{text:draft.text,quote:''});
+    for(const chat of saved.chats)if(roleById(chat.roleId)){
+      androidReadings.set(chat.roleId,chat);
+      if(!chat.bottom){chatScrolls.set(chat.roleId,chat.top);chatHistoryWindows.set(chat.roleId,{limit:chat.limit,endId:chat.endId});}
+    }
+    chatsReturn=saved.chatsTop;contactsReturn={top:saved.contactsTop,term:''};
+    if(!restoredPage&&!androidInboxEntry){
+      route=saved.route;navStack.splice(0,navStack.length,...saved.stack);if(route.name==='chat'&&!navStack.length)navStack.push({name:'chats',arg:null});
+      const pages=[...navStack,route];pages.forEach((page,index)=>{const entry={pipi:true,route:{...page},stack:pages.slice(0,index)};if(index)history.pushState(entry,'');else history.replaceState(entry,'');});
+    }
+    const draft=route.name==='chat'?drafts.get(route.arg):null;
+    if(draft&&!composeText){composeText=draft.text;composerSelection={start:composeText.length,end:composeText.length};}
+    return route.name==='chat'?androidReadings.get(route.arg):null;
+  }
+  function restoreAndroidAnchor(reading){
+    if(!reading||reading.bottom)return;
+    requestAnimationFrame(()=>{const list=view.querySelector('#chat-messages');if(route.name!=='chat'||route.arg!==reading.roleId||!list)return;const anchor=[...list.querySelectorAll('[data-message]')].find(row=>row.dataset.message===reading.anchor);if(anchor)list.scrollTop+=anchor.getBoundingClientRect().top-list.getBoundingClientRect().top-reading.offset;chatScrolls.set(reading.roleId,list.scrollTop);});
+  }
   async function restoreBrowserPage(){
+    const androidReading=restoreAndroidPage();
     if(roleRoutes.has(route.name)&&!roleById(route.arg)){route={name:route.name==='chat'?'chats':'contacts',arg:null};navStack.length=0;history.replaceState({pipi:true,route:{...route},stack:[]},'');}
     restoreChatDrafts();
     if(route.name==='account-security'){if(accountSecurity)window.PipiAccount.enter();else route={name:'settings',arg:null};}
@@ -726,6 +794,7 @@
     if(position&&route.name===restoredPage.route.name&&route.name!=='chat'&&route.name!=='role-config'){
       restorePagePosition(view.querySelector('.content'),position);
     }
+    restoreAndroidAnchor(androidReading);window.PipiAndroidPage?.ready();
   }
   function pressTimer(run,delay){const id=setTimeout(()=>{pressTimers.delete(id);run();},delay);pressTimers.add(id);return id;}
   function renderView() {
@@ -838,7 +907,7 @@
     const tools=[['新的朋友','addFriend','new-friends','#fa9d3b'],['群聊','group','coming-group','#07c160'],['标签','tag','contact-tags','#2782d7'],['公众号','book','coming-official','#2782d7'],['服务号','services','coming-service-account','#2782d7']];
     const groups=[...new Set(ordered.map(r=>!searchTerm&&r.starred?'star':contactInitial(roleName(r))))];
     const rail=!searchTerm&&groups.length?'<nav class="contact-index-rail" aria-label="通讯录字母索引"><button type="button" data-contact-index="top" aria-label="通讯录顶部">↑</button>'+groups.map(letter=>'<button type="button" data-contact-index="'+letter+'" aria-label="跳到'+(letter==='star'?'星标朋友':letter)+'">'+(letter==='star'?'★':letter)+'</button>').join('')+'</nav>':'';
-    return header('通讯录',{right:iconButton('addFriend','add-friend','添加朋友')})+`<div class="search-bar"><label class="search-input-wrap">${icons.search}<input id="list-search" type="search" value="${esc(searchTerm)}" placeholder="搜索" aria-label="搜索联系人">${searchTerm?'<button type="button" class="search-clear" data-action="clear-list-search" aria-label="清除搜索">×</button>':''}</label></div><div class="content contacts">${!searchTerm?tools.map(([title,icon,action,color])=>`<button class="cell" data-action="${action}"><span class="contact-tool" style="background:${color}">${icons[icon]}</span><span class="cell-body"><span class="cell-title">${title}</span></span></button>`).join(''):''}${rows}<div class="contacts-count">${contacts.length}个朋友</div></div>${rail}${tabbar('contacts')}`;
+    return header('通讯录',{right:iconButton('addFriend','add-friend','添加朋友')})+`<div class="search-bar"><label class="search-input-wrap">${icons.search}<input id="list-search" type="search" value="${esc(searchTerm)}" placeholder="搜索" aria-label="搜索联系人">${searchTerm?'<button type="button" class="search-clear" data-action="clear-list-search" aria-label="清除搜索">×</button>':''}</label></div><div class="content contacts${rail?' contacts-has-index':''}">${!searchTerm?tools.map(([title,icon,action,color])=>`<button class="cell" data-action="${action}"><span class="contact-tool" style="background:${color}">${icons[icon]}</span><span class="cell-body"><span class="cell-title">${title}</span></span></button>`).join(''):''}${rows}<div class="contacts-count">${contacts.length}个朋友</div></div>${rail}${tabbar('contacts')}`;
   }
   function renderDiscover() {
     const unreadMoments=(state.momentNotifications||[]).some(n=>{const p=roleById(n.actorId)?.permissions||{};return !n.read&&!p.blocked&&!p.onlyChat&&!p.hideTheirMoments;});
@@ -964,7 +1033,7 @@
   }
   function renderSettings() {
     const group=(title,rows)=>`<p class="section-title settings-group-title">${title}</p><section class="section">${rows}</section>`;
-    return header('设置',{back:true})+`<div class="content page-content settings-content">${group('账号',plainCell('个人资料','edit-profile')+(accountSecurity?plainCell('账号与安全','account-security'):''))}${group('小手机',plainCell('小手机','engine-home',state.settings?.ai?.assign?.chat?'已选择模型':'未选择模型')+plainCell('用量与日志','engine-usage'))}${group('通用',plainCell('朋友权限','friend-permissions')+plainCell('聊天记录管理','backup')+(storageMaintenance?plainCell('存储空间','storage'):''))}${group('关于',plainCell('关于屁屁机','about'))}<section class="section"><button class="cell centered-cell" data-action="logout">退出登录</button></section></div>`;
+    return header('设置',{back:true})+`<div class="content page-content settings-content">${group('账号',plainCell('个人资料','edit-profile')+(accountSecurity?plainCell('账号与安全','account-security'):''))}${group('小手机',plainCell('小手机','engine-home',state.settings?.ai?.assign?.chat?'已选择模型':'未选择模型')+plainCell('用量与日志','engine-usage'))}${group('通用',(window.PipiAndroidPage?plainCell('App 连接设置','android-settings'):'')+plainCell('朋友权限','friend-permissions')+plainCell('聊天记录管理','backup')+(storageMaintenance?plainCell('存储空间','storage'):''))}${group('关于',plainCell('关于屁屁机','about'))}<section class="section"><button class="cell centered-cell" data-action="logout">退出登录</button></section></div>`;
   }
   routes.set('storage',()=>header('存储空间',{back:true})+window.PipiStorage.render());
   routes.set('account-security',()=>header('账号与安全',{back:true})+window.PipiAccount.render());
@@ -975,7 +1044,16 @@
   function renderContactTags(){const tag=route.name==='tag-contacts'?String(route.arg||''):null,tags=[...new Set((state.roles||[]).flatMap(r=>r.tags||[]))];return header(tag||'标签',{back:true})+`<div class="content page-content"><section class="section">${tag?(state.roles||[]).filter(r=>(r.tags||[]).includes(tag)).map(r=>`<button class="cell" data-nav="role" data-arg="${esc(r.id)}">${avatar(r,40)}<span class="cell-body cell-title">${esc(roleName(r))}</span></button>`).join(''):tags.map(t=>`<button class="cell plain-cell" data-nav="tag-contacts" data-arg="${esc(t)}"><span class="cell-body cell-title">${esc(t)}</span><span class="cell-value">${(state.roles||[]).filter(r=>(r.tags||[]).includes(t)).length}</span>${icons.chevron}</button>`).join('')}</section>${!tag&&!tags.length?'<div class="empty"><p>暂无标签</p><p>在朋友资料的「设置备注和标签」中添加。</p></div>':''}</div>`;}
   function editContactRemark(r){
     const html=field('备注名','remark',r.remark||'',r.name||'')+field('标签','tags',(r.tags||[]).join('，'),'多个标签用逗号分隔')+field('电话号码','phone',r.phone||'','添加电话号码','tel')+field('描述','description',r.description||'','添加描述','textarea');
-    openModal('设置备注和标签',html,async form=>{const values=formValues(form),tags=values.tags.split(/[,，、\n]/).map(t=>t.trim()).filter(Boolean);if(tags.length>10||tags.some(t=>t.length>30))throw new Error('最多设置10个标签，每个不超过30个字');await act('role.save',{id:r.id,remark:values.remark,tags,phone:values.phone,description:values.description});if(form.isConnected){closeModal(false);refresh();}},'完成',undefined,'cancel',{lockWhileSaving:true});
+    openModal('设置备注和标签',html,async form=>{
+      const changes=changedFields(original,formValues(form));
+      if('tags' in changes){
+        changes.tags=changes.tags.split(/[,，、\n]/).map(t=>t.trim()).filter(Boolean);
+        if(changes.tags.length>10||changes.tags.some(t=>t.length>30))throw new Error('最多设置10个标签，每个不超过30个字');
+      }
+      if(Object.keys(changes).length)await act('role.save',{id:r.id,...changes});
+      if(form.isConnected){closeModal(false);refresh();}
+    },'完成',undefined,'cancel',{lockWhileSaving:true});
+    const original=formValues(overlay.querySelector('.modal-form'));
     overlay.querySelector('.modal-sheet')?.classList.add('contact-remark-editor');
   }
   function plainCell(title,action,value='',extra='') {return `<button class="cell plain-cell" data-action="${esc(action)}"><span class="cell-body"><span class="cell-title">${esc(title)}</span></span>${value?`<span class="cell-value">${esc(value)}</span>`:''}${extra||icons.chevron}</button>`;}
@@ -1040,7 +1118,40 @@
   function editProfileField(key){const labels={name:'名字',wechatId:'微信号',region:'地区',bio:'个性签名',patText:'拍一拍'},p=state.profile||{};openModal(labels[key],field(labels[key],key,p[key]||'','',key==='bio'?'textarea':'text',key==='patText'?'填写“拍了拍自己的”后面的内容。留空可恢复默认。':''),async form=>{const raw=formValues(form)[key],value=key==='wechatId'&&raw===p[key]?raw:raw.trim();if(key==='name'&&!value)throw new Error('名字不能为空');if(key==='wechatId')checkWechatId(value,p.wechatId);await act('profile.save',{[key]:value});if(form.isConnected){closeModal();refresh();}});if(key==='patText')overlay.querySelector('[name=patText]').maxLength=100;}
   function renderAbout() {
     const sourceRow=sourceUrl?`<a class="cell plain-cell" href="${esc(sourceUrl)}" target="_blank" rel="noopener noreferrer"><span class="cell-body"><span class="cell-title">源代码</span></span><span class="cell-value">查看</span>${icons.chevron}</a>`:`<div class="cell plain-cell"><span class="cell-body"><span class="cell-title">源代码</span></span><span class="cell-value">随安装包提供</span></div>`;
-    return header('关于屁屁机',{back:true})+`<div class="content page-content"><div class="about-logo"><div class="auth-logo">${icons.chat}</div><h3>屁屁机</h3><p>v${esc(globalThis.__pipiVersion||'0.13.9')}</p></div>${globalThis.__pipiUpdatesEnabled?(globalThis.PipiUpdates?.markup()||''):''}<div class="about-text">一个独立账号，一部只属于你的小手机。<br>聊天、日常与共同记忆，都留在你的服务器。<br><br>首次安装时，通讯录和聊天记录为空。真实回复需要配置模型服务；调用与费用由你选择的服务商决定。钱包与红包仅为虚拟互动，不涉及真实资金。<br><br>本项目为开源、非售卖项目。界面复用 MIT 许可的 WeUI 与 GPL-3.0-only 许可的 LiangNiang/fake-world；本项目整体以 AGPL-3.0-only 发布。原生菜单尺寸、聊天信息分组与面板分页参考 alexiscn/WeChatSwift（MIT 代码）；未复制其截图素材、头像或字体。</div><section class="section">${sourceRow}</section><p class="page-note">尚未开放：群聊、扫码、音视频通话等展示入口。不会将未完成的功能伪装为真实能力。</p></div>`;
+    return header('关于屁屁机',{back:true})+`<div class="content page-content about-page">
+      <div class="about-logo">
+        <div class="auth-logo">${icons.chat}</div>
+        <h3>屁屁机</h3>
+        <p>v${esc(globalThis.__pipiVersion||'0.13.9')}</p>
+      </div>
+      <div class="about-intro">
+        <p>一个独立账号，一部专属的小手机。</p>
+        <p>聊天、日常与共同记忆，都留在你的服务器。</p>
+        <p>数据完全独立属于自己。</p>
+      </div>
+      ${globalThis.__pipiUpdatesEnabled?(globalThis.PipiUpdates?.markup()||''):''}
+      <section class="section">
+        <div class="about-copy">
+          <h3>使用说明</h3>
+          <p>首次安装时，通讯录和聊天记录都是空的。</p>
+          <p>配置模型服务后，好友就能回复你。模型调用由你选择的服务商提供，费用按其规则计算。</p>
+          <p>钱包和红包仅用于虚拟互动，不涉及真实资金。</p>
+          <p>群聊、扫码和音视频通话目前仅作展示。</p>
+        </div>
+      </section>
+      <section class="section">
+        <div class="about-copy">
+          <h3>开源与许可</h3>
+          <p>屁屁机是开源、非售卖项目，整体采用 <span class="about-license">AGPL-3.0-only</span> 许可证发布。</p>
+          <dl class="about-credits">
+            <div><dt>WeUI <span class="about-license">MIT</span></dt><dd>提供列表、弹窗等界面控件。</dd></div>
+            <div><dt>LiangNiang/fake-world <span class="about-license">GPL-3.0-only</span></dt><dd>部分界面布局与图标来自这个项目。</dd></div>
+            <div><dt>alexiscn/WeChatSwift <span class="about-license">MIT（代码）</span></dt><dd>菜单尺寸、聊天信息分组和面板分页参考了这个项目。其截图、头像和字体未用于屁屁机。</dd></div>
+          </dl>
+        </div>
+        ${sourceRow}
+      </section>
+    </div>`;
   }
   function renderBackup() {
     return header('备份与恢复',{back:true})+`<div class="content page-content"><section class="section">${cell('导出完整备份','backupExport','download-backup','','#5382b3','包括聊天、角色、记忆、图片和日常记录')}${cell('从备份恢复','backupRestore','restore-backup','','#5382b3','恢复前会再次提示确认')}</section><p class="page-note">导出时可包含模型 API Key。恢复会覆盖当前业务资料，并保留当前登录密码。密钥只用于与备份匹配的服务商地址。</p></div>`;
@@ -1347,12 +1458,16 @@
     input.addEventListener('compositionend',()=>{composing=false;searchComposing=false;if(input.isConnected){setValue(input.value);update();flushRender();}});
     input.oninput=event=>{if(event.isComposing){composing=true;searchComposing=true;}setValue(input.value);if(!composing&&!event.isComposing)update();};
   }
+  function syncContactIndex(rail){
+    rail.classList.toggle('index-scrollable',rail.scrollHeight>rail.clientHeight+1);
+  }
   function bindContactIndex(){
     const rail=view.querySelector('.contact-index-rail'),content=view.querySelector('.content.contacts');if(!rail||!content)return;
+    syncContactIndex(rail);
     const jump=letter=>{if(letter==='top'){content.scrollTop=0;return;}const group=document.getElementById('contact-group-'+letter);if(group&&content.contains(group))content.scrollTop+=group.getBoundingClientRect().top-content.getBoundingClientRect().top;};
     rail.querySelectorAll('[data-contact-index]').forEach(button=>button.onclick=()=>jump(button.dataset.contactIndex));
     const follow=event=>{const button=document.elementFromPoint(event.clientX,event.clientY)?.closest('[data-contact-index]');if(button&&rail.contains(button))jump(button.dataset.contactIndex);};
-    rail.onpointerdown=event=>{if(event.button!==0)return;event.preventDefault();rail.setPointerCapture(event.pointerId);follow(event);};rail.onpointermove=event=>{if(rail.hasPointerCapture(event.pointerId))follow(event);};
+    rail.onpointerdown=event=>{if(event.button!==0||rail.classList.contains('index-scrollable'))return;event.preventDefault();rail.setPointerCapture(event.pointerId);follow(event);};rail.onpointermove=event=>{if(rail.hasPointerCapture(event.pointerId))follow(event);};
   }
   function bindMain() {
     if (window.ClassicSocial) {
@@ -1388,24 +1503,12 @@
     if(route.name==='account-security')window.PipiAccount.bind();
     if(route.name==='stickers'){window.PipiStickers.bind(view);const file=view.querySelector('#sticker-file');if(file)file.onchange=()=>uploadStickers([...file.files],route,authEpoch);}
   }
-  let openingRequest = 0;
-  async function openWhenReady(name, load, trigger) {
-    if (trigger?.getAttribute('aria-busy') === 'true') return;
-    const request = ++openingRequest, origin = route;
-    trigger?.setAttribute('aria-busy','true');
-    try {
-      await load();
-      if (request === openingRequest && route === origin && !modalOpen) showView(name);
-    } finally {
-      trigger?.removeAttribute('aria-busy');
-    }
-  }
   function bindActionButtons(root) { root?.querySelectorAll('[data-action]').forEach(el=>{el.addEventListener('click',event=>{event.preventDefault(); Promise.resolve(handleAction(el.dataset.action,el)).catch(err=>toast(err.message));});}); }
   async function handleAction(action,trigger) {
     const r=roleById(route.arg);
     if(action.startsWith('permission-')&&r){const key=action.slice('permission-'.length);await act('role.save',{id:r.id,permissions:{[key]:!r.permissions?.[key]}});refresh();return;}
     if(action==='engine-usage'){await window.PipiUsage.open();return;}
-    if(action==='engine-home'||action==='engine-functions'){await openWhenReady(action,window.PipiEngine.refreshConfig,trigger);return;}
+    if(action==='engine-home'||action==='engine-functions'){window.PipiEngine.openSettings(action);return;}
     if(action==='role-stickers'||action==='role-reminders'){if(r){if(action==='role-reminders')window.PipiEngine?.invalidateJobs(r.id);showView(action,r.id);}return;}
     if(action==='activate-waterdrop')return activateWaterdrop(trigger);
     if (['skins','settings','providers','role-personas','about','backup','moments','ledger','farm','favorites','services','wallet'].includes(action)) { showView(action); return; }
@@ -1416,11 +1519,22 @@
       case 'open-status':if(activeStatus())showView('status');else{statusDraft={preset:'',description:''};showView('status-picker');}break;
       case 'edit-status':{const current=activeStatus();statusDraft={preset:current?.preset||'',description:current?.description||''};showView(current?'status-editor':'status-picker');break;}
       case 'choose-status':showView('status-picker');break;
-      case 'status-history':{const origin=route,result=await api('/api/state');setState(result.state||result);if(route===origin)showView('status-history');break;}
+      case 'status-history':{
+        showView('status-history');
+        // The server archives a status that expired since the last state update.
+        if(state.profile.status&&state.profile.status.expiresAt<=Date.now()){
+          const opened=route;
+          return api('/api/state').then(result=>{
+            if(route===opened){setState(result.state||result);refresh();}
+          },error=>{if(route===opened)toast(error.message);});
+        }
+        break;
+      }
       case 'cancel-status':statusDraft=null;leaveStatusFlow();break;
       case 'end-status':confirmDialog('结束状态？','结束后将不再展示当前状态。',async isCurrent=>{await act('status.end');if(isCurrent())leaveStatusFlow(true);},'结束状态');break;
       case 'storage': showView('storage');break;
       case 'account-security': showView('account-security');break;
+      case 'android-settings': if(window.PipiAndroidPage)location.href='/__android/settings';break;
       case 'back': goBack(); break;
       case 'search': searchOpen=!searchOpen; searchTerm=''; refresh(); view.querySelector('#list-search')?.focus(); break;
       case 'global-search':globalSearchTerm='';showView('global-search');view.querySelector('#list-search').focus();break;
@@ -2374,7 +2488,17 @@
   function editProfile() {
     const profile=state.profile||{};
     const html=avatarForm(profile)+field('名字','name',profile.name,'怎么称呼你')+field('微信号','wechatId',profile.wechatId,'设置一个个人标识')+field('个性签名','bio',profile.bio,'写一点此刻的心情','textarea')+field('地区','region',profile.region,'例如 中国 · 杭州');
-    openModal('个人资料',html,async form=>{const values=formValues(form);if(!values.name.trim())throw new Error('请填写名字');checkWechatId(values.wechatId,profile.wechatId);await act('profile.save',{...values,avatar:avatarDraft});if(form.isConnected){closeModal();refresh();}toast('个人资料已保存');});bindAvatar(profile);
+    openModal('个人资料',html,async form=>{
+      const values=formValues(form);
+      if(!values.name.trim())throw new Error('请填写名字');
+      checkWechatId(values.wechatId,profile.wechatId);
+      const changes=changedFields(original,{...values,avatar:avatarDraft});
+      if(Object.keys(changes).length)await act('profile.save',changes);
+      if(form.isConnected){closeModal();refresh();}
+      toast('个人资料已保存');
+    });
+    const original={...formValues(overlay.querySelector('.modal-form')),avatar:avatarDraft};
+    bindAvatar(profile);
   }
   function editProfileGender(){
     const gender=state.profile?.gender;
@@ -2390,9 +2514,16 @@
     openModal(id?'编辑角色资料':'添加新的朋友',html,async form=>{
       const values=formValues(form);if(!values.name.trim())throw new Error('请填写角色名字');
       checkWechatId(values.wechatId,r.wechatId);
-      await act('role.save',{...(id?{id}:{}),...values,...(!id?{momentsAutoEnabled:form.elements.momentsAutoEnabled.checked}:{}),avatar:avatarDraft});if(!form.isConnected){toast('角色资料已保存');return;}closeModal();
+      const draft={...values,avatar:avatarDraft};
+      if(id){
+        const changes=changedFields(original,draft);
+        if(Object.keys(changes).length)await act('role.save',{id,...changes});
+      }else await act('role.save',{...draft,momentsAutoEnabled:form.elements.momentsAutoEnabled.checked});
+      if(!form.isConnected){toast('角色资料已保存');return;}closeModal();
       if(!id&&route.name!=='new-friends')showView('new-friends');else refresh();toast('角色资料已保存');
-    },id?'保存':'添加朋友');bindAvatar(r);
+    },id?'保存':'添加朋友');
+    const original={...formValues(overlay.querySelector('.modal-form')),avatar:avatarDraft};
+    bindAvatar(r);
     const pat=overlay.querySelector('[name=patText]'),patPreview=overlay.querySelector('#role-pat-preview'),roleNameInput=overlay.querySelector('[name=name]');pat.maxLength=100;const previewPat=()=>{patPreview.textContent='我拍了拍“'+(overlay.querySelector('[name=remark]').value||roleNameInput.value||'朋友')+'”'+(pat.value?'的'+pat.value:'');};pat.oninput=previewPat;roleNameInput.oninput=previewPat;overlay.querySelector('[name=remark]').oninput=previewPat;previewPat();
     const pick=overlay.querySelector('#pick-role-cover'),file=overlay.querySelector('#role-cover-file'),value=overlay.querySelector('[name=cover]');
     bindProfileImage(pick,file,'朋友圈背景图',image=>{value.value=image;pick.innerHTML=`<img src="${esc(image)}" alt="朋友圈背景图预览">`;});
@@ -2490,6 +2621,7 @@
         openModal('恢复这份备份？',`<div class="inline-note" style="margin:12px 0">文件：${esc(file.name)}<br>恢复会覆盖当前业务资料，保留登录密码。${keyNote}</div><label class="check-row"><input type="checkbox" name="confirmed" required>我已导出需要保留的数据，确认恢复</label>`,async form=>{
           if(!form.elements.confirmed.checked)throw new Error('请先勾选确认');
           const result=tar?await apiRaw('/api/restore/tar',file):await api('/api/restore',{backup,confirm:true});
+          window.PipiChatNotice?.rebase(result.state);
           setState(result.state);
           if(form.isConnected){closeModal(false);void afterOverlayBack().then(()=>showView('chats'));}
           const restored=result.restoredModelKeys?`，已恢复 ${result.restoredModelKeys} 个模型密钥`:'';
@@ -2503,6 +2635,8 @@
     };input.click();
   }
   function renderAuth(setup, connectionError = '') {
+    window.PipiChatNotice?.clear();
+    if(!connectionError)window.PipiAndroidPage?.clearSession();
     window.PipiSkins.configure(null);
     stopSpeech();authSetup=setup;authEpoch++;state=null;window.PipiEngine?.stop();
     window.PipiAccount?.reset();window.PipiStorage?.reset();
@@ -2511,7 +2645,11 @@
     clearTimeout(emojiRecentTimer);queuedEmojiRecents=[];emojiRecentsSaving=false;
     systemFilePicker?.remove();systemFilePicker=null;
     view.dataset.route='auth';
-    view.innerHTML=`<div class="auth-content"><div class="auth-logo">${icons.chat}</div><h1>屁屁机</h1>${setup?'':'<p class="auth-subtitle">熟悉的人和日常，都在这里等你。</p>'}${connectionError?`<div class="inline-note">${esc(connectionError)}</div><button class="primary-btn weui-btn weui-btn_primary" id="retry-boot">重新连接</button>`:`<form id="auth-form">${setup?field('你的名字','displayName','','怎么称呼你'):''}${field(setup?'设置访问密码':'访问密码','password','',setup?'至少 8 个字符':'','password')}${setup?field('再次输入密码','confirmPassword','','再输入一次','password')+(setupTokenRequired?field('设置令牌','setupToken','','请输入服务器提供的设置令牌','password'):''):''}<div class="auth-error" role="alert"></div><button type="submit" class="primary-btn weui-btn weui-btn_primary">${setup?'开启我的小手机':'进入小手机'}</button></form>`}<div class="auth-bottom">${setup?'一个账号 · 一部独立小手机<br>请保存好密码，当前版本不提供邮箱找回':'你的数据保存在当前服务器<br>密码仅用于访问这部小手机'}<br>开源 · 非售卖 · 无内置模型密钥</div></div>`;
+    const footer=(setup
+      ? '<div>一个账号 · 一部独立小手机</div><div>请保存好密码，当前版本不提供邮箱找回</div>'
+      : '<div>你的数据保存在当前服务器</div><div>密码仅用于访问这部小手机</div>')
+      + '<div>屁屁机为开源 · 非售卖小手机</div>';
+    view.innerHTML=`<div class="auth-content${setup?' is-setup':''}"><div class="auth-logo">${icons.chat}</div><h1${setup?' tabindex="-1"':''}>屁屁机</h1>${setup?'':'<p class="auth-subtitle">熟悉的人和日常，都在这里等你。</p>'}${connectionError?`<div class="inline-note">${esc(connectionError)}</div><button class="primary-btn weui-btn weui-btn_primary" id="retry-boot">重新连接</button>`:`<form id="auth-form">${setup?field('你的名字','displayName','','怎么称呼你'):''}${field(setup?'设置访问密码':'访问密码','password','',setup?'至少 8 个字符':'','password')}${setup?field('再次输入密码','confirmPassword','','再输入一次','password')+(setupTokenRequired?field('设置令牌','setupToken','','请输入服务器提供的设置令牌','password'):''):''}<div class="auth-error" role="alert"></div><button type="submit" class="primary-btn weui-btn weui-btn_primary">${setup?'开启我的小手机':'进入小手机'}</button></form>`}<footer class="auth-bottom">${footer}</footer></div>`;
     view.querySelector('#retry-boot')?.addEventListener('click',boot);
     const form=view.querySelector('#auth-form');if(!form)return;
     form.querySelector('[name=password]').autocomplete=setup?'new-password':'current-password';if(setup&&setupTokenRequired)form.querySelector('[name=setupToken]').required=true;
@@ -2520,20 +2658,43 @@
       if(!values.password||(setup&&values.password.length<8)){error.textContent=setup?'请设置至少 8 个字符的密码':'请输入访问密码';return;}
       if(setup&&values.password!==values.confirmPassword){error.textContent='两次输入的密码不一致';return;}
       button.disabled=true;error.textContent='';button.textContent='正在进入…';
-      try{const result=await api(setup?'/api/setup':'/api/login',{password:values.password,...(setup?{displayName:values.displayName,setupToken:values.setupToken}:{})});window.PipiSkins.configure(result.appearance);setState(result.state);if(!state){const next=await api('/api/state');setState(next.state||next);}restoreChatDrafts();showView(initialView);}
+      try{const result=await api(setup?'/api/setup':'/api/login',{password:values.password,...(setup?{displayName:values.displayName,setupToken:values.setupToken}:{})});window.PipiAndroidPage?.beginSession(result.appSessionScope);window.PipiSkins.configure(result.appearance);setState(result.state);if(!state){const next=await api('/api/state');setState(next.state||next);}restoreChatDrafts();showView(initialView);window.PipiAndroidPage?.ready();}
       catch(err){error.textContent=err.message;button.textContent=setup?'开启我的小手机':'进入小手机';}
       finally{button.disabled=false;}
     };
+    if(setup)window.PipiFirstUseNotice?.show(view);
   }
   async function boot() {
     if(boot.running)return;
     boot.running=true;
-    try{const status=await api('/api/status');sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;imageVariants=binaryMedia&&status.imageVariants===true;storageMaintenance=status.storageMaintenance===true;streamingBackup=status.streamingBackup===true;accountSecurity=status.accountSecurity===true;setupTokenRequired=status.setupTokenRequired===true;momentExclusions=status.momentExclusions===true;window.PipiMessageLimit?.configure(status.messageLimit);rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){window.PipiSkins.configure(status.appearance);const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
-    catch(err){renderAuth(false,`暂时无法连接这部小手机。${err.message}`);}
+    try{const status=await api('/api/status');sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;imageVariants=binaryMedia&&status.imageVariants===true;storageMaintenance=status.storageMaintenance===true;streamingBackup=status.streamingBackup===true;accountSecurity=status.accountSecurity===true;setupTokenRequired=status.setupTokenRequired===true;momentExclusions=status.momentExclusions===true;window.PipiMessageLimit?.configure(status.messageLimit);rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;if(status.authenticated){window.PipiAndroidPage?.beginSession(status.appSessionScope);window.PipiSkins.configure(status.appearance);const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);}
+    catch(err){if(!window.PipiAndroidPage?.showOffline(err.message))renderAuth(false,`暂时无法连接这部小手机。${err.message}`);}
     finally{boot.running=false;}
   }
+  function openIncomingChat(roleId) {
+    if(!roleById(roleId))return false;
+    if(modalSaveInProgress||overlay.querySelector('.modal-form .modal-body[inert],[aria-busy=true]')||view.querySelector('.inline-provider-fields:disabled,form[inert],[aria-busy=true]')){toast('正在保存，请完成后再打开消息');return false;}
+    if(recordingSession||dictationBusy){toast('请先完成或取消录音，再打开消息');return false;}
+    const root=modalOpen?overlay:route.name==='chat'?null:view;
+    const controls=root?[...root.querySelectorAll('input:not([type=hidden]):not([type=search]):not([type=file]):not([readonly]):not(:disabled),textarea:not([readonly]):not(:disabled),select:not(:disabled),[contenteditable=true]:not([aria-readonly=true])')]:[];
+    if(modalOpen&&overlay.querySelector('.modal-form [type=submit]')||controls.some(control=>control.getClientRects().length&&!control.closest('.search-box,.search-bar')&&(control.closest('form')?.querySelector('[type=submit]')||control.closest('[data-life-root]')&&view.querySelector('[data-life-action=saveAll]')))){toast('请先保存或取消当前编辑，再打开消息');return false;}
+    showView('chat',roleId);return true;
+  }
+  window.PipiChatNotice?.connect({
+    visibleChat:roleId=>route.name==='chat'&&route.arg===roleId&&!modalOpen&&!childDialog,
+    openChat:openIncomingChat
+  });
   window.PipiExpiry={sync:syncExpiredMedia};
-  window.Pipi={getState:()=>state,supportsMomentExclusions:()=>momentExclusions,api,apiRaw,act,receiveState,updateTyping,syncChatProgress,readImage,readProfileImage,uploadMedia,uploadImage,uploadImageData,uploadProfileImage,showView,goBack,openWhenReady,openChatMessage:(roleId,messageId)=>{focusMessageId=messageId;showView('chat',roleId);},preserveChatLayout:callback=>{const snapshot=captureChatLayout();callback();restoreChatLayout(snapshot);},scrollChatToBottom:(roleId)=>{forceBottomRole=roleId;chatScrolls.delete(roleId);if(route.name==='chat'&&route.arg===roleId)scrollChat();},openModal,closeModal,openPage,openNestedPage,openChildDialog,closeChildDialog,closePage:closeModal,openPhoto:lightbox,actionSheet,confirmDialog,toast,esc,avatar,icons,refresh,setState,registerRoute:(name,renderer)=>routes.set(name,renderer)};
+  window.Pipi={getState:()=>state,supportsMomentExclusions:()=>momentExclusions,api,apiRaw,act,receiveState,updateTyping,syncChatProgress,readImage,readProfileImage,uploadMedia,uploadImage,uploadImageData,uploadProfileImage,showView,goBack,openChatMessage:(roleId,messageId)=>{focusMessageId=messageId;showView('chat',roleId);},preserveChatLayout:callback=>{const snapshot=captureChatLayout();callback();restoreChatLayout(snapshot);},scrollChatToBottom:(roleId)=>{forceBottomRole=roleId;chatScrolls.delete(roleId);if(route.name==='chat'&&route.arg===roleId)scrollChat();},openModal,closeModal,openPage,openNestedPage,openChildDialog,closeChildDialog,closePage:closeModal,openPhoto:lightbox,actionSheet,confirmDialog,toast,esc,avatar,icons,refresh,setState,registerRoute:(name,renderer)=>routes.set(name,renderer)};
+  window.PipiAndroidPage?.connect({
+    ready:()=>Boolean(state)&&view.dataset.route!=='auth',route:()=>route,capture:captureAndroidPage,warn:toast,retry:boot,visibleChat:roleId=>route.name==='chat'&&route.arg===roleId&&!modalOpen&&!childDialog,
+    clear:()=>{drafts.clear();chatScrolls.clear();androidReadings.clear();composeText='';quoteId='';sessionStorage.removeItem(chatDraftKey);sessionStorage.removeItem(browserPositionKey);},
+    canBack:()=>Boolean(overlayBackPending||childDialog||modalOpen||chatSelection||history.state?.featureSelection||state&&(navStack.length||route.name!=='chats')),
+    back:()=>{if(!modalSaveInProgress)goBack();},previous:()=>navStack.at(-1)||{name:'chats',arg:null},
+    previewTarget:()=>childDialog?.dialog|| (modalOpen?overlay:view),
+    previewPage:page=>{if(page.name!=='chats')return null;const preview=document.createElement('div');preview.className=view.className;preview.innerHTML=renderChats();preview.querySelector('.content').scrollTop=chatsReturn;return preview;},
+    openChat:openIncomingChat
+  });
   document.addEventListener('error',event=>{const image=event.target;if(image.tagName!=='IMG'||!/^\/api\/media\//.test(image.getAttribute('src')||''))return;image.classList.add('unavailable-media');image.dataset.availableAlt??=image.alt;image.alt='图片不可用';},true);
   document.addEventListener('load',event=>{const image=event.target;if(image.tagName!=='IMG'||!image.classList.contains('unavailable-media'))return;image.classList.remove('unavailable-media');image.alt=image.dataset.availableAlt;delete image.dataset.availableAlt;},true);
   document.addEventListener('keydown', event => {
@@ -2586,6 +2747,7 @@
     document.documentElement.style.setProperty('--app-height',height+'px');
     document.documentElement.style.setProperty('--viewport-top',top+'px');
     lastViewportSize=size;
+    const rail=view.querySelector('.contact-index-rail');if(rail)syncContactIndex(rail);
     restoreChatLayout(anchor);
   }
   function scheduleViewport(){if(!viewportFrame)viewportFrame=requestAnimationFrame(sizeViewport);}

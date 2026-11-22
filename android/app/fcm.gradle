@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+import groovy.json.JsonSlurper
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.Property
+
+abstract class GeneratePipiFcmResources extends DefaultTask {
+    @InputFile abstract RegularFileProperty getConfiguration()
+    @Input abstract Property<String> getAppPackage()
+    @OutputDirectory abstract DirectoryProperty getOutputDirectory()
+
+    @TaskAction void generate() {
+        def raw = configuration.get().asFile.getText('UTF-8')
+        if (raw.contains('private_key')) throw new GradleException('FCM APK 配置不得包含服务端私钥。请仅提供 google-services.json。')
+        def config = new JsonSlurper().parseText(raw)
+        def client = config.client?.find { it.client_info?.android_client_info?.package_name == appPackage.get() }
+        if (!client) throw new GradleException('google-services.json 没有匹配的 Android 包名：' + appPackage.get())
+        def values = [google_app_id:client.client_info.mobilesdk_app_id,
+                      google_api_key:client.api_key?.find()?.current_key,
+                      gcm_defaultSenderId:config.project_info?.project_number,
+                      project_id:config.project_info?.project_id]
+        if (values.any { !it.value || !(it.value instanceof String) }) throw new GradleException('google-services.json 缺少 FCM 必需的项目和客户端标识。')
+        def escape = { value -> value.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;').replace("'",'&apos;') }
+        def xml = '<resources>\n' + values.collect { name,value -> '  <string name="' + name + '" translatable="false">' + escape(value) + '</string>' }.join('\n') + '\n</resources>\n'
+        def destination = new File(outputDirectory.get().asFile, 'values/pipi-fcm.xml')
+        destination.parentFile.mkdirs(); destination.setText(xml, 'UTF-8')
+    }
+}
+
+def configPath = providers.gradleProperty('pipiGoogleServices').orNull
+if (!configPath) throw new GradleException('可选 FCM 构建需要 -PpipiGoogleServices=管理员自己的 google-services.json 绝对路径。')
+android.defaultConfig.minSdk = 24
+android.sourceSets.configureEach { source ->
+    if (android.buildTypes.names.contains(source.name)) source.manifest.srcFile('src/fcm/AndroidManifest.xml')
+}
+dependencies { implementation 'com.google.firebase:firebase-messaging:26.0.2' }
+androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+    def resources = tasks.register('generate' + variant.name.capitalize() + 'PipiFcmResources', GeneratePipiFcmResources) {
+        configuration.set(rootProject.file(configPath))
+        appPackage.set(variant.applicationId)
+        outputDirectory.set(layout.buildDirectory.dir('generated/pipiFcm/' + variant.name))
+    }
+    variant.sources.res.addGeneratedSourceDirectory(resources) { it.outputDirectory }
+}

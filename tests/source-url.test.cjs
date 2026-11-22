@@ -64,8 +64,9 @@ test('source URL: deployment metadata reaches the About link across setup and au
   assert.ok(rendered.html.includes('href="'+expected.replaceAll('&','&amp;')+'"'));
   assert.match(rendered.html,/<a class="cell plain-cell"[^>]+target="_blank" rel="noopener noreferrer"/);
   assert.match(rendered.html,/源代码/);assert.doesNotMatch(rendered.html,/随安装包提供/);
-  assert.match(rendered.html,/本项目整体以 AGPL-3\.0-only 发布/);
-  assert.match(rendered.html,/GPL-3\.0-only 许可的 LiangNiang\/fake-world/);
+  const aboutText=rendered.html.replace(/<[^>]+>/g,'');
+  assert.match(aboutText,/整体采用 AGPL-3\.0-only 许可证发布/);
+  assert.match(aboutText,/LiangNiang\/fake-world GPL-3\.0-only/);
   assert.ok(rendered.html.includes('v'+require('../package.json').version));
   const setup=await fetch(f.base+'/api/setup',{method:'POST',headers:{Origin:f.base,'Content-Type':'application/json'},body:JSON.stringify({password:'Source-url-isolated-test_2026!',displayName:'Source URL QA'})});
   assert.equal(setup.status,200);

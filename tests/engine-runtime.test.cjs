@@ -289,6 +289,23 @@ test('重试旧失败消息时仍包含更晚的待回复消息，不会把未�
   try{const recent=f.send('新待回复消息');f.mutate(s=>{S.find(s.messages,old.id).status='pending';});f.runtime.enqueue(f.roleId,old.id);await until(()=>!f.runtime.isBusy(f.roleId));assert.equal(f.requests.length,1);const request=JSON.stringify(f.requests[0].messages);assert.ok(request.includes('旧失败消息'));assert.ok(request.includes('新待回复消息'));assert.equal(S.find(f.state().messages,old.id).status,'sent');assert.equal(S.find(f.state().messages,recent.id).status,'sent');}finally{await f.runtime.close();}
 });
 
+test('追加消息重组回复时，本轮已完成的待发动作保留并只投递一次',async()=>{
+  const f=fixture({capabilities:['text','tool_use']});let calls=0,waiting=false;
+  f.mutate(s=>R.apply(s,'memory',{enabled:false}));
+  f.api.call=async(state,request)=>{
+    const turn=++calls;
+    if(turn===2){waiting=true;await new Promise((resolve,reject)=>request.signal.addEventListener('abort',()=>reject(request.signal.reason),{once:true}));}
+    const message=turn===1||turn===3?{tool_calls:[{id:'pat-'+turn,type:'function',function:{name:'pat_user',arguments:'{}'}}]}:{content:'补充的话也收到了。'};
+    return {message,model:f.config,modelId:'isolated'};
+  };
+  try{
+    f.send('第一句');await until(()=>waiting);f.send('补充一句');await until(()=>!f.runtime.isBusy(f.roleId));
+    assert.equal(f.state().messages.filter(message=>message.meta?.kind==='pat').length,1);
+    assert.equal(require('../lib/engine/execution.cjs').data(f.state()).actions.filter(action=>action.name==='pat_user'&&action.status==='completed').length,1);
+    assert.ok(f.state().messages.filter(message=>message.sender==='user').every(message=>message.status==='sent'));
+  }finally{await f.runtime.close();}
+});
+
 test('角色允许跳过发消息时，检索表情后仍可不发消息',async()=>{
   const f=fixture({capabilities:['text','tool_use']}),s=f.state(),r=S.role(s,f.roleId),K=require('../lib/engine/stickers.cjs');
   r.stickers=[{id:'s',image:'IMG'}];s.stickerSemantics={[K.key('IMG')]:{status:'ready',meaning:'开心',tags:[],usage:''}};

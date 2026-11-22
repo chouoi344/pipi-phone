@@ -12,4 +12,12 @@ coverage
 .pipi-updater
 .pipi-update-channel
 artifacts
+android
 qa-*
+
+scripts/issue-waterdrop-code.cjs
+scripts/start-waterdrop-issuer.ps1
+scripts/waterdrop-issuer.cjs
+scripts/waterdrop-issuer.html
+scripts/waterdrop-signing.local.cjs
+tests/waterdrop-issuer.test.cjs

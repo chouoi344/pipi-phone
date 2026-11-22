@@ -114,6 +114,26 @@
       trigger.disabled=!target.checked;
     };
     const menu=root.querySelector('.lb-voice-menu');
+    if(typeof menu.showPopover!=='function'){
+      menu.hidden=true;
+      trigger.removeAttribute('popovertarget');
+      trigger.removeAttribute('aria-controls');
+      trigger.removeAttribute('aria-expanded');
+      trigger.setAttribute('aria-haspopup','dialog');
+      trigger.onclick=()=>{
+        const selected=value(ui,role,'voiceId');
+        return window.PipiModels.singleChoiceSheet('选择音色',async()=>{
+          await loadVoices(ui);
+          const choices=(ui.voices||[]).map(v=>({value:v.voice_id,label:v.name}));
+          const missing=selected&&ui.voicesComplete&&!choices.some(v=>v.value===selected);
+          return {choices,note:missing?'已选音色不在当前模型列表，请重新选择':choices.length?'':ui.voiceError||'音色库暂无音色'};
+        },selected,voiceId=>{
+          ui.draft['basic.voiceId']=voiceId;
+          updateName();
+        },{name:'friend-voice',note:'正在读取音色…',selectImmediately:true});
+      };
+      return;
+    }
     const scroller=root.closest('[data-life-root]');
     function positionMenu(){
       const anchor=trigger.getBoundingClientRect(), viewport=scroller.getBoundingClientRect();

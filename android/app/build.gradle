@@ -1,0 +1,72 @@
+plugins { id 'com.android.application' }
+
+def phoneRoot = rootProject.projectDir.parentFile
+def packagedWeb = layout.buildDirectory.dir('generated/phoneWeb')
+def packagedInfo = layout.buildDirectory.dir('generated/phoneInfo')
+def pipiFcm = providers.gradleProperty('pipiFcm').orElse('false').get().toBoolean()
+def pipiAndroidVersionName = providers.gradleProperty('pipiAndroidVersionName').orElse('0.1.3').get()
+def pipiAndroidVersionCode = providers.gradleProperty('pipiAndroidVersionCode').orElse('4').get().toInteger()
+if (!(pipiAndroidVersionName ==~ /[0-9]+(\.[0-9]+){1,3}/) || pipiAndroidVersionCode <= 0) {
+    throw new GradleException('Android version must use a numeric versionName and positive versionCode')
+}
+if (pipiFcm) layout.buildDirectory.set(file(providers.gradleProperty('pipiFcmBuildDir').orElse('build-fcm').get()))
+
+android {
+    namespace 'com.pipiphone.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.pipiphone.app'
+        minSdk 23
+        targetSdk 35
+        versionCode pipiAndroidVersionCode
+        versionName pipiAndroidVersionName
+        buildConfigField 'boolean', 'CUSTOM_PUSH_BUILD', pipiFcm.toString()
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    buildFeatures { buildConfig true }
+    signingConfigs {
+        if (System.getenv('PIPI_ANDROID_KEYSTORE')) {
+            sideload {
+                storeFile file(System.getenv('PIPI_ANDROID_KEYSTORE'))
+                storePassword System.getenv('PIPI_ANDROID_KEY_PASSWORD')
+                keyAlias 'pipi-phone'
+                keyPassword System.getenv('PIPI_ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        debug { applicationIdSuffix '.qa' }
+        preview {
+            initWith release
+            signingConfig signingConfigs.findByName('sideload')
+            debuggable false
+        }
+        otaTest {
+            initWith preview
+            debuggable true
+        }
+    }
+    sourceSets.main.assets.srcDirs(packagedWeb, packagedInfo)
+    sourceSets.main.java.srcDir(pipiFcm ? 'src/fcm/java' : 'src/noFcm/java')
+}
+
+// The default APK resolves no Firebase/Google dependency and needs no config.
+if (pipiFcm) apply from: 'fcm.gradle'
+
+def webAssets = tasks.register('syncPhoneWeb', Sync) {
+    from(new File(phoneRoot, 'public')) { into 'phone' }
+    from(phoneRoot) { include 'LICENSE', 'LICENSE-MIT.txt', 'THIRD_PARTY_NOTICES.md'; into 'legal' }
+    into packagedWeb
+}
+def webInfo = tasks.register('writePhoneManifest', Exec) {
+    def destination = packagedInfo.get().file('phone/bundle.json').asFile
+    inputs.dir new File(phoneRoot, 'public')
+    inputs.files new File(phoneRoot, 'lib/android-assets.cjs'), new File(rootProject.projectDir, 'write-manifest.cjs')
+    outputs.file destination
+    commandLine 'node', new File(rootProject.projectDir, 'write-manifest.cjs'), destination
+}
+tasks.named('preBuild') { dependsOn webAssets, webInfo }

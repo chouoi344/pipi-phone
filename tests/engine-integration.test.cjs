@@ -4,7 +4,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),http=requir
 const {randomUUID}=require('node:crypto'),{setTimeout:wait}=require('node:timers/promises');
 const {createApp}=require('../scripts/sample-data.cjs');
 const KEY='ENGINE_ISOLATED_HTTP_KEY',PASSWORD='Engine-isolated-password_2026!';
-async function fixture(t,respond){
+async function fixture(t,respond,{disableAutomaticSchedules=false}={}){
   const old=process.env.ALLOW_PRIVATE_PROVIDERS;process.env.ALLOW_PRIVATE_PROVIDERS='1';
   const requests=[],mock=http.createServer(async(req,res)=>{
     const chunks=[];for await(const chunk of req)chunks.push(chunk);
@@ -28,6 +28,12 @@ async function fixture(t,respond){
   }
   const setup=await request('/api/setup',{password:PASSWORD,displayName:'隔离引擎验收'});assert.equal(setup.status,200);
   const source='http://127.0.0.1:'+mock.address().port+'/v1',state=setup.body.state;
+  if(disableAutomaticSchedules){
+    for(const role of state.roles){
+      const result=await request('/api/engine/schedule',{action:'saveSettings',roleId:role.id,settings:{autoGenerate:false}});
+      assert.equal(result.status,200);
+    }
+  }
   const ai={...state.settings.ai,sources:[...state.settings.ai.sources,{id:'test',name:'隔离模拟',baseUrl:source,key:KEY,builtin:false}],models:[{id:'main',sourceId:'test',model:'isolated-chat',kind:'chat',capabilities:['text','tool_use'],maxContextTokens:0,temperature:null,maxTokens:null,timeoutSeconds:5,extraBody:{},voice:'alloy'}],assign:{chat:'main',chatFallbacks:[],compress:'',caption:'',stt:'',tts:'',image:'',embedding:''}};
   assert.equal((await request('/api/engine/models',{ai})).status,200);
   assert.equal((await request('/api/engine/modules',{id:'waiting',values:{idleSeconds:0.05,maxWaitSeconds:1}})).status,200);
@@ -48,7 +54,7 @@ test('换绑后旧模型不能投递，原消息可以按新身份重试',async 
       assert.match(body.messages[0].content,/只回答新身份橙/);
       res.end(JSON.stringify({choices:[{message:{role:'assistant',content:'我是橙'}}]}));
     }
-  });
+  },{disableAutomaticSchedules:true});
   const action=async(type,payload)=>{
     const result=await f.request('/api/action',{type,payload});
     assert.equal(result.status,200);
@@ -422,7 +428,7 @@ test('voice tool uses the friend voice, ends on success and requests a text repl
       if(mode==='offDifferent')message.content='我明天再问你。';
       releaseReply=()=>res.end(JSON.stringify({choices:[{message}]}));
     }else res.end(JSON.stringify({choices:[{message}]}));
-  });
+  },{disableAutomaticSchedules:true});
   const panel=async()=>(await f.request('/api/engine/life?roleId='+f.roleId)).body;
   const available={modelReady:true,enabled:true,friendEnabled:true};
   assert.deepEqual((await panel()).voiceAvailability,{...available,modelReady:false,enabled:false});

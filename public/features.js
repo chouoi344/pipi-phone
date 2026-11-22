@@ -95,7 +95,7 @@
   function renderMomentAlbum() {
     if (ui.albumTab === 'status') {
       const saved = state().profile?.status, current = saved?.expiresAt > Date.now() ? saved : null, history = state().statusHistory || [];
-      return `<div class="feature-page moment-media-album moment-status-album">${current ? `<button class="moment-status-current" id="moment-current-status"><strong>当前状态</strong><span>${esc(current.description || '查看我的状态')}</span>${icon('chevron')}</button>` : ''}${history.length ? `<button class="moment-status-current" id="moment-status-history"><strong>历史状态</strong><span>${history.length}条</span>${icon('chevron')}</button>` : !current ? `<div class="moment-album-empty"><p>暂无状态</p><button type="button" id="moment-set-status">设个状态 ${icon('chevron')}</button></div>` : ''}</div>`;
+      return `<div class="feature-page moment-media-album moment-status-album">${current ? `<button class="moment-status-current" id="moment-current-status" data-action="open-status"><strong>当前状态</strong><span>${esc(current.description || '查看我的状态')}</span>${icon('chevron')}</button>` : ''}${history.length ? `<button class="moment-status-current" id="moment-status-history" data-action="status-history"><strong>历史状态</strong><span>${history.length}条</span>${icon('chevron')}</button>` : !current ? `<div class="moment-album-empty"><p>暂无状态</p><button type="button" id="moment-set-status" data-action="open-status">设个状态 ${icon('chevron')}</button></div>` : ''}</div>`;
     }
     const photos = [...(state().moments || [])].filter(item => item.authorId === 'me').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).flatMap(item => momentImages(item).map((image, index) => ({ item, image, index })));
     return `<div class="feature-page moment-media-album">${photos.length ? `<div class="moment-media-grid">${photos.map(({ item, image, index }) => `<button type="button" data-album-photo="${esc(item.id)}" data-album-index="${index}" aria-label="查看${esc(dateText(item.createdAt))}的第${index + 1}张照片"><img src="${esc(image)}" alt="我的朋友圈照片" loading="lazy"></button>`).join('')}</div><button type="button" class="moment-album-link" id="moment-album-timeline">前往朋友圈 ${icon('chevron')}</button>` : '<div class="moment-album-empty"><p>暂无视频和图片</p><button type="button" id="moment-album-timeline">前往朋友圈 ' + icon('chevron') + '</button></div>'}</div>`;
@@ -106,9 +106,6 @@
     title.classList.add('moment-album-title');
     on('[data-album-tab]', 'click', event => { ui.albumTab = event.currentTarget.dataset.albumTab; P().refresh({resetScroll:true}); });
     on('#moment-album-timeline', 'click', () => P().showView('moments', { roleId: 'me' }));
-    on('#moment-current-status', 'click', () => { navStack.push(route); history.pushState(route, '', window.location.href); P().showView('status'); });
-    on('#moment-status-history', 'click', () => run(async () => { const page = document.querySelector('.moment-status-album'), result = await P().api('/api/state'); P().setState(result.state || result); if (page?.isConnected) { navStack.push(route); history.pushState(route, '', window.location.href); P().showView('status-history'); } }));
-    on('#moment-set-status', 'click', () => { navStack.push(route); history.pushState(route, '', window.location.href); P().showView('status-picker'); });
     on('[data-album-photo]', 'click', event => {
       const item = state().moments.find(entry => entry.id === event.currentTarget.dataset.albumPhoto), images = momentImages(item), index = Number(event.currentTarget.dataset.albumIndex);
       P().openPhoto(images[index], '我的朋友圈照片', { images, index });
@@ -297,6 +294,7 @@
       if (form.isConnected) closePage();
     }, privatePost ? '私密发表' : '发表');
     const form = document.querySelector('#overlay > .page-editor .modal-form');
+    form.parentElement.classList.add('moment-compose-page');
     const drawImages = () => {
       form.querySelector('#moment-photo-items').innerHTML = images.map((image, index) => `<div class="compose-photo-item"><button type="button" data-preview-image="${index}" aria-label="预览第${index + 1}张照片"><img src="${esc(image)}" alt="待发布照片${index + 1}"></button><button type="button" data-remove-image="${index}" class="compose-photo-remove" aria-label="移除第${index + 1}张照片">×</button><div class="compose-photo-order"><button type="button" data-move-image="${index}" data-step="-1"${index ? '' : ' disabled'} aria-label="第${index + 1}张照片前移">‹</button><span>${index + 1}</span><button type="button" data-move-image="${index}" data-step="1"${index === images.length - 1 ? ' disabled' : ''} aria-label="第${index + 1}张照片后移">›</button></div></div>`).join('');
       form.querySelector('.moment-add-photo').hidden = images.length === 9;
@@ -355,7 +353,13 @@
   function manageMoments() {
     syncMomentRole();
     page('朋友圈管理', `<div class="moment-management"><label class="feature-field"><span>查看动态</span><select id="moment-role-filter" aria-label="朋友圈视角"><option value="all">我的朋友圈</option>${roles().map(r => `<option value="${esc(r.id)}"${selected(r.id, ui.momentRole)}>${esc(r.remark || r.name)}的可见动态</option>`).join('')}</select></label><button type="button" class="moment-management-cell" id="moment-generate"><span>邀请角色发动态</span>${icon('chevron')}</button></div>`, null);
-    on('#moment-role-filter', 'change', e => { ui.momentRole = e.target.value; closePage(); P().showView('moments'); });
+    on('#moment-role-filter', 'change', e => {
+      const origin = history.state?.route;
+      ui.momentRole = e.target.value;
+      closePage();
+      if (origin?.name === 'moments' && !origin.arg?.roleId) P().refresh({ resetScroll: true });
+      else P().showView('moments');
+    });
     on('#moment-generate', 'click', generateMoment);
   }
   const savingMomentCovers = new Set();
@@ -797,8 +801,9 @@
         sending = false;
         if (button.isConnected) { button.disabled = false; button.textContent = isRedpacket ? '塞钱进红包' : '转账'; }
       }
-    }, isRedpacket ? '塞钱进红包' : '转账', onClose);
+    }, null, onClose);
     const form = document.querySelector('#overlay > .page-editor .modal-form');
+    form.dataset.paymentForm = type;
     const noteDialog = form.querySelector('.transfer-note-dialog');
     if (noteDialog) {
       const draft = noteDialog.querySelector('#transfer-note-draft');
@@ -826,7 +831,7 @@
     const updateAmount = () => {
       let cents = 0;
       try { cents = centsFromInput(form.elements.amount.value); } catch { /* incomplete amount */ }
-      form.querySelectorAll('[type="submit"]').forEach(button => { button.disabled = sending || !cents; });
+      form.querySelector('.wallet-pay-confirm').disabled = sending || !cents;
       const total = form.querySelector('#redpacket-total'); if (total) total.textContent = money(cents);
       const shown = form.querySelector('.pay-amount-text');
       if (shown) { shown.textContent = isRedpacket && !form.elements.amount.value ? '0.00' : form.elements.amount.value; shown.classList.toggle('pay-amount-long', form.elements.amount.value.length > 8); }

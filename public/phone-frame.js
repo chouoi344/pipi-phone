@@ -33,9 +33,15 @@
       bottom: parseFloat(actual.paddingBottom) || 0,
       left: parseFloat(actual.paddingLeft) || 0,
     };
+    const android = /\bPipiPhoneAndroid\/1(?:\.|\b)/.test(navigator.userAgent);
+    if (android) {
+      const system = getComputedStyle(document.documentElement);
+      insets.top = parseFloat(system.getPropertyValue('--pipi-system-top')) || 0;
+      insets.bottom = parseFloat(system.getPropertyValue('--pipi-system-bottom')) || 0;
+    }
     // Touch-capable devices keep their real browser insets, including zero.
     // A tablet with a mouse can report a fine pointer, so check touch as well.
-    const desktopPreview = desktopPointer.matches && navigator.maxTouchPoints === 0 && Object.values(insets).every(value => value === 0);
+    const desktopPreview = !android && desktopPointer.matches && navigator.maxTouchPoints === 0 && Object.values(insets).every(value => value === 0);
     if (desktopPreview) { insets.top = 47; insets.bottom = 34; }
     const active = document.activeElement, viewport = window.visualViewport;
     const editing = active && !active.disabled && !active.readOnly && active.getAttribute('aria-disabled') !== 'true' && (

@@ -1,0 +1,71 @@
+# 屁屁机 Android 侧载版
+
+把 APK 装到手机，就能登录自己的小手机。好友、模型、图片、语音和聊天记录继续使用原服务器。聊天页面和两套皮肤随安装包一起交付，Android 负责系统返回、切后台、保存草稿、选择文件和消息通知。
+
+正式安装包发布后可从 [GitHub Releases](https://github.com/chouoi344/pipi-phone/releases) 的附件获取。仓库推送源码和发布安装包是两个独立步骤；发布页没有 APK 时，开发者可以按下方步骤自行构建。自行签名的 App 后续需要使用自己的原签名覆盖安装。
+
+## 第一次使用
+
+1. 先在网页版设置好名字和访问密码。安装并打开 App，粘贴网页版的小手机网址，输入同一个密码，再点「进入小手机」。网址末尾带不带 `/` 都可以。登录成功直接打开「微信」消息列表，能看到原来的好友和聊天记录。
+2. 打开好友对话，输入半句话，滑回桌面，再点 App 图标。可以接着编辑刚才的草稿。阅读旧消息时会记住看到的那条。边缘滑动支持取消，弹窗优先收起，首页返回桌面。
+3. 首次连接时，「新消息提醒」默认开启。如果系统询问是否允许通知，可以当场选择；以后也可在「我 → 设置 → App 连接设置」调整。在其他对话里收到消息时，点顶部横幅能进入对应聊天。回到桌面或锁屏后，收到系统通知也可以点开。
+
+应用保存最近浏览的少量文字和文字草稿。第一次连通且页面版本核对成功后，断网重开仍能查看本机副本。副本最多保留七天、八个聊天、每个聊天二十四条文字。附件、录音和服务商密钥不进入这个副本。恢复联网后会重新验证登录。退出登录或更换服务器会清除设备上的这份副本。
+
+回到桌面时 App 会保存当时的阅读位置。若列表还在滑动、桌面切换动画尚未结束就从系统强行终止进程，重开时可能回到上一次保存的那条消息。
+
+服务器包含本工作区的 Android 接口时，App 可以核对页面版本、恢复文字和接收后台通知。服务器升级到另一个页面版本时，下一次连接会采用服务器提供的整套页面。普通网页仍可通过原地址使用。
+
+## 在电脑模拟器连接本机
+
+在电脑上从项目目录运行 `node server.cjs`。使用 Android SDK 的 adb 把模拟器内的 18766 端口接到电脑的 18766，然后在 App 首次设置里使用预填的开发地址。
+
+```powershell
+adb devices
+adb -s emulator-5556 reverse tcp:18766 tcp:18766
+```
+
+按 `adb devices` 的输出替换设备编号。开发地址 `http://127.0.0.1:18766` 仅供模拟器。真实手机需要能够访问部署服务器的 HTTPS 地址。
+
+## 生成 APK
+
+### 在 App 里更新
+
+打开「我 → 设置 → 关于屁屁机」。从安卓 0.1.3 起，这里有两个入口：
+
+- 「网页程序更新」更新服务器上的小手机。部署者启用网页一键更新后，即可安装。浏览器也能在这个入口更新网页。
+- 「安卓 App 更新」更新这台手机上的应用。服务器从 GitHub 官方发布获取安装包，再发给手机。手机只需能连上自己的小手机服务器。此功能需要服务器运行支持转发安装包的新程序，网页一键安装服务可以独立配置。
+
+第一次在 App 里安装更新时，按安卓提示允许屁屁机安装应用，再点系统的「更新」。覆盖安装会保留登录和本机资料。首次从 0.1.0 升级，或旧测试版手机无法访问 GitHub 时，可由部署者提供同签名的新安装包，手动覆盖安装一次。之后即可使用服务器下载。
+
+### 发布安卓新版
+
+1. 在 `app/build.gradle` 中提高安卓版本号和安装版本编号。例如从 0.1.2、编号 3 升到 0.1.3、编号 4。沿用先前的签名构建。
+2. 下方脚本同时准备可直接上传的文件。例如 `app/build/outputs/apk/release-assets/pipi-phone-android-0.1.3-4.apk`。在 `chouoi344/pipi-phone` 的 GitHub 正式 Release 的附件区上传这个文件，保留文件名。检查安卓更新时会跳过没有 APK 的服务器版本。单独发布安卓时用独立标签，例如 `android-v0.1.3`。要兼容旧服务器，请取消安卓独立发布的「Set as the latest release」。
+3. 在「安卓 App 更新」检查。服务器需要能访问 GitHub 发布信息和安装包附件；小手机的登录资料只用于用户自己的服务器。手机会核对文件内容、包名、版本和签名，再打开安卓安装确认。
+
+带部署者自定义推送配置的安装包使用 `pipi-phone-custom-push` 文件名前缀，由部署者分发同一项目、同一签名的新版，以保留原有推送配置。
+
+### 本地构建
+
+准备 Node.js 24+、JDK 17、Android SDK Platform 35 和 Build Tools 35。进入本目录后，Windows 下执行：
+
+```powershell
+.\Build-Preview.ps1
+```
+
+脚本生成可安装的 `app/build/outputs/apk/preview/app-preview.apk`，包名为 `com.pipiphone.app`，关闭网页调试。首次构建会在当前 Windows 用户的 `%LOCALAPPDATA%\PipiPhone\AndroidSigning` 生成专用侧载签名，之后沿用。签名私钥保留在电脑。加密口令绑定当前 Windows 用户和机器。更换构建机器前需要安全转移密钥和可恢复的口令，后续才能覆盖安装并保留手机上的资料。
+
+开发调试使用 `gradlew.bat :app:assembleDebug`，生成独立包名 `com.pipiphone.app.qa`。可指定 `PIPI_ANDROID_KEYSTORE` 和 `PIPI_ANDROID_KEY_PASSWORD` 在其他系统上构建签名包，密钥别名为 `pipi-phone`。源码内不附带签名或服务凭据。
+
+这次侧载包可在 Android 6 及以上安装，页面由设备的 Android System WebView（应用内网页显示组件）绘制。连接前会实际检查这个组件需要的功能，太旧时会显示更新方法。本次实际使用 Android 12L 和 Android 15 模拟器。默认包在没有 Google 服务时也能使用兼容通知，长时间后台的延迟受系统及厂商策略影响。管理员可另行配置 Google 系统推送。[后台通知与厂商差异](NOTIFICATIONS.md) · [可选 Google 推送](FCM.md)
+
+### 可选验收脚本
+
+以下命令在仓库根目录执行。普通功能测试仍用 `npm test`；这些额外工具不加入程序的运行依赖。
+
+- 网页操作验收：先执行 `npm install --no-save --package-lock=false playwright`，安装 Chrome 后运行 `node tests/android-page-browser.cjs` 或 `node tests/android-notice-browser.cjs`。已单独安装 Playwright 时，可用 `PIPI_PLAYWRIGHT_MODULE` 指定其模块路径。加 `--check-tools` 只检查模块入口，不重复业务操作。
+- 可选推送构建：设置 `JAVA_HOME`、`ANDROID_HOME` 后运行 `node tests/android-fcm-build.cjs`，默认使用随库的 Gradle 8.9 wrapper。`PIPI_GRADLE` 可指定另一份 `gradlew`，或外部 Gradle 安装目录下的 `bin/gradle`（Windows 为 `bin/gradle.bat`）。`--check-tools` 仅检查 Gradle 入口。完整脚本只使用无效的合成 Google 配置，不安装或运行 APK，也不覆盖标准版安装包。
+- 原生安卓更新协议：准备 JDK 17+ 和测试所用的 JSON-java `org.json:json:20240303`（Maven Central），运行 `node tests/android-official-updates.cjs /path/to/json-20240303.jar /path/to/jdk`。也可分别设置 `PIPI_ANDROID_TEST_JSON_JAR` 与 `JAVA_HOME`。它使用本机临时 HTTP 服务和 Android 平台替身，不调用真实更新源、不安装 APK。
+
+两个网页脚本及推送构建脚本的截图、日志、隔离数据和构建结果默认保存在仓库内已忽略的 `test-results/android-page`、`test-results/android-notice`、`test-results/android-fcm-build`。可分别用 `PIPI_ANDROID_PAGE_OUTPUT`、`PIPI_ANDROID_NOTICE_OUTPUT`、`PIPI_ANDROID_FCM_BUILD_OUTPUT` 指定输出目录。

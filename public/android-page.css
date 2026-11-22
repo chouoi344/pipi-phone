@@ -1,0 +1,17 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+html[data-pipi-android=true] .phone-shell{width:100%;max-width:none;height:var(--app-height,100dvh);max-height:none;border-radius:0;box-shadow:none;outline:none}
+html[data-pipi-android=true] .android-back-moving{transform:translateX(var(--android-back-shift,0%));will-change:transform;z-index:12;box-shadow:-8px 0 24px #0002}
+html[data-pipi-android=true] .android-back-preview{position:absolute;inset:0;z-index:1;pointer-events:none}
+.android-chat-notice{position:absolute;z-index:180;left:12px;right:12px;top:calc(var(--safe-top,0px) + 7px);display:flex;flex-direction:column;gap:4px;text-align:left;border:0;border-radius:14px;padding:14px 16px;background:var(--card,#fff);color:var(--text,#181818);box-shadow:0 4px 24px #0003;animation:android-notice-in .18s ease-out;transform:translateY(var(--android-notice-shift,0px));transition:transform .12s ease-out;touch-action:pan-x;user-select:none;-webkit-user-select:none}
+.android-chat-notice.android-notice-dragging{animation:none;transition:none}
+.android-chat-notice strong,.android-chat-notice span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.android-chat-notice strong{font-size:15px;font-weight:600}.android-chat-notice span{font-size:14px}
+.android-offline-page{overflow-y:auto;overscroll-behavior:contain;flex:1;min-height:0;padding:calc(var(--safe-top,0px) + 20px) 18px calc(var(--safe-bottom,0px) + 20px);background:var(--bg,#ededed)}
+.android-offline-page h2{font-size:20px}.android-offline-note{font-size:14px;line-height:1.6;color:var(--muted,#777)}
+.android-offline-page>.primary-btn,.android-offline-page>.secondary-btn{margin:8px 0;display:block;width:100%}
+.android-offline-chat{display:block;width:100%;text-align:left;margin-top:12px;padding:16px;border:0;border-radius:8px;color:var(--text,#181818);background:var(--card,#fff)}
+.android-offline-message{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;border-radius:8px;background:var(--card,#fff);padding:12px;margin-right:24px}
+.android-offline-message.user{margin-right:0;margin-left:24px;background:#a9e97a;color:#181818}
+.android-offline-page textarea{width:100%;min-height:120px;box-sizing:border-box;padding:12px;line-height:1.6;color:var(--text,#181818);background:var(--card,#fff);border:0;border-radius:8px}
+@keyframes android-notice-in{from{opacity:0;translate:0 -10px}to{opacity:1;translate:0 0}}
+@media(prefers-reduced-motion:reduce){.android-chat-notice{animation:none;transition:none}}

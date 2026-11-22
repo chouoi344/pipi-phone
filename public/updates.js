@@ -14,6 +14,8 @@
     failed: '这次更新未完成'
   };
   const terminal = new Set(['succeeded', 'rolled-back', 'failed']);
+  // The 0.1.2 shell owns the whole update panel. Newer shells own only the APK action.
+  const legacyUnifiedUpdater = /\bPipiPhoneUpdater\/2\b/.test(navigator.userAgent);
   let recentCheck = null;
   let checkedAt = 0;
   const isActive = job => job?.phase && !terminal.has(job.phase);
@@ -27,6 +29,7 @@
   }
 
   function bindSettings(container) {
+    if (legacyUnifiedUpdater) return;
     const row = container.querySelector('[data-action="about"]');
     if (!row) return;
     check().then(result => {
@@ -41,8 +44,11 @@
   }
 
   function markup() {
-    return `<section class="section software-update" aria-labelledby="software-update-title" data-software-update>
-      <h3 id="software-update-title">版本更新</h3>
+    if (legacyUnifiedUpdater) return '';
+    const expanded = document.querySelector('#view details[data-update-entry][open]');
+    return `<details class="section" data-update-entry${expanded ? ' open' : ''}>
+      <summary class="cell plain-cell"><span class="cell-body"><span class="cell-title">网页程序更新</span></span>${window.Pipi.icons.chevron}</summary>
+      <div class="software-update" data-software-update>
       <p class="software-update-status" role="status">正在检查更新…</p>
       <p class="software-update-detail" hidden></p>
       <pre class="software-update-notes" aria-label="更新说明" tabindex="0" hidden></pre>
@@ -51,7 +57,8 @@
         <button class="primary-btn" type="button" data-update-install hidden>立即更新</button>
         <button class="secondary-btn" type="button" data-update-reload hidden>刷新页面</button>
       </div>
-    </section>`;
+      </div>
+    </details>`;
   }
 
   function bindAbout(container) {
@@ -135,7 +142,9 @@
           render(queued);
         }, '立即更新');
     };
-    void refresh(false);
+    const entry = panel.closest('details');
+    entry.ontoggle = () => { if (entry.open) void refresh(false); };
+    if (entry.open) void refresh(false);
   }
 
   window.PipiUpdates = {markup, bindAbout, bindSettings};

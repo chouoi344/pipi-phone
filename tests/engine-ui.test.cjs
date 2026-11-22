@@ -125,6 +125,23 @@ test('a configuration read started before saving cannot replace the accepted mod
   assert.equal(updated.ai.assign.tts,'new-speech');
   assert.equal(f.engine.serviceReady('tts'),true);
 });
+test('settings navigation reuses the loaded configuration and models reflect synchronized changes immediately',async()=>{
+  const f=await fixture();
+  f.calls.length=0;
+  f.engine.openSettings('engine-home');
+  assert.match(f.engine.render('engine-home'),/data-engine-action="models"/);
+  f.engine.openSettings('engine-functions');
+  assert.doesNotMatch(f.engine.render('engine-functions'),/data-config-loading/);
+  const latest=structuredClone(f.state);
+  latest.revision++;
+  latest.settings.ai.sources[1].name='另一台设备改的名字';
+  f.P.receiveState(latest);
+  f.engine.openSettings('providers');
+  assert.match(f.engine.render('providers'),/另一台设备改的名字/);
+  assert.deepEqual(f.calls.map(call=>call.view),['engine-home','engine-functions','providers']);
+  f.engine.openSettings('engine-home');
+  assert.match(f.engine.render('engine-home'),/data-config-loading/);
+});
 function providerControls(f){
   for(const selector of ['[data-provider-add]','#model-relay'])f.nodes.set(selector,{});
 }

@@ -1,16 +1,15 @@
 /* Shared touch controls for the classic theme. The glyphs keep their native sizes. */
-/* A pending settings lookup gives feedback on the row that was pressed. */
-body.wechat-classic .cell[aria-busy="true"] .chevron {
-  width:15px; height:15px; flex:none; mask:none; -webkit-mask:none;
-  background:transparent; border:2px solid #aab3b9; border-right-color:#147d51;
-  border-radius:50%; animation:settings-loading .7s linear infinite;
-}
-@keyframes settings-loading {to {transform:rotate(360deg);}}
 body.wechat-classic :is(#view,.navigation-snapshot) > .topbar:has(.back-btn),
 body.wechat-classic #overlay .page-editor .modal-header:has(.modal-back) {padding-inline:8px;}
 body.wechat-classic :is(#view,.navigation-snapshot) > .topbar :is(.back-btn,.icon-btn,.nav-text),
 body.wechat-classic #overlay .page-editor .modal-header > :is(.modal-close,.modal-submit,.feature-header-action) {
   min-width:44px; min-height:44px;
+}
+/* Header actions stay light while their transparent touch targets remain 44pt. */
+body.wechat-classic #overlay .page-editor:not(.moment-compose-page) .modal-header > .modal-submit {
+  min-width:44px; min-height:44px; padding:0 2px; border:0; border-radius:0;
+  background:transparent; color:#087b41; box-shadow:none; font-size:15px; line-height:24px;
+  font-weight:500; white-space:nowrap;
 }
 body.wechat-classic :is(#view,.navigation-snapshot) > .topbar .header-leading > .back-btn,
 body.wechat-classic #overlay .page-editor .modal-header > .modal-back {

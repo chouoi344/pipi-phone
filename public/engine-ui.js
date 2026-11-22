@@ -5,7 +5,7 @@
   const esc = value => P().esc(value);
   const safeMedia = value => (/^\/api\/media\/[a-f\d]{32,64}\.(png|jpg|jpeg|webp|gif)$/i.test(String(value||'').trim()) || /^data:image\/(png|jpeg|webp|gif);base64,/i.test(String(value||'').trim())) ? String(value).trim() : '';
   const ui = {
-    config:null, loading:null, sourceId:'pipi',
+    config:null, configRevision:null, readOnEntry:false, loading:null, sourceId:'pipi',
     typing:new Set(), activity:new Map(), events:null, started:false, syncing:false, resync:false,
     memTab:'cards', memStatus:'active', memQuery:'', memCache:new Map(), memLoading:new Map(), memExpanded:new Set(),
     memRecallResults:new Map(), lifeMemoryViews:new Map(), lifeStickerEditing:new Set(), importState:null, scheduleSaving:false, voiceSaving:false, outreachSaving:false
@@ -58,12 +58,36 @@
   async function task(work) { try { await work(); } catch(error) { P().toast(error.message); } }
   async function load() {
     if(ui.loading)return ui.loading;
-    const previousAI=ui.config?.ai;
-    ui.loading=P().api('/api/engine/config').then(config=>{
+    const previousAI=ui.config?.ai,revision=state().revision;
+    const request=P().api('/api/engine/config').then(config=>{
+      if(ui.loading!==request)return config;
       if(ui.config&&ui.config.ai!==previousAI)config.ai=ui.config.ai;
+      ui.configRevision=revision;ui.readOnEntry=false;
       ui.config=config;return config;
-    }).finally(()=>{ui.loading=null;});
-    return ui.loading;
+    }).finally(()=>{if(ui.loading===request)ui.loading=null;});
+    ui.loading=request;
+    return request;
+  }
+  function openSettings(name) {
+    const latest=state();
+    ui.readOnEntry=ui.configRevision!==latest.revision;
+    // The model list is already included in the synchronized phone state.
+    if(name==='providers'&&ui.config&&ui.readOnEntry){
+      ui.config.ai=latest.settings.ai;
+      ui.readOnEntry=false;
+    }
+    P().showView(name);
+  }
+  function readPageConfig(panel) {
+    const status=panel.querySelector('[role="status"]'),retry=panel.querySelector('button');
+    status.textContent='正在读取设置…';retry.parentElement.hidden=true;
+    load().then(()=>{
+      if(panel.isConnected)P().refresh();
+    },error=>{
+      if(!panel.isConnected)return;
+      status.textContent=error.message;retry.parentElement.hidden=false;
+      retry.onclick=()=>readPageConfig(panel);
+    });
   }
   function acceptConfig(result) {
     P().setState(result.state);
@@ -84,7 +108,10 @@
     if(name==='role-references')return renderRoleReferences(arg);
     if(name==='role-schedule')return window.PipiSchedule.render(arg);
     if(name==='memories')return renderRoleMemories(arg);
-    if(!ui.config){if(!ui.loading)task(async()=>{await load();P().refresh();});return page('小手机',note('正在读取设置…'));}
+    if(!ui.config||ui.readOnEntry){
+      const titles={'engine-home':'小手机',providers:'模型','engine-functions':'功能','engine-module':'功能'};
+      return page(titles[name],'<div data-config-loading><p class="page-note" role="status">正在读取设置…</p><div hidden><button type="button" class="secondary-btn">重新读取</button></div></div>');
+    }
     if(name==='engine-home')return page('小手机',section(row('模型','models',ai().assign.chat?'已选择':'未选择')+row('时区','timezone',timezoneLabel(ui.config.timezone||defaultTimezone),'aria-haspopup="dialog"'))+window.PipiModels.renderPreferences(ui.config));
     if(name==='providers')return renderModels();
     if(name==='engine-functions'){
@@ -617,6 +644,8 @@
     if(name==='engine-module'&&arg==='caption')name='engine-home';
     if(name==='life-workbench'||name==='role-config'&&P().rolePanelAvailable?.()&&window.PipiLife){window.PipiLife?.bind(arg);return;}
     if(!names.has(name))return;
+    const pending=document.querySelector('#view [data-config-loading]');
+    if(pending){readPageConfig(pending);return;}
     if(name==='engine-usage'){window.PipiUsage.bind();return;}
     if(name==='providers'){window.PipiModels.bind();return;}
     if(name==='engine-home')window.PipiModels.bindPreferences();
@@ -851,7 +880,7 @@
   async function action(action,control,arg) {
     if(action==='usage'){await window.PipiUsage.open();return;}
     const routes={models:'providers',functions:'engine-functions'};
-    if(routes[action]){await P().openWhenReady(routes[action],load,control);return;}
+    if(routes[action]){openSettings(routes[action]);return;}
     if(action==='moments-settings'){window.PipiFeatures?.manageMoments?.();return;}
     if(action==='timezone'){pickTimezone();return;}
     if(action==='module-choice'){
@@ -919,7 +948,7 @@
   }
   function start() {
     if(ui.started||!P()?.getState())return;ui.started=true;
-    task(async()=>{await load();if(!ui.config.timezone){const result=await P().api('/api/engine/timezone',{timezone:defaultTimezone});P().setState(result.state);ui.config.timezone=defaultTimezone;}});
+    task(async()=>{const config=await load();if(ui.config===config&&!config.timezone){const result=await P().api('/api/engine/timezone',{timezone:defaultTimezone});if(ui.config===config){P().setState(result.state);config.timezone=defaultTimezone;}}});
     if(!window.EventSource)return;
     ui.events=new EventSource('/api/events');
     ui.events.addEventListener('open',()=>{ui.typing.clear();window.WaterdropChat?.setConnected(true);P().updateTyping();P().syncChatProgress?.();sync();});
@@ -927,9 +956,9 @@
     ui.events.addEventListener('revision',event=>{const data=JSON.parse(event.data);if(data.revision>state().revision)sync();});
     ui.events.addEventListener('typing',event=>setChatProgress(JSON.parse(event.data)));
   }
-  function stop() {ui.events?.close();ui.events=null;ui.started=false;ui.config=null;ui.typing.clear();window.PipiReminders?.reset();ui.memCache.clear();ui.memRecallResults.clear();ui.importState=null;ui.activity.clear();sessionStorage.removeItem(scheduleDraftKey);sessionStorage.removeItem(voiceDraftKey);sessionStorage.removeItem(outreachDraftKey);window.PipiUsage?.reset();window.PipiSchedule?.reset();window.PipiModels?.reset();}
+  function stop() {ui.events?.close();ui.events=null;ui.started=false;ui.config=null;ui.configRevision=null;ui.readOnEntry=false;ui.loading=null;ui.typing.clear();window.PipiReminders?.reset();ui.memCache.clear();ui.memRecallResults.clear();ui.importState=null;ui.activity.clear();sessionStorage.removeItem(scheduleDraftKey);sessionStorage.removeItem(voiceDraftKey);sessionStorage.removeItem(outreachDraftKey);window.PipiUsage?.reset();window.PipiSchedule?.reset();window.PipiModels?.reset();}
   function activity(roleId) {const now=Date.now();if(now-(ui.activity.get(roleId)||0)<2000)return;ui.activity.set(roleId,now);P().api('/api/engine/typing',{roleId}).catch(error=>{if(error.status!==401)console.debug('输入状态上报失败');});}
   function resetActivity(roleId) {ui.activity.delete(roleId);}
   function stopActivity(roleId) {resetActivity(roleId);P().api('/api/engine/typing',{roleId,active:false}).catch(error=>{if(error.status!==401)console.debug('输入状态解除失败');});}
-  window.PipiEngine={render,bind,renderRoleLibrary,bindRoleLibrary,renderRoleReferences,bindReferences,start,stop,activity,resetActivity,stopActivity,saveModels:saveAI,acceptConfig,newModel,editModel,setChatProgress,isTyping:roleId=>ui.typing.has(roleId),serviceReady,refreshConfig:load,invalidateJobs:roleId=>window.PipiReminders.invalidate(roleId)};
+  window.PipiEngine={render,bind,openSettings,renderRoleLibrary,bindRoleLibrary,renderRoleReferences,bindReferences,start,stop,activity,resetActivity,stopActivity,saveModels:saveAI,acceptConfig,newModel,editModel,setChatProgress,isTyping:roleId=>ui.typing.has(roleId),serviceReady,refreshConfig:load,invalidateJobs:roleId=>window.PipiReminders.invalidate(roleId)};
 })();

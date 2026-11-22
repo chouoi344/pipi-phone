@@ -78,7 +78,8 @@ jobs:
           const {execFileSync} = require('node:child_process');
           const files = execFileSync('git', ['ls-files', '-z'], {encoding: 'utf8'}).split('\0').filter(Boolean);
           const forbidden = /^(?:data|runtime|node_modules|\.codex|\.docker|artifacts|test-results|coverage)(?:\/|$)|(?:^|\/)\.env(?:\.|$)|\.(?:sqlite(?:3)?(?:-(?:shm|wal))?|log|zip|bak|backup)$/i;
-          const leaked = files.filter(file => forbidden.test(file));
+          const trackedLocalFiles = execFileSync('git', ['ls-files', '-ci', '--exclude-per-directory=.gitignore', '-z'], {encoding: 'utf8'}).split('\0').filter(Boolean);
+          const leaked = [...new Set([...files.filter(file => forbidden.test(file)), ...trackedLocalFiles])];
           if (leaked.length) throw new Error(`Remove private data or generated artifacts from the release commit:\n${leaked.join('\n')}`);
           NODE
       # This job receives no provider keys, registry credentials or publishing permissions.

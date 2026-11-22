@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
+[data-update-entry] > summary { list-style: none; cursor: pointer; }
+[data-update-entry] > summary::-webkit-details-marker { display: none; }
+[data-update-entry][open] > summary .chevron { transform: rotate(90deg); }
 .software-update {
   padding: 16px;
   color: #191c21;

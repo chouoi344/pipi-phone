@@ -6,7 +6,7 @@ html[data-skin="waterdrop"] body.wechat-classic {
   --pt-card: #fff;
   --pt-ink: #1b1d1f;
   --pt-secondary: #747b86;
-  --pt-empty: #969da6;
+  --pt-empty: #6a7079;
   --pt-line: #182c4312;
   --pt-accent: #1ec96b;
   --pt-selected: #effaf4;
@@ -131,6 +131,9 @@ html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor .modal-hea
 html[data-skin="waterdrop"] body.wechat-classic #overlay .pt-settings-sheet .provider-model-actions .modal-submit {
   border:1px solid #ffffff45;border-radius:999px;background:var(--wd-dark);color:#fff;font-weight:500;box-shadow:inset 0 1px 1px #ffffff30,0 3px 9px #24364912;
 }
+html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor:not(.moment-compose-page) .modal-header > .modal-submit {
+  border:0;border-radius:0;background:transparent;color:var(--wd-dark);box-shadow:none;
+}
 html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor .modal-close {color:#6e7884;}
 html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor .modal-header > .modal-back {display:grid;place-items:center;justify-content:center;align-content:center;width:44px;min-width:44px;min-height:44px;padding:0;border:var(--wd-rim);border-radius:50%;background:var(--wd-pill);box-shadow:var(--wd-shadow);}
 html[data-skin="waterdrop"] body.wechat-classic #overlay :is(.form-field,.engine-field,.edit-field) {color:var(--pt-ink);}
@@ -177,7 +180,8 @@ html[data-skin="waterdrop"] body.wechat-classic .pt-profile .lb-voice-menu butto
 html[data-skin="waterdrop"] body.wechat-classic .pt-profile .lb-voice-menu::backdrop {background:#1b283c59;backdrop-filter:blur(2px);}
 
 /* Wallet, transfer, red packet and bill editors share a warm clear surface. */
-html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor:has(:is(.wallet-balance-page,.wallet-bills-page,.wallet-transaction-detail,.wallet-recipients,.wallet-pay-page)) :is(.modal-header,.modal-body,.modal-error) {background:#f4f5f7;border-color:#e8ecf0;}
+html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor:has(:is(.wallet-balance-page,.wallet-bills-page,.wallet-transaction-detail,.wallet-recipients)) :is(.modal-header,.modal-body,.modal-error) {background:#f4f5f7;border-color:#e8ecf0;}
+html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor [data-payment-form] :is(.modal-header,.modal-body,.modal-error) {background:#f4f5f7;border-color:#e8ecf0;}
 html[data-skin="waterdrop"] body.wechat-classic #overlay :is(.wallet-pay-page,.wallet-pay-page.is-transfer,.wallet-pay-page.is-redpacket) {background:linear-gradient(160deg,#f3f6f9,#f3f1ef);color:#292c30;}
 html[data-skin="waterdrop"] body.wechat-classic :is(.wallet-balance-page .wallet-balance-card,.wallet-detail-summary,.payment-message-detail .payment-detail-summary) {border:var(--wd-rim);border-radius:26px;background:linear-gradient(145deg,#ffffffed,#f7e8dfd6);box-shadow:var(--wd-shadow);}
 html[data-skin="waterdrop"] body.wechat-classic :is(.wallet-balance-card,.wallet-transaction-detail) :is(h2,.wallet-balance,.wallet-detail-amount,.wallet-detail-person),

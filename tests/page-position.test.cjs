@@ -12,9 +12,9 @@ function fixture(name='engine-home',arg=null){
     let top=0;const details=[{open:false}],menu={open:false};
     content={scrollLeft:0,menu,expandedMoments:[],querySelector:selector=>{assert.equal(selector,'.caption-prompt-details');return null;},querySelectorAll:selector=>{if(selector===undefined)return details;assert.equal(selector,'details.engine-details,details.model-context-details');return details;},get scrollTop(){return top;},set scrollTop(value){top=Math.min(value,details[0].open||this.expandedMoments.length?900:200);}};
   }
-  build();const route={name,arg},view={dataset:{pageKey:JSON.stringify([name,arg])},querySelector:()=>content};
+  build();const route={name,arg},view={dataset:{pageKey:JSON.stringify([name,arg])},querySelector:()=>content,contains:()=>false};
   const PipiFeatures={captureMomentExpansion:root=>[...root.expandedMoments],restoreMomentExpansion:(root,ids)=>{root.expandedMoments=[...ids];}};
-  const ctx=vm.createContext({route,view,renderView:build,window:{PipiFeatures}});
+  const ctx=vm.createContext({route,view,renderView:build,window:{PipiFeatures},document:{activeElement:null}});
   vm.runInContext(source.slice(start,end)+'\nglobalThis.run=refresh;',ctx);
   return {route,refresh:ctx.run,get content(){return content;}};
 }

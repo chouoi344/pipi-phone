@@ -5,8 +5,9 @@ const source=fs.readFileSync(path.join(__dirname,'../public/app.js'),'utf8');
 test('viewport batches keyboard resize events, skips unchanged sizes and preserves pinch zoom',()=>{
   const writes=[],frames=[],events={},viewport={height:844,offsetTop:0,scale:1,addEventListener(name,fn){events[name]=fn;}};
   let captures=0,restores=0;
+  const view={querySelector:()=>null};
   const document={documentElement:{style:{setProperty:(name,value)=>writes.push([name,value])}},addEventListener(name,fn){events['document:'+name]=fn;}};
-  const context={window:{visualViewport:viewport,addEventListener(name,fn){events['window:'+name]=fn;}},document,innerHeight:844,requestAnimationFrame:fn=>frames.push(fn),captureChatLayout(){captures++;return {};},restoreChatLayout(){restores++;}};
+  const context={window:{visualViewport:viewport,addEventListener(name,fn){events['window:'+name]=fn;}},document,view,innerHeight:844,requestAnimationFrame:fn=>frames.push(fn),captureChatLayout(){captures++;return {};},restoreChatLayout(){restores++;}};
   vm.runInNewContext(source.slice(source.indexOf('  const viewport=window.visualViewport;'),source.indexOf('sizeViewport();',source.indexOf('  const viewport=window.visualViewport;'))+'sizeViewport();'.length),context);
   assert.equal(writes.length,2);
   viewport.height=460;events.resize();events.scroll();events['window:resize']();assert.equal(frames.length,1);

@@ -1,0 +1,12 @@
+# Optional only: docker compose -f compose.yaml -f compose.fcm.yaml ...
+# The host file must be the administrator's Firebase service-account JSON.
+# It is mounted read-only and never becomes an image layer or APK asset.
+services:
+  pipi-phone:
+    environment:
+      PIPI_FCM_SERVICE_ACCOUNT_FILE: /run/secrets/pipi_fcm_service_account
+    secrets:
+      - pipi_fcm_service_account
+secrets:
+  pipi_fcm_service_account:
+    file: "${PIPI_FCM_SERVICE_ACCOUNT_FILE:?Set PIPI_FCM_SERVICE_ACCOUNT_FILE to your service-account JSON absolute path}"

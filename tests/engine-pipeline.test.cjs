@@ -35,6 +35,33 @@ test('分段词模式去掉分隔词，清理规则只处理实际分段的短�
   const long='一'.repeat(151)+'。';assert.deepEqual(D.split(long,{cleanupPattern:'[。]'}),[long]);
   assert.deepEqual(D.split('你好。再见。',{enabled:false,cleanupPattern:'[。]'}),['你好。再见。']);
 });
+test('内容清理直接填写中文标点时逐个删除，按原文断句且丢弃清空的片段',()=>{
+  const f=fixture();R.apply(f.state(),'segments',{cleanupPattern:'，。'});
+  const saved=R.values(f.state(),'segments');
+  assert.equal(saved.cleanupPattern,'，。');
+  assert.deepEqual(D.split('你好，来了。还好吗？',saved),['你好来了','还好吗？']);
+  assert.deepEqual(D.split('，。你好，来了。 。还好吗？',saved),['你好来了','还好吗？']);
+  assert.deepEqual(D.split('你好，来了。还好吗？',{...saved,splitMode:'words',splitWords:'。'}),['你好来了','还好吗？']);
+  assert.deepEqual(D.split('等一下；我来了！真的？',{cleanupPattern:'；！'}),['等一下我来了','真的？']);
+  assert.deepEqual(D.split('「你好」，来了。',{cleanupPattern:'「」，。'}),['你好来了']);
+});
+test('内容清理保留自定义正则、留空、关闭、字数上限与无匹配时的原文语义',()=>{
+  const f=fixture(),text='你好，来了。还好吗？';
+  for(const cleanupPattern of ['[，。]','，|。']){
+    R.apply(f.state(),'segments',{cleanupPattern});
+    assert.deepEqual(D.split(text,R.values(f.state(),'segments')),['你好来了','还好吗？']);
+  }
+  assert.deepEqual(D.split(text,{cleanupPattern:'。$'}),['你好，来了','还好吗？']);
+  assert.deepEqual(D.split('a? b. 好？',{cleanupPattern:'\\?'}),['a b. 好？']);
+  assert.deepEqual(D.split('a? b. 好？',{cleanupPattern:'[?.]'}),['a b 好？']);
+  assert.deepEqual(D.split(text,{cleanupPattern:'.'}),[]);
+  assert.deepEqual(D.split(text,{cleanupPattern:''}),['你好，来了。','还好吗？']);
+  assert.deepEqual(D.split(text,{enabled:false,cleanupPattern:'，。'}),[text]);
+  assert.deepEqual(D.split(text,{noSplitAbove:5,cleanupPattern:'，。'}),[text]);
+  assert.deepEqual(D.split(text,{sentencePattern:'unmatched',cleanupPattern:'，。'}),[text]);
+  assert.deepEqual(D.split('，。',{cleanupPattern:'，。'}),[]);
+  assert.throws(()=>R.apply(f.state(),'segments',{cleanupPattern:'['}),/正则表达式无效/);
+});
 test('分段间隔和等待上限按声明计算',()=>{
   assert.equal(D.delay('abc',{intervalMode:'random',minSeconds:1.5,maxSeconds:3.5},()=>0),1500);
   assert.equal(D.delay('abc',{intervalMode:'random',minSeconds:1.5,maxSeconds:3.5},()=>1),3500);

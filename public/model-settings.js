@@ -56,13 +56,23 @@
   }
   function singleChoiceSheet(title,choices,current,onChoose,{name='choice',note='',selectImmediately=false}={}){
     const selector=`[name="${name}"]`;
-    const rows=choices.map(({value,label,detail})=>`<label class="choice-row assignment-option"><span>${esc(label)}${detail?`<small>${esc(detail)}</small>`:''}</span><input type="radio" name="${name}" value="${esc(value)}" ${current===value?'checked':''}></label>`).join('');
-    const submit=!selectImmediately&&choices.length?form=>onChoose(form.querySelector(selector+':checked')?.value,form):undefined;
-    sheet(title,rows+(note?`<p class="small-note">${esc(note)}</p>`:''),submit);
-    if(selectImmediately)document.querySelectorAll('#overlay > .model-sheet '+selector).forEach(input=>input.onclick=()=>{
+    const markup=(options,message)=>options.map(({value,label,detail})=>`<label class="choice-row assignment-option"><span>${esc(label)}${detail?`<small>${esc(detail)}</small>`:''}</span><input type="radio" name="${name}" value="${esc(value)}" ${current===value?'checked':''}></label>`).join('')+(message?`<p class="small-note" role="status">${esc(message)}</p>`:'');
+    const bindImmediate=body=>body.querySelectorAll(selector).forEach(input=>input.onclick=()=>{
       onChoose(input.value);
       P().closePage();
     });
+    if(typeof choices==='function'){
+      sheet(title,markup([],note));
+      const body=document.querySelector('#overlay > .model-sheet .modal-body');
+      return choices().then(result=>{
+        if(!body.isConnected)return;
+        body.innerHTML=markup(result.choices,result.note);
+        bindImmediate(body);
+      });
+    }
+    const submit=!selectImmediately&&choices.length?form=>onChoose(form.querySelector(selector+':checked')?.value,form):undefined;
+    sheet(title,markup(choices,note),submit);
+    if(selectImmediately)bindImmediate(document.querySelector('#overlay > .model-sheet'));
   }
   let expanded='';
   const drafts=new Map();
@@ -111,7 +121,7 @@
       const paused=model.enabled===false;
       const usage=draft.kind==='stt'?[assign.stt===model.id?'录完后转文字':'',assign.voiceUnderstanding===model.id?'语音条理解':''].filter(Boolean).join(' · '):assign[draft.kind]===model.id?(paused?'已选为默认':'当前使用'):'';
       const details=[usage,paused?'已停用':'',...model.capabilities.map(cap=>capLabels[cap])].filter(Boolean).join(' · ');
-      return `<div class="model-item inline-model-item"><span class="model-copy"><strong title="${esc(model.model)}">${esc(model.model)}</strong>${details?`<small>${esc(details)}</small>`:''}${draft.kind!=='chat'&&!paused&&(!usage||draft.kind==='stt')?`<button type="button" class="model-use" data-card-model-use="${esc(model.id)}">设为使用</button>`:''}</span>
+      return `<div class="model-item inline-model-item configured-model-item"><span class="model-copy"><strong title="${esc(model.model)}">${esc(model.model)}</strong>${details?`<small>${esc(details)}</small>`:''}${draft.kind!=='chat'&&!paused&&(!usage||draft.kind==='stt')?`<button type="button" class="model-use" data-card-model-use="${esc(model.id)}">设为使用</button>`:''}</span>
         <span class="model-actions"><button type="button" role="switch" class="inline-model-switch" data-card-model-enabled="${esc(model.id)}" aria-label="启用 ${esc(model.model)}" aria-checked="${model.enabled!==false}"></button>
         ${draft.kind==='image'?'':tool('data-card-model-test',model,'测试连接',icon('plug'),testing.has(model.id))}
         ${tool('data-card-model-edit',model,'模型参数',icon('settings'))}${tool('data-card-model-remove',model,'移除模型',icon('remove'))}</span></div>`;

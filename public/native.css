@@ -188,10 +188,9 @@ body,.phone-shell{font-family:var(--ui-font)}
 :is(#view,.navigation-snapshot)[data-route=role]>.topbar,:is(#view,.navigation-snapshot)[data-route=me]>.topbar{border-bottom:0;background:#fff}
 
 /* ---------- Transfer page and WeChat's numeric keypad (measured on IMG_0468) ---------- */
-.page-editor:has(.wallet-pay-page.is-transfer) .modal-header{background:#ededed;border-bottom:0}
-.page-editor:has(.wallet-pay-page.is-transfer) .modal-header :is(h2,h3){visibility:hidden}
-.page-editor:has(.wallet-pay-page) .modal-body{padding:0;background:#f7f7f7;display:flex;flex-direction:column}
-.page-editor:has(.wallet-pay-page) .modal-form{flex:1;display:flex;flex-direction:column;min-height:0}
+.page-editor [data-payment-form="transfer"] .modal-header{background:#ededed;border-bottom:0}
+.page-editor [data-payment-form] .modal-body{padding:0;background:#f7f7f7;display:flex;flex-direction:column}
+.page-editor .modal-form[data-payment-form]{flex:1;display:flex;flex-direction:column;min-height:0}
 #overlay .wallet-pay-page{flex:1;margin:0;padding:0;min-height:0;display:flex;flex-direction:column;background:#ededed}
 .transfer-head{display:flex;align-items:flex-start;gap:16px;padding:14px 32px;background:#ededed}
 .transfer-to{flex:1;min-width:0}
@@ -231,9 +230,9 @@ body,.phone-shell{font-family:var(--ui-font)}
 #overlay .page-editor .modal-back{width:40px;min-width:40px;min-height:44px;padding:0 0 0 8px}
 #overlay .page-editor .modal-back .icon{width:10px;height:18px}
 #overlay .page-editor .modal-header>.modal-submit{font-size:17px;min-height:32px;padding:4px 12px;border-radius:4px}
-.page-editor:has(.wallet-pay-page.is-redpacket) .modal-body{background:#ededed}
-.page-editor:has(form.keypad-open .is-redpacket) .modal-body{background:#f7f7f7}
-.page-editor:has(.wallet-pay-page.is-redpacket) .modal-header{border-bottom:0}
+.page-editor [data-payment-form="redpacket"] .modal-body{background:#ededed}
+.page-editor .keypad-open[data-payment-form="redpacket"] .modal-body{background:#f7f7f7}
+.page-editor [data-payment-form="redpacket"] .modal-header{border-bottom:0}
 
 /* ---------- Conversation swipe actions ---------- */
 :is(#view,.navigation-snapshot) .conversation-actions button{width:auto;padding:0 16px;font-size:17px;white-space:nowrap}

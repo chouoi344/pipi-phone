@@ -14,7 +14,7 @@ const targetVersion = currentVersion.replace(/\d+$/, (n) =>
     String(Number(n) + 1),
   ),
   repository = 'isolated/pipi-phone';
-const output = path.resolve(
+const output = process.env.PIPI_UPDATE_UI_OUTPUT || path.resolve(
   __dirname,
   '../../.codex/validation/full-0133/updates',
 );
@@ -97,6 +97,8 @@ async function main() {
             detail = page.locator('.software-update-detail');
           try {
             await page.goto('http://127.0.0.1:' + app.server.address().port);
+            await page.getByRole('button', {name: '我知道了'}).click();
+            await page.locator('.first-notice').waitFor({ state: 'detached' });
             await page.locator('[name=displayName]').fill('隔离更新验收');
             await page
               .locator('[name=password]')
@@ -108,6 +110,7 @@ async function main() {
             await page.locator('[data-nav=me]').click();
             await page.locator('[data-action=settings]').click();
             await page.locator('[data-action=about]').click();
+            await page.locator('[data-update-entry] > summary').click();
             await page.evaluate(
               (skin) => (document.documentElement.dataset.skin = skin),
               skin,

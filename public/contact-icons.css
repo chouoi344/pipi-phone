@@ -15,3 +15,4 @@
 :is(#view,.navigation-snapshot)[data-route=contacts] .contacts [data-action=coming-service-account]>.contact-tool{background-color:#4fabf8!important}
 :is(#view,.navigation-snapshot)[data-route=contacts] .contacts [data-action=coming-service-account]>.contact-tool>.mask-icon{-webkit-mask-image:url('/icons/contacts/service-account.svg');mask-image:url('/icons/contacts/service-account.svg');-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center}
 :is(#view,.navigation-snapshot)[data-route=contacts]>.bottom-tabs .tab.active[data-nav=contacts]{color:#57be6a}
+:is(#view,.navigation-snapshot)[data-route=contacts]>.bottom-tabs .tab.active[data-nav=contacts] .tab-label{color:#087b41}

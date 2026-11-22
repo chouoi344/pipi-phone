@@ -17,6 +17,7 @@ function forms(origin='chats'){
   const calls=[],pages=[],navigations=[],notices=[];
   const pick={},file={files:[],isConnected:true,click(){}},value={value:PNG},submit={disabled:false};
   const controls={'#pick-role-cover':pick,'#role-cover-file':file,'[name=cover]':value,'.modal-submit':submit,'.modal-error':{textContent:''},'[name=patText]':{value:''},'[name=name]':{value:role.name},'[name=remark]':{value:''},'#role-pat-preview':{textContent:''}};
+  controls['.modal-form']={values:{name:role.name,remark:'',cover:role.cover,patText:''}};
   const overlay={querySelector:selector=>controls[selector]};
   file.form={querySelector:selector=>selector==='input[type=file]:disabled'&&file.disabled?file:controls[selector]};
   const scope=vm.createContext({role,calls,pages,navigations,notices,overlay});
@@ -27,7 +28,7 @@ function forms(origin='chats'){
     function formValues(form){return form.values;}async function act(type,payload){calls.push({type,payload});if(payload.id)Object.assign(role,payload);else state.roles.push({id:'new',...payload});}
     function toast(message){notices.push(message);}function showView(name,arg){navigations.push({name,arg});}
     const profileImageAccept='image/png';let imageReader=async file=>file.image;async function uploadProfileImage(file){return imageReader(file);}
-    ${productFunction('bindProfileImage')}${productFunction('editRole')}${productFunction('checkWechatId')}
+    ${productFunction('bindProfileImage')}${productFunction('editRole')}${productFunction('checkWechatId')}${productFunction('changedFields')}
     globalThis.ui={editRole,setReader(fn){imageReader=fn;},state};`,scope);
   return {ui:scope.ui,role,calls,pages,navigations,notices,pick,file,value,submit};
 }
@@ -38,7 +39,7 @@ test('friend basics leave persona, model and story bindings unchanged while savi
   f.file.files=[{name:'sample.png',image:PNG+'YQ=='}];await f.file.onchange();
   assert.equal(f.value.value,PNG+'YQ==');assert.match(f.pick.innerHTML,/朋友圈背景图预览/);
   await page.submit({isConnected:true,values:{name:'Updated',remark:'Note',wechatId:'alice',bio:'A real bio',cover:f.value.value}});
-  const payload=f.calls[0].payload;assert.equal(payload.cover,PNG+'YQ==');assert.equal(payload.avatar,PNG);
+  const payload=f.calls[0].payload;assert.equal(payload.cover,PNG+'YQ==');assert.equal(Object.hasOwn(payload,'avatar'),false);assert.equal(f.role.avatar,PNG);
   assert.equal(Object.hasOwn(payload,'personaId'),false);assert.equal(Object.hasOwn(payload,'modelId'),false);
   assert.equal(f.role.personaId,'persona');assert.equal(f.role.modelId,'model');assert.equal(f.role.prompt,'Her story');assert.equal(f.role.relationship,'Friend');
 });

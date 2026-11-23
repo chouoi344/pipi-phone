@@ -93,16 +93,28 @@ def check_installation():
 
 
 def public_ip():
-    local = []
+    local_ipv6 = None
     if shutil.which("ip"):
-        for link in json.loads(output(["ip", "-j", "address", "show", "up", "scope", "global"])):
-            for info in link["addr_info"]:
-                address = ipaddress.ip_address(info["local"])
-                if address.is_global and not address.is_multicast:
-                    local.append(address)
-    direct = next((address for address in local if address.version == 4), None)
-    if direct:
-        return str(direct)
+        try:
+            interfaces = json.loads(output(["ip", "-j", "address", "show", "up", "scope", "global"]))
+        except (subprocess.CalledProcessError, json.JSONDecodeError):
+            interfaces = []
+        for link in interfaces:
+            # iproute2 may leave empty records when filtering addresses by scope.
+            for info in link.get("addr_info", []):
+                value = info.get("local")
+                if not isinstance(value, str) or "%" in value:
+                    continue
+                try:
+                    address = ipaddress.ip_address(value)
+                except ValueError:
+                    continue
+                if not address.is_global or address.is_multicast:
+                    continue
+                if address.version == 4:
+                    return str(address)
+                if local_ipv6 is None:
+                    local_ipv6 = address
     # Cloud NAT commonly assigns only a private address to the guest.
     for url in ("https://api.ipify.org", "https://checkip.amazonaws.com"):
         response = subprocess.run(["curl", "-4fsS", "--noproxy", "*", "--max-time", "5", url],
@@ -114,8 +126,8 @@ def public_ip():
                 continue
             if address.is_global and not address.is_multicast:
                 return str(address)
-    if local:
-        return str(local[0])
+    if local_ipv6 is not None:
+        return str(local_ipv6)
     sys.exit("未能识别公网 IP。可用 PIPI_PUBLIC_IP=你的公网IP python3 scripts/install-https.py 重试。")
 
 

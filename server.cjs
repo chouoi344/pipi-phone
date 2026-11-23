@@ -16,6 +16,8 @@ const {createAndroidUpdateService}=require('./lib/android-updates.cjs');
 const JsonResponse=require('./lib/json-response.cjs');
 const Waterdrop=require('./lib/waterdrop-activation.cjs');
 const scrypt=promisify(crypto.scrypt),VERSION=require('./package.json').version;
+// Server-only releases keep the cache key shipped in the current web and Android UI.
+const ICON_VERSION='0.13.13';
 const MAX_BACKUP_BYTES=88*1024*1024;
 const zlib=require('node:zlib');
 const compressibleStatic=new Set(['.html','.js','.css','.svg','.webmanifest']),staticCache=new Map();
@@ -1385,7 +1387,7 @@ function createApp(options={}){
     if(compressibleStatic.has(ext))res.setHeader('Vary','Accept-Encoding');
     if(['.woff2','.svg','.css','.js'].includes(ext)){
       const etag=`"${baseTag}${encoding?'-'+encoding:''}"`;
-      const versionedIcon=/^\/vendor\/(?:fake-world\/(?:icons|masks)|native-icons)\/[^/]+\.svg$/.test(pathname)&&searchParams.get('v')===VERSION;
+      const versionedIcon=/^\/vendor\/(?:fake-world\/(?:icons|masks)|native-icons)\/[^/]+\.svg$/.test(pathname)&&searchParams.get('v')===ICON_VERSION;
       res.setHeader('Cache-Control',versionedIcon?'public, max-age=604800, immutable':'public, max-age=0, must-revalidate');
       res.setHeader('ETag',etag);
       if(req.headers['if-none-match']===etag){res.writeHead(304);res.end();return;}

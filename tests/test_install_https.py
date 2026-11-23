@@ -33,7 +33,11 @@ class InstallHttpsTests(unittest.TestCase):
         self.assertEqual(Path(".env").read_text(), "PIPI_PORT=19000\nPIPI_HTTPS_PREFIX=10.0.1\n")
 
     def test_cloud_nat_address_is_discovered_and_reused(self):
-        interfaces = '[{"addr_info":[{"local":"172.16.22.33"}]}]'
+        interfaces = json.dumps([
+            {"ifname": "lo", "addr_info": [{}]},
+            {"ifname": "eth0", "addr_info": [{}, {"family": "inet", "local": "172.16.22.33"}, {}]},
+            {"ifname": "docker0"},
+        ])
         ip_service = subprocess.CompletedProcess([], 0, stdout="47.1.2.3\n")
         with patch.object(install, "output", return_value=interfaces), patch("shutil.which", return_value="ip"), \
                 patch("subprocess.run", return_value=ip_service) as request:
@@ -42,11 +46,31 @@ class InstallHttpsTests(unittest.TestCase):
         request.assert_called_once()
 
     def test_global_interface_is_used_without_an_external_lookup(self):
-        interfaces = '[{"addr_info":[{"local":"47.1.2.4"}]}]'
+        interfaces = '[{},{"addr_info":[{},{"peer":"47.1.2.5"},{"local":"invalid"},{"local":"47.1.2.4"}]}]'
         with patch.object(install, "output", return_value=interfaces), patch("shutil.which", return_value="ip"), \
                 patch("subprocess.run") as request:
             self.assertEqual(install.public_ip(), "47.1.2.4")
         request.assert_not_called()
+
+    def test_second_lookup_after_unusable_records_and_failed_first_service(self):
+        replies = [subprocess.CompletedProcess([], 28, stdout=""), subprocess.CompletedProcess([], 0, stdout="47.1.2.3\n")]
+        with patch("shutil.which", return_value="ip"), patch.object(install, "output", return_value='[{"addr_info":[{}]}]'), \
+                patch("subprocess.run", side_effect=replies) as request:
+            self.assertEqual(install.configure_address(), "47.1.2.3")
+            self.assertEqual(request.call_count, 2)
+            self.assertIn("PIPI_PUBLIC_IP=47.1.2.3\n", Path(".env.https").read_text())
+
+    def test_failed_local_ip_command_uses_external_lookup(self):
+        with patch("shutil.which", return_value="ip"), \
+                patch.object(install, "output", side_effect=subprocess.CalledProcessError(1, ["ip"])), \
+                patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, stdout="47.1.2.3")):
+            self.assertEqual(install.public_ip(), "47.1.2.3")
+
+    def test_ipv6_only_host_preserves_brackets_when_ipv4_lookups_fail(self):
+        interfaces = '[{"addr_info":[{},{"local":"fe80::1"},{"local":"2606:4700:4700::1111"}]}]'
+        with patch("shutil.which", return_value="ip"), patch.object(install, "output", return_value=interfaces), \
+                patch("subprocess.run", return_value=subprocess.CompletedProcess([], 28, stdout="")):
+            self.assertEqual(install.configure_address(), "[2606:4700:4700::1111]")
 
     def test_failed_nat_lookup_reports_the_manual_input_without_writing(self):
         failure = subprocess.CompletedProcess([], 28, stdout="")

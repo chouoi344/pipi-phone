@@ -62,6 +62,16 @@ public final class CompatNotificationBindingTest {
         check(CompatNotificationBinding.cookieDigest(null).isEmpty(),"absent login has no digest");
         check(CompatNotificationBinding.cookieDigest("other=1").isEmpty(),"non-login cookie has no digest");
         check(!session.sign().contains("b".repeat(64)),"proof does not carry cookie bytes");
+        for (String persisted : new String[]{"http://203.0.113.23:18766", "https://phone.example.com:8443", "https://[2001:db8:0:0:0:0:0:1]:8443"}) {
+            Session saved = new Session(); saved.origin=persisted;saved.registeredOrigin=persisted;
+            check(saved.accept(ROLE,persisted,saved.instance,saved.sign()),"unchanged persisted server binding remains usable");
+        }
+        Session ip = new Session(); ip.origin="http://203.0.113.23:18766";ip.registeredOrigin=ip.origin;
+        for (String foreign : new String[]{"http://203.0.113.24:18766", "http://203.0.113.23:18767", "https://203.0.113.23:18766"}) {
+            check(!ip.accept(ROLE,foreign,ip.instance,ip.sign()),"IP notification cannot cross host, port or scheme");
+            ip.registeredOrigin=foreign;
+            check(!ip.accept(ROLE,ip.origin,ip.instance,ip.sign()),"old registered server cannot reuse current origin proof");
+        }
         System.out.println("PASS: "+checks+" notification binding scenarios");
     }
 }

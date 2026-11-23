@@ -52,7 +52,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
@@ -106,7 +105,7 @@ public final class MainActivity extends Activity {
         surface = new FrameLayout(this); surface.setBackgroundColor(Color.rgb(237,237,237));
         setContentView(surface);
         appUpdater = new AppUpdater(this,new AppUpdater.Host() {
-            @Override public String currentOrigin() { return prefs.getString("server_origin",origin.value); }
+            @Override public String currentOrigin() { return origin.value; }
             @Override public String currentCookie() { return PhoneNotifications.cookie(currentOrigin()); }
             @Override public boolean trustedPage() { return web != null && origin.isAppPage(web.getUrl()); }
             @Override public void checkpoint(Runnable completed) {
@@ -483,7 +482,7 @@ public final class MainActivity extends Activity {
         LinearLayout form=new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL); form.setPadding(dp(24),dp(12),dp(24),dp(8));
         TextView label=text("服务器地址",16); form.addView(label);
         EditText address=new EditText(this); address.setSingleLine(true); address.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
-        address.setHint("https://phone.example.com");
+        address.setHint("HTTPS 网址或 IP:端口");
         address.setText(origin.value);
         address.setSelectAllOnFocus(true); form.addView(address,new LinearLayout.LayoutParams(-1,-2));
         form.addView(text("填写这部小手机的网址。聊天记录和设置保存在服务器上。",13));
@@ -764,7 +763,7 @@ public final class MainActivity extends Activity {
         network.execute(()->{
             HttpURLConnection connection=null;
             try {
-                connection=(HttpURLConnection)new URL(url).openConnection();connection.setInstanceFollowRedirects(false);
+                connection=origin.open(url);
                 connection.setConnectTimeout(15000);connection.setReadTimeout(30000);
                 if(cookie!=null)connection.setRequestProperty("Cookie",cookie);
                 if(connection.getResponseCode()!=200)throw new IOException("服务器返回 "+connection.getResponseCode());

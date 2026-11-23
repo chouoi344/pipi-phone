@@ -9,7 +9,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
-import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -41,8 +40,7 @@ final class ServerLogin {
         if (password.length() > 256) throw new Failure("password", "密码太长了，请检查后再试。");
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection)new URL(origin.value + "/api/login").openConnection();
-            connection.setInstanceFollowRedirects(false);
+            connection = origin.open("/api/login");
             connection.setConnectTimeout(15000); connection.setReadTimeout(15000);
             connection.setRequestMethod("POST"); connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");

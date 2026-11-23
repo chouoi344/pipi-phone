@@ -9,7 +9,7 @@ services:
         max-size: "10m"
         max-file: "3"
     ports:
-      - "${PIPI_HOST_BIND:-127.0.0.1}:${PIPI_PORT:-18766}:8000"
+      - "${PIPI_HOST_BIND:-0.0.0.0}:${PIPI_PORT:-18766}:8000"
     volumes:
       - pipi-data:/app/data
     environment:

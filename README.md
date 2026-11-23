@@ -4,9 +4,9 @@
 
 自己部署的 AI 角色小手机，支持聊天、朋友圈、语音、日程与共同记忆。
 
-网页正式版 **v0.13.10** · 安卓 App **0.1.4** · Node.js 24+ · AGPL-3.0-only
+网页正式版 **v0.13.11** · 安卓 App **0.1.5** · Node.js 24+ · AGPL-3.0-only
 
-[下载安卓 App](https://github.com/chouoi344/pipi-phone/releases/download/v0.13.10/pipi-phone-android-0.1.4-5.apk) · [快速开始](#快速开始) · [安装与升级](INSTALL.zh-CN.md) · [使用说明](docs/USAGE.zh-CN.md) · [更新记录](CHANGELOG.md) · [问题反馈](https://github.com/chouoi344/pipi-phone/issues)
+[下载安卓 App](https://github.com/chouoi344/pipi-phone/releases/download/v0.13.11/pipi-phone-android-0.1.5-6.apk) · [快速开始](#快速开始) · [安装与升级](INSTALL.zh-CN.md) · [使用说明](docs/USAGE.zh-CN.md) · [更新记录](CHANGELOG.md) · [问题反馈](https://github.com/chouoi344/pipi-phone/issues)
 
 </div>
 
@@ -61,11 +61,11 @@ cd pipi-phone
 docker compose up -d --build
 ```
 
-在运行 Docker 的电脑上打开 [http://127.0.0.1:18766/](http://127.0.0.1:18766/)，填写名字并设置至少 8 个字符的访问密码，再次输入确认即可创建账号。首次部署完成后，请先完成自己的账号设置。
+在云服务器的安全组放行 TCP 18766，然后用浏览器打开 `http://服务器公网IP:18766`，填写名字和至少 8 个字符的访问密码。在安卓 App 里粘贴同一个地址、输入同一个密码，就能进入消息列表。本机安装可打开 [http://127.0.0.1:18766/](http://127.0.0.1:18766/)。
 
 Docker 内已包含 Node.js，业务资料保存在 `pipi-data` 数据卷。普通重启和重新构建会保留资料。
 
-> 部署在远程服务器时，可在同目录 `.env` 设置 `PIPI_HOST_BIND=0.0.0.0`，重建容器后用 `http://服务器公网IP:18766/` 测试。长期使用时配置域名与 HTTPS 反向代理。操作步骤见[安装说明](INSTALL.zh-CN.md#首次安装)。
+> 公网 HTTP 连接以明文传输密码和聊天内容。已有 HTTPS 网址可以直接使用。仅供自己使用时，可把安全组来源设为自己的公网 IP。详见[安装说明](INSTALL.zh-CN.md#首次安装)。
 
 <details>
 <summary>使用 Node.js 在本机直接运行</summary>
@@ -90,7 +90,7 @@ Windows 也可以双击 `start.cmd`。打开 [http://127.0.0.1:18766/](http://12
 
 ## 更新与数据
 
-当前网页版本为 **0.13.10**，支持将官方安卓更新转发到用户自己的手机。升级已有安装前，先导出备份，保留原部署目录、数据卷与环境变量。[0.13.0 数据升级说明](升级说明_0.13.0.md) · [更新记录](CHANGELOG.md)
+当前网页版本为 **0.13.11**，支持将官方安卓更新转发到用户自己的手机。升级已有安装前，先导出备份，保留原部署目录、数据卷与环境变量。[0.13.0 数据升级说明](升级说明_0.13.0.md) · [更新记录](CHANGELOG.md)
 
 - **备份与恢复**　在「我 → 设置 → 聊天记录管理」导出 TAR 备份，可恢复 TAR 和旧版 JSON。导出默认包含模型 API Key、图片和语音，可取消相应选项。含密钥的备份请妥善保管。
 - **媒体保存**　聊天图片和语音默认保存 7 天，可在「存储空间」调整。服务器剩余空间不足时，会按时间清理最旧的聊天媒体。

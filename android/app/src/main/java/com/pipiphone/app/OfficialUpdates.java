@@ -14,7 +14,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
@@ -34,10 +33,11 @@ final class OfficialUpdates {
     private static final long MAX_APK_BYTES = 512L * 1024 * 1024;
     private static final Pattern APK_NAME = Pattern.compile("pipi-phone-android-([0-9]+(?:\\.[0-9]+){1,3})-([1-9][0-9]{0,9})\\.apk");
     private final String origin, cookie;
+    private final TrustedOrigin server;
     private final SessionReader reader;
 
     OfficialUpdates(TrustedOrigin origin, String cookie, SessionReader reader) throws IOException {
-        this.origin = origin.value; this.cookie = sessionCookie(cookie); this.reader = reader;
+        this.server = origin; this.origin = origin.value; this.cookie = sessionCookie(cookie); this.reader = reader;
         assertCurrentSession();
     }
 
@@ -111,10 +111,10 @@ final class OfficialUpdates {
 
     private HttpURLConnection open(String path, boolean metadata, Transfer transfer) throws Exception {
         transfer.check(); assertCurrentSession();
-        HttpURLConnection connection = (HttpURLConnection)new URL(origin + path).openConnection();
+        HttpURLConnection connection = server.open(path);
         transfer.connection = connection;
         try {
-            connection.setInstanceFollowRedirects(false); connection.setRequestMethod("GET");
+            connection.setRequestMethod("GET");
             connection.setConnectTimeout(15000); connection.setReadTimeout(metadata ? 60000 : 15 * 60 * 1000);
             connection.setRequestProperty("User-Agent","PipiPhoneAndroid/1.0 PipiPhoneUpdater/3 PipiPhoneApp/" + BuildConfig.VERSION_NAME);
             connection.setRequestProperty("Accept",metadata ? "application/json" : "application/vnd.android.package-archive");

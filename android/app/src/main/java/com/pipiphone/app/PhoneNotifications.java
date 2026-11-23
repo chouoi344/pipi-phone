@@ -25,7 +25,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -53,11 +52,8 @@ public final class PhoneNotifications {
     }
 
     private static boolean allowedOrigin(String value) {
-        Uri uri = Uri.parse(value);
-        return uri.getUserInfo() == null && uri.getHost() != null
-                && (uri.getPath() == null || uri.getPath().isEmpty() || "/".equals(uri.getPath()))
-                && uri.getQuery() == null && uri.getFragment() == null
-                && ("https".equals(uri.getScheme()) || "http://127.0.0.1:18766".equals(value) && TrustedOrigin.isEmulator());
+        try { TrustedOrigin.parse(value); return true; }
+        catch (IllegalArgumentException invalid) { return false; }
     }
 
     static String cookie(String serverOrigin) {
@@ -90,7 +86,7 @@ public final class PhoneNotifications {
         }
         String serverOrigin = origin(activity);
         if (!allowedOrigin(serverOrigin)) {
-            Toast.makeText(activity, "后台通知需要 HTTPS 服务器地址", Toast.LENGTH_LONG).show();
+            Toast.makeText(activity, "请先填写有效的小手机服务器地址", Toast.LENGTH_LONG).show();
             return false;
         }
         if (!canNotify(activity)) {
@@ -286,8 +282,7 @@ public final class PhoneNotifications {
     }
 
     static HttpURLConnection connect(String serverOrigin, String path, String sessionCookie, String accept) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) new URL(serverOrigin + path).openConnection();
-        connection.setInstanceFollowRedirects(false);
+        HttpURLConnection connection = TrustedOrigin.parse(serverOrigin).open(path);
         connection.setConnectTimeout(10000);
         connection.setReadTimeout(40000);
         connection.setRequestProperty("Cookie", sessionCookie);

@@ -66,7 +66,7 @@ public final class OfficialUpdatesTest {
             });
             server.start();
         }
-        OfficialUpdates client() throws Exception { return new OfficialUpdates(new TrustedOrigin(origin),cookie,this); }
+        OfficialUpdates client() throws Exception { return new OfficialUpdates(TrustedOrigin.parse(origin),cookie,this); }
         @Override public String currentOrigin() { return origin; }
         @Override public String currentCookie() { return cookie; }
         @Override public void close() { server.stop(0); }

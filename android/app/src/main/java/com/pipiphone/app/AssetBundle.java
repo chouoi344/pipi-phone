@@ -12,7 +12,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Locale;
@@ -47,9 +46,8 @@ final class AssetBundle {
     String verify() {
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection)new URL(origin.value + "/api/android-shell-manifest").openConnection();
+            connection = origin.open("/api/android-shell-manifest");
             connection.setConnectTimeout(1800); connection.setReadTimeout(1800);
-            connection.setInstanceFollowRedirects(false);
             connection.setRequestProperty("Accept", "application/json");
             if (connection.getResponseCode() != 200) {
                 invalidate(); return cachedMatch ? "服务器未提供版本清单，下次连接使用服务器资源"

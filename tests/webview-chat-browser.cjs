@@ -11,6 +11,99 @@ const {createApp} = require('../server.cjs');
 const State = require('../lib/state.cjs');
 const Media = require('../lib/media-store.cjs');
 
+async function exerciseDraftRedraw(page, {skin, timing, width, tap, visible}) {
+  // Release the real read receipt while composing to exercise the redraw from
+  // a late server response. All other requests continue normally.
+  const readReceipt = await page.evaluateHandle(() => {
+    const fetch = window.fetch;
+    const receipt = {ready: false, delivered: false};
+    const hold = new Promise(resolve => { receipt.release = resolve; });
+    window.fetch = async function(url, options) {
+      if (url !== '/api/action' || JSON.parse(options.body).type !== 'conversation.read') {
+        return fetch.apply(this, arguments);
+      }
+      window.fetch = fetch;
+      const response = await fetch.apply(this, arguments);
+      const readJson = response.json.bind(response);
+      response.json = async () => {
+        const payload = await readJson();
+        receipt.ready = true;
+        await hold;
+        // The action handler consumes the resolved JSON before the next frame.
+        requestAnimationFrame(() => { receipt.delivered = true; });
+        return payload;
+      };
+      return response;
+    };
+    return receipt;
+  });
+  const replyCount = await page.evaluate(() => Pipi.getState().messages.filter(message => message.sender === 'assistant' && message.content === '收到测试消息。').length + 1);
+  const message = 'sent-' + skin + '-' + timing;
+  await page.type('#compose-text', message);
+  await tap('#compose-form [type=submit]');
+  await page.waitForFunction(text => Pipi.getState().messages.some(m => m.sender === 'user' && m.content === text), {}, message);
+  await page.waitForFunction(count => [...document.querySelectorAll('#chat-messages [data-bubble]')]
+    .filter(bubble => bubble.textContent === '收到测试消息。').length >= count, {}, replyCount);
+  await page.waitForFunction(receipt => receipt.ready, {}, readReceipt);
+  const focusComposer = () => page.evaluate(() => document.querySelector('#view #compose-text').focus());
+  const prefix = timing === 'during-input' ? 'draft-' : '';
+  let liftPointer;
+  if (timing !== 'touch-down') {
+    await focusComposer();
+    if (prefix) await page.keyboard.sendCharacter(prefix);
+  } else {
+    const point = await page.$eval('#view #compose-text', editor => {
+      const box = editor.getBoundingClientRect();
+      const x = box.left + box.width / 2, y = box.top + box.height / 2;
+      if (!editor.contains(document.elementFromPoint(x, y))) throw new Error('The chat editor is covered');
+      return {x, y};
+    });
+    if (width < 650) {
+      const touch = await page.target().createCDPSession();
+      await touch.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [point]});
+      liftPointer = async () => {
+        await touch.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
+        await touch.detach();
+      };
+    } else {
+      await page.mouse.move(point.x, point.y);
+      await page.mouse.down();
+      liftPointer = () => page.mouse.up();
+    }
+  }
+  const editorBeforeReceipt = await page.evaluateHandle(receipt => {
+    const editor = document.querySelector('#view #compose-text');
+    receipt.release();
+    return editor;
+  }, readReceipt);
+  if (liftPointer) {
+    await page.waitForFunction(receipt => receipt.delivered, {}, readReceipt);
+    assert.equal(await editorBeforeReceipt.evaluate(editor => editor.isConnected), true,
+      'the held editor survives until the user lifts their finger');
+    await liftPointer();
+  }
+  await page.waitForFunction(editor => !editor.isConnected, {}, editorBeforeReceipt);
+  assert.equal(await page.$eval('#view #compose-text', input => input.textContent), prefix);
+  if (!prefix) {
+    await page.keyboard.sendCharacter('dr');
+    assert.equal(await page.$eval('#view #compose-text', input => input.textContent), 'dr',
+      'the first two characters reach the editor after the remote update');
+  }
+  assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('#view #compose-text')), true,
+    'the editor keeps focus across a read receipt');
+  await editorBeforeReceipt.dispose();
+  await readReceipt.dispose();
+  await page.keyboard.sendCharacter(prefix ? skin : 'aft-' + skin);
+  assert.equal(await page.$eval('#compose-text', input => input.textContent), 'draft-' + skin);
+  await tap('[data-action=back]');
+  await visible('#view[data-route=chats]');
+  await tap('[data-open-chat]');
+  await page.waitForFunction(text => document.querySelector('#compose-text').innerText === text, {}, 'draft-' + skin);
+  await focusComposer();
+  await page.keyboard.down('Control'); await page.keyboard.press('a'); await page.keyboard.up('Control');
+  await page.keyboard.press('Backspace');
+}
+
 async function run() {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'pipi-webview-test-'));
   const state = State.initial();
@@ -129,56 +222,9 @@ async function run() {
       await tap('[data-action=dictation]');
       await page.waitForFunction(insecure => document.querySelector('#toast').textContent.includes(insecure ? 'HTTPS' : '暂时无法录音'), {}, httpOnly);
       await tap('[data-action=toggle-panel]');
-      // Release the real read receipt while composing to exercise the redraw from
-      // a late server response. All other requests continue normally.
-      const readReceipt = await page.evaluateHandle(() => {
-        const fetch = window.fetch;
-        const receipt = {ready: false};
-        const hold = new Promise(resolve => { receipt.release = resolve; });
-        window.fetch = async function(url, options) {
-          if (url !== '/api/action' || JSON.parse(options.body).type !== 'conversation.read') {
-            return fetch.apply(this, arguments);
-          }
-          window.fetch = fetch;
-          const response = await fetch.apply(this, arguments);
-          receipt.ready = true;
-          await hold;
-          return response;
-        };
-        return receipt;
-      });
-      const message = 'sent-' + skin;
-      await page.type('#compose-text', message);
-      await tap('#compose-form [type=submit]');
-      await page.waitForFunction(text => Pipi.getState().messages.some(m => m.sender === 'user' && m.content === text), {}, message);
-      const replyCount = skin === 'classic' ? 1 : 2;
-      await page.waitForFunction(count => [...document.querySelectorAll('#chat-messages [data-bubble]')]
-        .filter(bubble => bubble.textContent === '收到测试消息。').length >= count, {}, replyCount);
-      await page.waitForFunction(receipt => receipt.ready, {}, readReceipt);
-      const focusComposer = () => page.evaluate(() => document.querySelector('#view #compose-text').focus());
-      await focusComposer();
-      const prefix = skin === 'waterdrop' ? 'draft-' : '';
-      if (prefix) await page.keyboard.sendCharacter(prefix);
-      const editorBeforeReceipt = await page.evaluateHandle(receipt => {
-        const editor = document.querySelector('#view #compose-text');
-        receipt.release();
-        return editor;
-      }, readReceipt);
-      await page.waitForFunction(editor => !editor.isConnected, {}, editorBeforeReceipt);
-      assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('#view #compose-text')), true,
-        'the editor keeps focus across a read receipt');
-      assert.equal(await page.$eval('#view #compose-text', input => input.textContent), prefix);
-      await editorBeforeReceipt.dispose();
-      await readReceipt.dispose();
-      await page.keyboard.sendCharacter(prefix ? skin : 'draft-' + skin);
-      assert.equal(await page.$eval('#compose-text', input => input.textContent), 'draft-' + skin);
-      await tap('[data-action=back]');
-      await visible('#view[data-route=chats]');
-      await tap('[data-open-chat]');
-      await page.waitForFunction(text => document.querySelector('#compose-text').innerText === text, {}, 'draft-' + skin);
-      await focusComposer();
-      await page.keyboard.down('Control'); await page.keyboard.press('a'); await page.keyboard.up('Control');
-      await page.keyboard.press('Backspace');
+      for (const timing of skin === 'classic' ? ['touch-down', 'after-focus'] : ['during-input']) {
+        await exerciseDraftRedraw(page, {skin, timing, width, tap, visible});
+      }
       await tap('[data-action=back]');
       await visible('#view[data-route=chats]');
       console.log('PASS ' + skin + ' image / voice playback / unavailable microphone / send and receive / back and draft');

@@ -7,7 +7,7 @@ final class BundleCompatibility {
     static final String PRE_UI_NATIVE_VOICE = "38659185cd370c07921a26111bcb531efdce05216386de3e0bed461f3ca42776";
     static final String PRE_CONTROL_FIT = "064ff814d28a005785d4e5cdb16a35076ce840894773d4e6cc378b24734dc4a7";
     static final String SERVER_0_13_12 = "375e57fe5cb72d753bfa2d71d1eb1d1f66d066eb76f30d8f749c5da8efa00b99";
-    static final String WEBVIEW_83_BUNDLE = "17b3700d74390ff4bb240ff3dddfb72e8c853e8ca6cfbe779fb3182c918ceca2";
+    static final String WEBVIEW_83_BUNDLE = "f7ec36c35f16519ac6f6e6f14eb4db3213b036928a8869c56a77a6fad81a92f0";
     private BundleCompatibility() {}
 
     static boolean accepts(String localHash, String serverHash) {

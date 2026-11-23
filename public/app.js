@@ -1406,7 +1406,7 @@
       composerPointerFrame=0;if(composerPointers.size)return;composerPointerSettling=false;
       if(route.name!=='chat'||route.arg!==roleId||footer!==view.querySelector('.chat-composer')){pointerComposerUpdatePending=false;pointerViewRefreshPending=false;return;}
       const render=pointerViewRefreshPending,compose=pointerComposerUpdatePending;pointerViewRefreshPending=false;pointerComposerUpdatePending=false;
-      if(render)refresh();else if(compose)updateComposer();
+      if(render)flushRender(true);else if(compose)updateComposer();
     });
   }
   function releaseComposerPointer(event){if(!composerPointers.delete(event.pointerId))return;if(!composerPointers.size)settleComposerPointer();}

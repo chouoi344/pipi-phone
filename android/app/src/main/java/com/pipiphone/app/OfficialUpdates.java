@@ -178,20 +178,27 @@ final class OfficialUpdates {
         PackageManager manager = context.getPackageManager();
         int flags = Build.VERSION.SDK_INT >= 28 ? PackageManager.GET_SIGNING_CERTIFICATES : PackageManager.GET_SIGNATURES;
         PackageInfo installed = manager.getPackageInfo(context.getPackageName(),flags);
-        PackageInfo update = manager.getPackageArchiveInfo(file.getAbsolutePath(),flags);
+        // Android 9 and 10 only collect archive certificates when GET_SIGNATURES is present.
+        // Request both so signingInfo contains the actual current signers on API 28+.
+        PackageInfo update = manager.getPackageArchiveInfo(file.getAbsolutePath(),flags | PackageManager.GET_SIGNATURES);
         if (update == null || !installed.packageName.equals(update.packageName)) throw new IOException("安装包的应用名称不匹配");
         if (code(update) != release.versionCode || !release.versionName.equals(update.versionName)) throw new IOException("安装包版本与发布记录不一致");
         if (code(update) <= code(installed)) throw new IOException("只能安装版本编号更高的更新");
         if (Build.VERSION.SDK_INT >= 24 && update.applicationInfo.minSdkVersion > Build.VERSION.SDK_INT)
             throw new IOException("此更新需要更高的 Android 系统版本");
-        Signature[] current = Build.VERSION.SDK_INT >= 28 && installed.signingInfo != null ? installed.signingInfo.getApkContentsSigners() : installed.signatures;
-        Signature[] incoming = Build.VERSION.SDK_INT >= 28 && update.signingInfo != null ? update.signingInfo.getApkContentsSigners() : update.signatures;
-        if (current == null || incoming == null || current.length == 0 || current.length != incoming.length)
-            throw new IOException("安装包签名无法核对，已停止安装");
+        Signature[] current = currentSigners(installed), incoming = currentSigners(update);
+        if (current == null || incoming == null || current.length == 0 || incoming.length == 0)
+            throw new IOException("手机没有读到完整的签名。请下载官方安装包，打开后点系统的「更新」");
+        if (current.length != incoming.length) throw new IOException("安装包签名与当前 App 不一致，已停止安装");
         String[] left = new String[current.length], right = new String[incoming.length];
         for (int i = 0; i < left.length; i++) { left[i] = current[i].toCharsString(); right[i] = incoming[i].toCharsString(); }
         Arrays.sort(left); Arrays.sort(right);
         if (!Arrays.equals(left,right)) throw new IOException("安装包签名与当前 App 不一致，已停止安装");
         transfer.check();
+    }
+
+    @SuppressWarnings("deprecation") private static Signature[] currentSigners(PackageInfo info) {
+        if (Build.VERSION.SDK_INT < 28) return info.signatures;
+        return info.signingInfo == null ? null : info.signingInfo.getApkContentsSigners();
     }
 }

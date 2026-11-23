@@ -5,6 +5,8 @@ import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
+import android.content.pm.SigningInfo;
+import android.os.Build;
 import com.sun.net.httpserver.HttpServer;
 import org.json.JSONObject;
 import java.io.File;
@@ -73,7 +75,9 @@ public final class OfficialUpdatesTest {
     }
     static PackageInfo info(int code, String version, String name, String signature) {
         PackageInfo value = new PackageInfo(); value.versionCode = code; value.versionName = version; value.packageName = name;
-        value.signatures = new Signature[]{new Signature(signature)}; return value;
+        value.signatures = new Signature[]{new Signature(signature)};
+        value.signingInfo = new SigningInfo(new Signature(signature));
+        return value;
     }
     static final class Device extends Context {
         final File cache;
@@ -84,8 +88,24 @@ public final class OfficialUpdatesTest {
         @Override public String getPackageName() { return installed.packageName; }
         @Override public PackageManager getPackageManager() {
             return new PackageManager() {
-                @Override public PackageInfo getPackageInfo(String name,int flags) { return installed; }
-                @Override public PackageInfo getPackageArchiveInfo(String file,int flags) { return incoming; }
+                @Override public PackageInfo getPackageInfo(String name,int flags) { return query(installed, flags); }
+                @Override public PackageInfo getPackageArchiveInfo(String file,int flags) {
+                    // The Android 9/10 archive parser collects nothing without the legacy flag.
+                    if ((Build.VERSION.SDK_INT == 28 || Build.VERSION.SDK_INT == 29) && (flags & GET_SIGNATURES) == 0)
+                        return query(incoming, 0);
+                    return query(incoming, flags);
+                }
+                private PackageInfo query(PackageInfo source, int flags) {
+                    PackageInfo result = new PackageInfo();
+                    result.packageName = source.packageName;
+                    result.versionCode = source.versionCode;
+                    result.versionName = source.versionName;
+                    result.applicationInfo = source.applicationInfo;
+                    if ((flags & GET_SIGNATURES) != 0) result.signatures = source.signatures;
+                    if (Build.VERSION.SDK_INT >= 28 && (flags & GET_SIGNING_CERTIFICATES) != 0)
+                        result.signingInfo = source.signingInfo;
+                    return result;
+                }
             };
         }
         File contents(byte[] bytes) throws Exception { File file = new File(cache,"candidate.apk"); Files.write(file.toPath(),bytes); return file; }
@@ -188,12 +208,58 @@ public final class OfficialUpdatesTest {
                 rejected("已取消",() -> f.client().latest(transfer)); check(f.paths.isEmpty());
             }
         });
-        test("package mismatch and different signing key prevent installation",() -> {
+        for (int sdk : new int[]{28, 29, 23, 30, 35}) {
+            test("official package with the same current signer on API " + sdk, () -> {
+                int previous = Build.VERSION.SDK_INT;
+                Build.VERSION.SDK_INT = sdk;
+                try {
+                    Device device = new Device();
+                    OfficialUpdates.verify(device, device.contents(APK), OfficialUpdates.restored(release().toString()), transfer());
+                } finally { Build.VERSION.SDK_INT = previous; }
+            });
+        }
+        test("package mismatch and different current signing key prevent installation",() -> {
             Device device = new Device(); File file = device.contents(APK); OfficialUpdates.Release found = OfficialUpdates.restored(release().toString());
             device.incoming.packageName = "com.someone.else";
             rejected("名称不匹配",() -> OfficialUpdates.verify(device,file,found,transfer()));
-            device.incoming.packageName = device.installed.packageName; device.incoming.signatures = new Signature[]{new Signature("other-key")};
+            device.incoming.packageName = device.installed.packageName;
+            // The legacy arrays share the oldest certificate. Current signing keys differ.
+            device.installed.signingInfo = new SigningInfo(new Signature("installed-key"));
+            device.incoming.signingInfo = new SigningInfo(new Signature("other-key"));
             rejected("签名与当前 App 不一致",() -> OfficialUpdates.verify(device,file,found,transfer()));
+        });
+        test("a multi-signer update must present the same current signer set", () -> {
+            Device device = new Device(); File file = device.contents(APK);
+            OfficialUpdates.Release found = OfficialUpdates.restored(release().toString());
+            Signature first = new Signature("first"), second = new Signature("second");
+            device.installed.signingInfo = new SigningInfo(first, second);
+            device.incoming.signingInfo = new SigningInfo(second, first);
+            OfficialUpdates.verify(device, file, found, transfer());
+            device.incoming.signingInfo = new SigningInfo(first);
+            rejected("签名与当前 App 不一致", () -> OfficialUpdates.verify(device, file, found, transfer()));
+        });
+        test("incomplete current signer data cannot fall back to the oldest certificate", () -> {
+            Device device = new Device(); File file = device.contents(APK);
+            OfficialUpdates.Release found = OfficialUpdates.restored(release().toString());
+            device.incoming.signingInfo = null;
+            rejected("没有读到完整的签名", () -> OfficialUpdates.verify(device, file, found, transfer()));
+            device.incoming.signingInfo = new SigningInfo();
+            rejected("没有读到完整的签名", () -> OfficialUpdates.verify(device, file, found, transfer()));
+            device.incoming.signingInfo = device.installed.signingInfo;
+            device.installed.signingInfo = null;
+            rejected("没有读到完整的签名", () -> OfficialUpdates.verify(device, file, found, transfer()));
+        });
+        test("Android 6 checks the legacy certificate and rejects an unsigned archive", () -> {
+            int previous = Build.VERSION.SDK_INT;
+            Build.VERSION.SDK_INT = 23;
+            try {
+                Device device = new Device(); File file = device.contents(APK);
+                OfficialUpdates.Release found = OfficialUpdates.restored(release().toString());
+                device.incoming.signatures = new Signature[]{new Signature("other-key")};
+                rejected("签名与当前 App 不一致", () -> OfficialUpdates.verify(device, file, found, transfer()));
+                device.incoming.signatures = null;
+                rejected("没有读到完整的签名", () -> OfficialUpdates.verify(device, file, found, transfer()));
+            } finally { Build.VERSION.SDK_INT = previous; }
         });
         test("downgrade metadata mismatch and incompatible Android prevent installation",() -> {
             Device device = new Device(); File file = device.contents(APK); OfficialUpdates.Release found = OfficialUpdates.restored(release().toString());

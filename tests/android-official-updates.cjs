@@ -10,10 +10,10 @@ const stubs={
  'android/content/Context.java':`package android.content;
 public abstract class Context { public abstract java.io.File getCacheDir(); public abstract String getPackageName(); public abstract android.content.pm.PackageManager getPackageManager(); }`,
  'android/content/pm/PackageManager.java':`package android.content.pm;
-public abstract class PackageManager { public static final int GET_SIGNING_CERTIFICATES=1,GET_SIGNATURES=2; public abstract PackageInfo getPackageInfo(String name,int flags); public abstract PackageInfo getPackageArchiveInfo(String file,int flags); }`,
+public abstract class PackageManager { public static final int GET_SIGNING_CERTIFICATES=0x08000000,GET_SIGNATURES=0x40; public abstract PackageInfo getPackageInfo(String name,int flags); public abstract PackageInfo getPackageArchiveInfo(String file,int flags); }`,
  'android/content/pm/ApplicationInfo.java':'package android.content.pm; public class ApplicationInfo { public int minSdkVersion; }',
  'android/content/pm/Signature.java':'package android.content.pm; public final class Signature { final String value; public Signature(String value){this.value=value;} public String toCharsString(){return value;} }',
- 'android/content/pm/SigningInfo.java':'package android.content.pm; public class SigningInfo { public Signature[] getApkContentsSigners(){return null;} }',
+ 'android/content/pm/SigningInfo.java':'package android.content.pm; public final class SigningInfo { private final Signature[] current; public SigningInfo(Signature... current){this.current=current;} public Signature[] getApkContentsSigners(){return current;} }',
  'android/content/pm/PackageInfo.java':`package android.content.pm;
 public class PackageInfo { public String packageName,versionName; public int versionCode; public ApplicationInfo applicationInfo=new ApplicationInfo(); public Signature[] signatures; public SigningInfo signingInfo; public long getLongVersionCode(){return versionCode;} }`,
  'android/os/Build.java':'package android.os; public final class Build { public static String FINGERPRINT="production",MODEL="phone",HARDWARE="arm64"; public static String[] SUPPORTED_ABIS={"arm64-v8a"}; public static final class VERSION { public static int SDK_INT=35; } }',

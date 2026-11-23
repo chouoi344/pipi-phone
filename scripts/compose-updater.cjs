@@ -71,8 +71,21 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
   const lockFile=path.join(config.stateDir,'worker.lock'),startLockFile=path.join(config.stateDir,'worker-start.lock'),jobsDir=path.join(config.stateDir,'jobs');
   let lockToken=null,heartbeat=null,heartbeatWrite=Promise.resolve(),busy=false,stopping=false;
   const stamp=()=>new Date(now()).toISOString();
-  const compose=(...args)=>['compose','--project-name',config.project,'--project-directory',path.dirname(config.composeFile),'-f',config.composeFile,'-f',config.featureFile,'-f',activeFile,...args];
-  const baseCompose=(...args)=>['compose','--project-name',config.project,'--project-directory',path.dirname(config.composeFile),'-f',config.composeFile,'-f',config.featureFile,...args];
+  async function runCompose(active,...args){
+    const directory=path.dirname(config.composeFile);
+    const files=['-f',config.composeFile];
+    // Explicit -f arguments disable Docker's automatic loading of the installer's HTTPS override.
+    const override=path.join(directory,'compose.override.yaml');
+    const entry=await fs.lstat(override).catch(error=>{
+      if(error.code==='ENOENT')return null;
+      throw error;
+    });
+    const httpsFile=path.join(directory,'compose.https.yaml');
+    if(entry?.isSymbolicLink()&&path.resolve(directory,await fs.readlink(override))===httpsFile)files.push('-f',httpsFile);
+    files.push('-f',config.featureFile);
+    if(active)files.push('-f',activeFile);
+    return docker(['compose','--project-name',config.project,'--project-directory',directory,...files,...args]);
+  }
   const jobFile=id=>path.join(jobsDir,id+'.json');
   const jsonDocker=async args=>JSON.parse(await docker(args));
   async function ready(){await writeJson(path.join(config.updateDir,'worker-ready.json'),{updatedAt:stamp()},0o644);}
@@ -90,8 +103,7 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
     if(container.Config?.Labels?.['com.docker.compose.project']!==config.project||container.Config.Labels['com.docker.compose.service']!==config.service)throw publicError('目标容器不属于已配置的小手机 Compose 服务');
   }
   async function container({active=true}={}){
-    const args=active?compose('ps','--all','--quiet',config.service):baseCompose('ps','--all','--quiet',config.service);
-    const ids=(await docker(args)).split(/\s+/).filter(Boolean);
+    const ids=(await runCompose(active,'ps','--all','--quiet',config.service)).split(/\s+/).filter(Boolean);
     if(ids.length!==1||! /^[a-f0-9]{12,64}$/.test(ids[0]))throw publicError('目标 Compose 服务必须恰好包含一个容器');
     const [result]=await jsonDocker(['inspect','--type','container',ids[0]]);assertContainer(result);return result;
   }
@@ -146,13 +158,13 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
     let helperFailure='';
     try{await settleHelper(job,'snapshot');}catch(error){log(error);helperFailure='；'+publicMessage(error);}
     await useImage(job.oldImage,job.originalVolume);
-    await docker(compose('up','-d','--no-build','--no-deps',config.service));
+    await runCompose(true,'up','-d','--no-build','--no-deps',config.service);
     await waitHealthy(job.status.previousVersion);
     await save(job,'failed',`${reason}；原版本已恢复${helperFailure}`,'done');
   }
   async function rollback(job,reason){
     await save(job,'rolling-back',`${reason}；正在恢复原版本`,'rollback-stopping');
-    await docker(compose('stop',config.service));
+    await runCompose(true,'stop',config.service);
     if(!job.rollbackCopyComplete){
       await save(job,'rolling-back','正在从更新前备份恢复资料','rollback-copying');
       await createVolume(job,'rollback');
@@ -161,7 +173,7 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
     }
     await save(job,'rolling-back','正在启动原版本','rollback-starting');
     await useImage(job.oldImage,job.rollbackVolume);
-    await docker(compose('up','-d','--no-build','--no-deps',config.service));
+    await runCompose(true,'up','-d','--no-build','--no-deps',config.service);
     await save(job,'rolling-back','正在确认原版本与资料已恢复','rollback-verifying');
     await waitHealthy(job.status.previousVersion);
     await save(job,'rolled-back',`${reason}；已恢复到 ${job.status.previousVersion}，更新前备份和失败资料卷均已保留`,'done');
@@ -203,7 +215,7 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
       if(imageVersion!==request.version)throw publicError('下载镜像的程序版本与发布清单不一致');
       await useImage(job.oldImage,job.originalVolume);
       await save(job,'backing-up','正在停止小手机并备份全部资料','stopping');
-      await docker(compose('stop',config.service));
+      await runCompose(true,'stop',config.service);
       const stopped=await container();
       if(stopped.State.Running)throw publicError('小手机尚未完全停止，未开始备份');
       await save(job,'backing-up','正在保存更新前的完整资料备份','snapshotting');
@@ -213,7 +225,7 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
       await save(job,'backing-up','资料备份已完成','snapshot-ready');
       await save(job,'installing','正在安装新版','switching');
       await useImage(release.image,job.originalVolume);
-      await docker(compose('up','-d','--no-build','--no-deps',config.service));
+      await runCompose(true,'up','-d','--no-build','--no-deps',config.service);
       await save(job,'verifying','正在确认新版可以正常访问','verifying');
       await waitHealthy(request.version);
       await save(job,'succeeded',`已更新到 ${request.version}，原资料继续保留`,'done');

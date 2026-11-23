@@ -40,8 +40,14 @@ chmod 600 .env.updates
 set -a
 . ./.env.updates
 set +a
-docker compose --project-name "$PIPI_UPDATE_COMPOSE_PROJECT" -f compose.yaml -f compose.updates.yaml up -d --build
+set -- -f compose.yaml
+if [ "$(readlink compose.override.yaml)" = "compose.https.yaml" ]; then
+  set -- "$@" -f compose.https.yaml
+fi
+docker compose --project-name "$PIPI_UPDATE_COMPOSE_PROJECT" "$@" -f compose.updates.yaml up -d --build
 ```
+
+使用公网 IP 自动 HTTPS 安装的服务器应保留安装程序生成的 `compose.override.yaml` 链接和 `.env.https`。更新服务在升级和回退时会沿用 HTTPS 配置。
 
 这次启动使用现有程序源码，只接通更新通道；原 `.env` 会由 Compose 继续读取。先打开原地址确认聊天和资料仍在，再启动下面的更新服务。网页程序只读写这个共享目录；Docker 管理权限留在宿主机更新服务，网页容器不挂载 Docker socket。
 
@@ -86,8 +92,11 @@ sudo systemctl status pipi-phone-updater.service
 - 系统用 .pipi-updater/active-compose.json 保存现在应使用的镜像和资料卷。一旦这个文件生成，后续手动管理容器也要带上同一个覆盖文件与原项目名，避免手动操作重新启动旧镜像。保留原 .env、.env.updates 及状态目录。以下以已从 .env.updates 导入变量为前提。
 
 ```sh
-docker compose --project-name "$PIPI_UPDATE_COMPOSE_PROJECT" \
-  -f compose.yaml -f compose.updates.yaml \
+set -- -f compose.yaml
+if [ "$(readlink compose.override.yaml)" = "compose.https.yaml" ]; then
+  set -- "$@" -f compose.https.yaml
+fi
+docker compose --project-name "$PIPI_UPDATE_COMPOSE_PROJECT" "$@" -f compose.updates.yaml \
   -f "$PIPI_UPDATE_STATE_DIR/active-compose.json" up -d --no-build
 ```
 

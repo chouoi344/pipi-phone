@@ -112,7 +112,7 @@ body,.phone-shell{font-family:var(--ui-font)}
 :is(#view,.navigation-snapshot) .friend-profile-cell .cell-desc{margin-top:2px}
 
 /* ---------- Me ---------- */
-:is(#view,.navigation-snapshot) .me-content .profile-card{padding:14px 16px 0 24px;min-height:0;gap:20px;align-items:flex-start}
+:is(#view,.navigation-snapshot) .me-content .profile-card{display:grid;grid-template-columns:64px minmax(0,1fr) auto auto;padding:14px 16px 0 24px;min-height:0;gap:20px;align-items:start}
 :is(#view,.navigation-snapshot) .me-content .profile-card .avatar{--avatar-size:64px;border-radius:6px}
 :is(#view,.navigation-snapshot) .me-content .profile-card h3{font-size:20px;line-height:1.4;font-weight:600;margin:2px 0 6px}
 :is(#view,.navigation-snapshot) .me-content .profile-card p{font-size:17px;line-height:1.4117647;color:rgba(0,0,0,.5)}
@@ -157,12 +157,13 @@ body,.phone-shell{font-family:var(--ui-font)}
 
 /* ---------- "+" tool panel: 64pt tiles, 87pt pitch, 240pt tall ---------- */
 :is(#view,.navigation-snapshot) .more-pages{border-top:.5px solid rgba(0,0,0,.1);height:auto}
-:is(#view,.navigation-snapshot) .compose-panel{display:grid;grid-template-columns:repeat(4,64px);grid-template-rows:repeat(2,88px);justify-content:space-between;gap:8px 0;padding:16px 25px 0;height:auto;min-height:200px;align-content:start}
-:is(#view,.navigation-snapshot) .compose-panel button{display:flex;flex-direction:column;align-items:center;width:64px;height:88px;padding:0;gap:8px}
+:is(#view,.navigation-snapshot) .compose-panel{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:none;grid-auto-rows:minmax(88px,auto);gap:8px 4px;padding:16px 6px 0;height:auto;min-height:200px;align-content:start}
+:is(#view,.navigation-snapshot) .compose-panel button{display:flex;flex-direction:column;align-items:center;width:100%;height:auto;padding:0;gap:8px}
 :is(#view,.navigation-snapshot) .compose-panel .panel-icon{width:64px;height:64px;border-radius:16px;background:#fff;display:flex;align-items:center;justify-content:center;color:#4c4c4c}
 :is(#view,.navigation-snapshot) .compose-panel .panel-icon .icon{width:36px;height:36px}
 :is(#view,.navigation-snapshot) .compose-panel .panel-icon .mask-icon{background-color:#4c4c4c}
-:is(#view,.navigation-snapshot) .compose-panel button>span:last-child{font-size:12px;line-height:16px;color:#6f6f6f;white-space:nowrap}
+:is(#view,.navigation-snapshot) .compose-panel button>span:last-child{max-width:100%;font-size:12px;line-height:1.35;color:#6f6f6f;white-space:normal;text-align:center}
+.compose-panel .tool-word{display:inline-block;white-space:nowrap}
 :is(#view,.navigation-snapshot) .panel-dots{display:flex;justify-content:center;gap:9px;height:40px;padding:12px 0 0;align-items:flex-start}
 :is(#view,.navigation-snapshot) .panel-dots button{width:7px;height:7px;min-width:0;padding:0;border-radius:50%;background:#ddd}
 :is(#view,.navigation-snapshot) .panel-dots button.active{background:#7b7b7b}
@@ -194,8 +195,8 @@ body,.phone-shell{font-family:var(--ui-font)}
 #overlay .wallet-pay-page{flex:1;margin:0;padding:0;min-height:0;display:flex;flex-direction:column;background:#ededed}
 .transfer-head{display:flex;align-items:flex-start;gap:16px;padding:14px 32px;background:#ededed}
 .transfer-to{flex:1;min-width:0}
-.transfer-to strong{display:block;font-size:17px;line-height:20px;font-weight:500;color:#181818;overflow-wrap:anywhere}
-.transfer-to span{display:block;margin-top:4px;font-size:14px;line-height:20px;color:rgba(0,0,0,.55)}
+.transfer-to strong{display:block;font-size:17px;line-height:1.25;font-weight:500;color:#181818;overflow-wrap:anywhere}
+.transfer-to span{display:block;margin-top:4px;font-size:14px;line-height:1.43;color:rgba(0,0,0,.55);overflow-wrap:anywhere}
 .transfer-head>.avatar{margin-top:10px;border-radius:5px}
 .transfer-sheet{flex:1;background:#fff;border-radius:12px 12px 0 0;padding:22px 32px 0;min-height:160px}
 .transfer-label{display:block;font-size:14px;line-height:20px;color:#191919}

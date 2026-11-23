@@ -398,9 +398,10 @@
           :icon==='wardrobe'?'<span class="icon life-wardrobe-mark" aria-hidden="true"></span>':P().icons[icon];
       return `<button type="button" class="category-tab ${selected?'active':''}" aria-pressed="${selected}" aria-controls="life-panel-${key}" data-life-category="${key}">${mark}<span>${label}</span></button>`;
     };
+    const categoryPair = start => '<div class="life-category-pair">'+categories.slice(start,start+2).map(categoryButton).join('')+'</div>';
     const navigation = '<nav class="model-ui life-navigation" aria-label="角色配置分类"><div class="category-tabs"><div class="main-categories">'+
-      categories.slice(0,4).map(categoryButton).join('')+'</div><div class="aux-categories">'+
-      categories.slice(4).map(categoryButton).join('')+'</div></div></nav>';
+      categoryPair(0)+categoryPair(2)+'</div><div class="aux-categories">'+
+      categoryPair(4)+categoryPair(6)+'</div></div></nav>';
     const body = d ? categories.map(({key,render}) =>
       `<div id="life-panel-${key}" data-life-panel="${key}" ${ui.category===key?'':'hidden'}>${render?render(ui,d):''}</div>`
     ).join('') : ui.loadError?'':'<p class="life-muted">正在读取…</p>';

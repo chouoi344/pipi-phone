@@ -16,8 +16,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
-/** A local file may replace a network response only after a whole-bundle match. */
+/** Local static files require a whole-bundle match or an exact audited replacement. */
 final class AssetBundle {
     private final Context context;
     private final SharedPreferences prefs;
@@ -25,6 +26,7 @@ final class AssetBundle {
     private final String hash;
     private final boolean cachedMatch;
     volatile boolean enabled;
+    private volatile String microphoneToken;
     private volatile boolean verifiedMatch, serverChanged;
 
     AssetBundle(Context context, SharedPreferences prefs, TrustedOrigin origin) throws Exception {
@@ -57,10 +59,10 @@ final class AssetBundle {
             try (InputStream stream = connection.getInputStream()) {
                 remote = new JSONObject(readUtf8(stream, 4096)).getString("sha256");
             }
-            verifiedMatch = hash.equals(remote); serverChanged = !verifiedMatch;
+            verifiedMatch = BundleCompatibility.accepts(hash, remote); serverChanged = !verifiedMatch;
             prefs.edit().putString("verified_origin", verifiedMatch ? origin.value : "")
                     .putString("verified_bundle", verifiedMatch ? hash : "").apply();
-            return verifiedMatch ? "使用同版本本地页面" : cachedMatch
+            return verifiedMatch ? (hash.equals(remote) ? "使用同版本本地页面" : "服务器 0.13.11：使用 App 内置的兼容页面") : cachedMatch
                     ? "服务器页面已更新，下次连接使用服务器资源" : "服务器页面已更新，使用服务器资源";
         } catch (JSONException invalidManifest) {
             invalidate(); return cachedMatch ? "服务器版本清单无效，下次连接使用服务器资源"
@@ -77,6 +79,7 @@ final class AssetBundle {
     }
 
     WebResourceResponse intercept(WebResourceRequest request) {
+        if (request.isForMainFrame()) microphoneToken = null;
         Uri uri = request.getUrl();
         String scheme = uri.getScheme();
         if ("file".equalsIgnoreCase(scheme) || "content".equalsIgnoreCase(scheme)) return blocked();
@@ -89,12 +92,31 @@ final class AssetBundle {
                 || path.equals("/bundle.json") || path.startsWith("/api/") || path.startsWith("/media/")) return null;
         try {
             InputStream stream = context.getAssets().open("phone" + path);
+            boolean localDocument = request.isForMainFrame() && path.equals("/index.html");
+            String scriptPolicy = "'self'";
+            if (localDocument) {
+                String token = UUID.randomUUID().toString();
+                String html;
+                try (InputStream source = stream) { html = readUtf8(source, 256 * 1024); }
+                html = html.replace("<head>", "<head><meta name=\"pipi-recording\" content=\"" + token + "\">")
+                        .replace("<script ", "<script nonce=\"" + token + "\" ");
+                stream = new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8));
+                microphoneToken = token;
+                scriptPolicy = "'nonce-" + token + "'";
+            }
             String type = mime(path);
             Map<String,String> headers = new HashMap<>();
-            headers.put("Cache-Control", "no-cache"); headers.put("X-Content-Type-Options", "nosniff");
-            headers.put("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; frame-ancestors 'none'");
+            headers.put("Cache-Control", localDocument ? "no-store" : "no-cache"); headers.put("X-Content-Type-Options", "nosniff");
+            headers.put("Content-Security-Policy", "default-src 'self'; script-src " + scriptPolicy + "; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; frame-ancestors 'none'");
             return new WebResourceResponse(type, isText(type) ? "UTF-8" : null, 200, "OK", headers, stream);
-        } catch (IOException absent) { return null; }
+        } catch (IOException absent) {
+            if (path.equals("/index.html") || path.endsWith(".js")) return blocked();
+            return null;
+        }
+    }
+
+    boolean ownsMicrophoneToken(String token) {
+        return enabled && token.equals(microphoneToken);
     }
 
     static String readUtf8(InputStream stream, int maximum) throws IOException {

@@ -23,7 +23,6 @@
 .engine-fallback{gap:12px}
 .engine-fallback>button{background:none;border:0;color:#576b95;font:inherit}
 .engine-fallback .cell-body{overflow-wrap:anywhere}
-.reminder-add{min-width:60px;min-height:32px;padding:4px 10px;border:0;border-radius:4px;background:#07c160;color:#fff;font:inherit;font-size:15px}
 .reminder-section-title{margin:14px 16px 6px;font-size:14px;font-weight:400;color:#646464}
 .reminder-item{padding:12px 16px 3px;border-bottom:.5px solid rgba(0,0,0,.08)}
 .reminder-item:last-child{border-bottom:0}
@@ -49,9 +48,9 @@
 .reminder-editor textarea{min-height:72px;resize:vertical}
 .reminder-repeat{min-width:0;margin:0;padding:10px 0;border:0}
 .reminder-repeat>legend{padding:0;color:#181818;font-size:14px}
-.reminder-repeat-options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
-.reminder-repeat-options.reminder-weekdays{grid-template-columns:repeat(7,minmax(0,1fr))}
-.reminder-repeat-options label{position:relative;min-width:0}
+.reminder-repeat-options{display:flex;flex-wrap:wrap;gap:4px}
+.reminder-repeat-options.reminder-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.reminder-repeat-options label{position:relative;flex:1 1 auto;min-width:0;white-space:nowrap}
 .reminder-repeat-options input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
 .reminder-repeat-options span{display:grid;min-height:36px;place-items:center;padding:2px;border-radius:5px;background:#f5f5f5;color:#555;font-size:13px;text-align:center;line-height:1.25}
 .reminder-repeat-options input:checked+span{background:#e6f7ec;color:#147139}
@@ -85,15 +84,16 @@
 .payment-handle-actions>button{flex:1}
 
 /* Beginner-friendly subpage tabs, reference galleries, timeline cards, and memory migration */
-.engine-subtabs{display:flex;background:#fff;border-bottom:.5px solid #e5e5e5;padding:0 8px;gap:4px;overflow-x:auto}
-.engine-subtabs button{flex:1;min-width:72px;min-height:42px;padding:8px 6px;font-size:14px;color:#666;border-bottom:2px solid transparent;white-space:nowrap}
+.engine-subtabs{display:flex;flex-wrap:wrap;background:#fff;border-bottom:.5px solid #e5e5e5;padding:0 8px;gap:4px;overflow-x:auto}
+.engine-subtabs button{flex:1 1 auto;min-width:72px;min-height:42px;padding:8px 6px;font-size:14px;color:#666;border-bottom:2px solid transparent;white-space:nowrap}
 .engine-subtabs button.active{color:#07c160;font-weight:600;border-bottom-color:#07c160}
 .ref-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:12px 16px;background:#fff}
 .ref-slot{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden;background:#f4f5f6;border:1px dashed #cfd4dc;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .ref-slot.has-img{border:0;background:#111}
 .ref-slot img{width:100%;height:100%;object-fit:cover;display:block}
-.ref-slot-add{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#666;font-size:12px;padding:8px;text-align:center}
-.ref-slot-add span:first-child{font-size:26px;line-height:1;color:#07c160}
+.ref-slot-add{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#666;font-size:12px;padding:4px 2px;text-align:center;line-height:1.3}
+.ref-slot-add .ref-kind{display:inline-block}
+.ref-slot-add>span:first-child{font-size:26px;line-height:1;color:#07c160}
 .ref-badge{position:absolute;left:5px;top:5px;background:rgba(7,193,96,.92);color:#fff;font-size:10px;padding:2px 6px;border-radius:4px}
 .ref-actions{position:absolute;left:0;right:0;bottom:0;display:flex;background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
 .ref-actions button{flex:1;color:#fff;font-size:11px;padding:5px 2px;text-align:center}

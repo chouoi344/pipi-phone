@@ -23,6 +23,10 @@ class Dialog extends EventTarget{
   close(){this.open=false;this.closes++;this.dispatchEvent(new Event('close'));}
   escape(){const event=new Event('cancel',{cancelable:true});this.dispatchEvent(event);if(!event.defaultPrevented)this.close();}
 }
+function overlayClasses(){
+  const names=new Set();
+  return {add(...items){for(const item of items)names.add(item);},remove(...items){for(const item of items)names.delete(item);},contains(item){return names.has(item);}};
+}
 function fixture(){
   const window=new EventTarget(),entries=[{pipi:true,route:{name:'chat',arg:'qa'},stack:[]}],jobs=[];let index=0;
   const history={get state(){return entries[index];},get length(){return entries.length;},
@@ -30,7 +34,7 @@ function fixture(){
     replaceState(state){entries[index]=structuredClone(state);},back(){this.go(-1);},
     go(delta){jobs.push(()=>{index=Math.max(0,Math.min(entries.length-1,index+delta));const event=new Event('popstate');event.state=history.state;window.dispatchEvent(event);});}};
   const handlers=new Map(),sheet={parentElement:null};
-  const overlay={addEventListener:(name,callback)=>handlers.set(name,callback),querySelector:()=>sheet.parentElement?sheet:null,replaceChildren(){sheet.parentElement=null;}};
+  const overlay={classList:overlayClasses(),addEventListener:(name,callback)=>handlers.set(name,callback),querySelector:()=>sheet.parentElement?sheet:null,replaceChildren(){sheet.parentElement=null;}};
   const context=vm.createContext({window,history,AbortController,EventTarget,Event,events:[],overlay});
   vm.runInContext(`let modalOpen=true,modalCloseCallback=null,modalSaveInProgress=false,modalReturnFocus=null,overlayBackPending=false,overlayCloseQueued=false,childDialog=null,childDialogSequence=0,queuedView=null,queuedBack=false;const overlayBackWaiters=[],navStack=[];let route={name:'chat',arg:'qa'};
     let chatSelection=null,globalSearchTerm='';function syncVisibleChatRead(){}const restoredRolePage=null;let composeComposing=false,searchComposing=false,recordHeld=false,recordingSession=null,recording=false,composeText='',composeImage='',composeStickerId='',quoteId='',forceBottomRole=null,composerSelection={},composerScroll={input:0,emoji:0},panel='',searchOpen=false,searchTerm='',morePage=0,emojiPage=0,emojiTab='all',emojiSearch='',emojiExpandedHeight=0;
@@ -120,7 +124,7 @@ function htmlFixture(){
   const node=(kind,children=[])=>({kind,childNodes:children,isConnected:false,disabled:false,style:{},setAttribute(){},append(...items){this.childNodes.push(...items);for(const item of items)connect(item,this.isConnected);},focus(){document.activeElement=this;},click(){if(!this.disabled)return this.onclick?.({});}});
   const parentInput=node('input');parentInput.checked=true;const parent=node('sheet',[parentInput]);
   const find=(children,kind)=>{for(const child of children){if(child.kind===kind)return child;const nested=find(child.childNodes||[],kind);if(nested)return nested;}return null;};
-  const overlay={childNodes:[],replaceChildren(...children){for(const child of this.childNodes)connect(child,false);this.childNodes=children;for(const child of children)connect(child,true);},prepend(child){this.childNodes.unshift(child);connect(child,true);},querySelector(selector){
+  const overlay={classList:overlayClasses(),childNodes:[],replaceChildren(...children){for(const child of this.childNodes)connect(child,false);this.childNodes=children;for(const child of children)connect(child,true);},prepend(child){this.childNodes.unshift(child);connect(child,true);},querySelector(selector){
     if(selector==='.modal-sheet')return find(this.childNodes,'sheet');
     if(selector.includes('#alert-confirm'))return find(this.childNodes.filter(n=>n.kind==='alert'),'confirm');
     if(selector.includes('.modal-error'))return find(this.childNodes.filter(n=>n.kind==='alert'),'error');

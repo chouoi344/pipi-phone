@@ -114,7 +114,7 @@
       trigger.disabled=!target.checked;
     };
     const menu=root.querySelector('.lb-voice-menu');
-    if(typeof menu.showPopover!=='function'){
+    if(typeof menu.showPopover!=='function'||!window.ResizeObserver){
       menu.hidden=true;
       trigger.removeAttribute('popovertarget');
       trigger.removeAttribute('aria-controls');

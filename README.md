@@ -4,9 +4,9 @@
 
 自己部署的 AI 角色小手机，支持聊天、朋友圈、语音、日程与共同记忆。
 
-网页正式版 **v0.13.11** · 安卓 App **0.1.5** · Node.js 24+ · AGPL-3.0-only
+网页正式版 **v0.13.12** · 安卓 App **0.1.7** · Node.js 24+ · AGPL-3.0-only
 
-[下载安卓 App](https://github.com/chouoi344/pipi-phone/releases/download/v0.13.11/pipi-phone-android-0.1.5-6.apk) · [快速开始](#快速开始) · [安装与升级](INSTALL.zh-CN.md) · [使用说明](docs/USAGE.zh-CN.md) · [更新记录](CHANGELOG.md) · [问题反馈](https://github.com/chouoi344/pipi-phone/issues)
+[下载安卓 App](https://github.com/chouoi344/pipi-phone/releases/download/v0.13.12/pipi-phone-android-0.1.7-8.apk) · [快速开始](#快速开始) · [安装与升级](INSTALL.zh-CN.md) · [使用说明](docs/USAGE.zh-CN.md) · [更新记录](CHANGELOG.md) · [问题反馈](https://github.com/chouoi344/pipi-phone/issues)
 
 </div>
 
@@ -18,6 +18,8 @@
 | 安卓 App | 先在网页设置密码，再在 App 粘贴同一个网址、输入密码，直接进入消息列表 | 「网页程序更新」更新服务器；「安卓 App 更新」只更新这台手机 |
 
 安卓支持系统返回手势、切回聊天后恢复草稿，以及好友新消息通知。从安卓 0.1.3 起，服务器可以从 GitHub 取回官方安装包，再提供给手机。手机只需能访问自己的小手机网址。首次安装及自行构建步骤见[安卓使用说明](android/README.md)。
+
+安卓 App 支持旧网页组件 WebView 83。搭配官方网页 v0.13.11 时，覆盖安装 App 即可使用原服务器。手机无法录音时仍可继续文字聊天和发图。
 
 ## 界面预览
 
@@ -53,19 +55,17 @@
 
 ### Docker Compose
 
-先安装 Git、Docker 和 Docker Compose。在首次安装的位置执行下面的命令。
+Ubuntu 云服务器首次安装需要 Git、curl、Python 3、Docker 和 Compose 2.24.4 或更新版本。放行公网 TCP 80、443 后，复制下面这行即可下载最新正式版并配置 HTTPS。已经解压好源码的用户可以在项目目录直接运行 `python3 scripts/install-https.py`。
 
 ```sh
-git clone https://github.com/chouoi344/pipi-phone.git
-cd pipi-phone
-docker compose up -d --build
+repo=https://github.com/chouoi344/pipi-phone && release=$(curl --http1.1 -fsSLI -o /dev/null -w '%{url_effective}' "$repo/releases/latest") && git -c http.version=HTTP/1.1 clone --depth 1 --branch "${release##*/}" "$repo.git" pipi-phone && cd pipi-phone && python3 scripts/install-https.py
 ```
 
-在云服务器的安全组放行 TCP 18766，然后用浏览器打开 `http://服务器公网IP:18766`，填写名字和至少 8 个字符的访问密码。在安卓 App 里粘贴同一个地址、输入同一个密码，就能进入消息列表。本机安装可打开 [http://127.0.0.1:18766/](http://127.0.0.1:18766/)。
+安装完成后，终端会显示 `https://你的公网IP/`。在手机浏览器打开它，填写名字和至少 8 个字符的访问密码。安卓 App 也粘贴这个完整网址，使用同一个密码。浏览器首次录音时，点「允许使用麦克风」。服务器会自动申请并续期免费证书。
 
 Docker 内已包含 Node.js，业务资料保存在 `pipi-data` 数据卷。普通重启和重新构建会保留资料。
 
-> 公网 HTTP 连接以明文传输密码和聊天内容。已有 HTTPS 网址可以直接使用。仅供自己使用时，可把安全组来源设为自己的公网 IP。详见[安装说明](INSTALL.zh-CN.md#首次安装)。
+只在自己电脑上试用时，在源码目录运行 `docker compose up -d --build`，打开 [http://127.0.0.1:18766/](http://127.0.0.1:18766/)。使用面板且已有 HTTPS 的服务器沿用原网址。[已有网站、端口冲突和安装说明](INSTALL.zh-CN.md#首次安装)
 
 <details>
 <summary>使用 Node.js 在本机直接运行</summary>
@@ -90,7 +90,7 @@ Windows 也可以双击 `start.cmd`。打开 [http://127.0.0.1:18766/](http://12
 
 ## 更新与数据
 
-当前网页版本为 **0.13.11**，支持将官方安卓更新转发到用户自己的手机。升级已有安装前，先导出备份，保留原部署目录、数据卷与环境变量。[0.13.0 数据升级说明](升级说明_0.13.0.md) · [更新记录](CHANGELOG.md)
+当前网页版本为 **0.13.12**，支持将官方安卓更新转发到用户自己的手机。升级已有安装前，先导出备份，保留原部署目录、数据卷与环境变量。[0.13.0 数据升级说明](升级说明_0.13.0.md) · [更新记录](CHANGELOG.md)
 
 - **备份与恢复**　在「我 → 设置 → 聊天记录管理」导出 TAR 备份，可恢复 TAR 和旧版 JSON。导出默认包含模型 API Key、图片和语音，可取消相应选项。含密钥的备份请妥善保管。
 - **媒体保存**　聊天图片和语音默认保存 7 天，可在「存储空间」调整。服务器剩余空间不足时，会按时间清理最旧的聊天媒体。

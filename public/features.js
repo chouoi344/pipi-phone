@@ -36,8 +36,9 @@
   const page = (title, html, submit, action) => P().openPage(title, html, submit, action);
   const closePage = notify => P().closePage(notify);
   // Navigation is declared by the page API, never patched into a Cancel button.
-  function detailPage(title, html, back) {
+  function detailPage(title, html, back, ...classes) {
     P().openPage(title, html, null, undefined, back);
+    if (classes.length) document.querySelector('#overlay > .page-editor').classList.add(...classes);
   }
   function detailHeaderAction(selector) {
     const button = document.querySelector(selector), header = document.querySelector('.page-editor .modal-header');
@@ -352,7 +353,7 @@
   }
   function manageMoments() {
     syncMomentRole();
-    page('朋友圈管理', `<div class="moment-management"><label class="feature-field"><span>查看动态</span><select id="moment-role-filter" aria-label="朋友圈视角"><option value="all">我的朋友圈</option>${roles().map(r => `<option value="${esc(r.id)}"${selected(r.id, ui.momentRole)}>${esc(r.remark || r.name)}的可见动态</option>`).join('')}</select></label><button type="button" class="moment-management-cell" id="moment-generate"><span>邀请角色发动态</span>${icon('chevron')}</button></div>`, null);
+    detailPage('朋友圈管理', `<div class="moment-management"><label class="feature-field"><span>查看动态</span><select id="moment-role-filter" aria-label="朋友圈视角"><option value="all">我的朋友圈</option>${roles().map(r => `<option value="${esc(r.id)}"${selected(r.id, ui.momentRole)}>${esc(r.remark || r.name)}的可见动态</option>`).join('')}</select></label><button type="button" class="moment-management-cell" id="moment-generate"><span>邀请角色发动态</span>${icon('chevron')}</button></div>`, undefined, 'moment-management-modal');
     on('#moment-role-filter', 'change', e => {
       const origin = history.state?.route;
       ui.momentRole = e.target.value;
@@ -695,7 +696,7 @@
   }
   const watchPayment = (id, back, options) => watchWallet(document.querySelector('#overlay > .page-editor .wallet-transaction-detail'), () => JSON.stringify(state().wallet?.transactions?.find(entry => entry.id === id)), () => walletTransaction(id, back, options));
   function walletBalance() {
-    detailPage('零钱', `<div class="wallet-page wallet-balance-page"><button type="button" id="wallet-details" class="wallet-detail-link">零钱明细</button><div class="wallet-balance-card"><div class="wallet-coin">${nativeIcon('coin-filled')}</div><h2>我的零钱</h2><p class="wallet-balance${money(state().wallet?.balanceCents).length > 10 ? ' wallet-large-amount' : ''}"><span>¥</span>${money(state().wallet?.balanceCents)}</p><p class="wallet-balance-caption">虚拟余额</p><div class="wallet-actions"><button type="button" id="wallet-transfer">转账</button><button type="button" id="wallet-redpacket">发红包</button></div></div><div class="wallet-footer"><span>用于与好友互动 · 不涉及真实资金</span></div></div>`);
+    detailPage('零钱', `<div class="wallet-page wallet-balance-page"><button type="button" id="wallet-details" class="wallet-detail-link">零钱明细</button><div class="wallet-balance-card"><div class="wallet-coin">${nativeIcon('coin-filled')}</div><h2>我的零钱</h2><p class="wallet-balance${money(state().wallet?.balanceCents).length > 10 ? ' wallet-large-amount' : ''}"><span>¥</span>${money(state().wallet?.balanceCents)}</p><p class="wallet-balance-caption">虚拟余额</p><div class="wallet-actions"><button type="button" id="wallet-transfer">转账</button><button type="button" id="wallet-redpacket">发红包</button></div></div><div class="wallet-footer"><span>用于与好友互动 · 不涉及真实资金</span></div></div>`, undefined, 'wallet-overlay-page', 'wallet-flush-body', 'wallet-balance-modal');
     detailHeaderAction('#wallet-details');
     on('#wallet-details', 'click', () => walletBills(walletBalance));
     on('#wallet-transfer', 'click', () => walletTransfer('transfer', undefined, { returnTo: walletBalance }));
@@ -721,7 +722,7 @@
     }).join('') : empty('', '暂无零钱明细', '');
   }
   function walletBills(back) {
-    detailPage('零钱明细', `<div class="wallet-bills-page"><div class="wallet-transactions">${walletBillRows()}</div><div class="feature-bottom-note">仅记录虚拟钱包收支</div></div>`, back);
+    detailPage('零钱明细', `<div class="wallet-bills-page"><div class="wallet-transactions">${walletBillRows()}</div><div class="feature-bottom-note">仅记录虚拟钱包收支</div></div>`, back, 'wallet-overlay-page', 'wallet-flush-body', 'wallet-bills-modal');
     const list = document.querySelector('#overlay > .page-editor .wallet-transactions'), bind = () => on('[data-wallet-transaction]', 'click', event => walletTransaction(event.currentTarget.dataset.walletTransaction, () => walletBills(back)), list);
     bind();
     watchWallet(list, () => JSON.stringify(state().wallet?.transactions||[]), () => { list.innerHTML = walletBillRows(); bind(); });
@@ -739,7 +740,7 @@
         ? `<div class="payment-detail-cover" aria-hidden="true"></div><div class="wallet-detail-person">${avatar(sender, 22)}<span>${esc(label(sender))}的红包</span></div><p class="wallet-detail-note">${esc(item.note || '恭喜发财，大吉大利')}</p>${item.stickerImage ? `<img class="redpacket-detail-sticker" src="${esc(item.stickerImage)}" alt="红包表情">` : ''}<p class="payment-detail-value"><span class="wallet-detail-amount">${amount}</span><span class="payment-detail-unit">元</span></p><p class="wallet-detail-status">${status}</p>`
         : `<div class="payment-detail-symbol" aria-hidden="true">${icon('transfer')}</div><p class="wallet-detail-status">${status}</p><p class="payment-detail-value"><span class="payment-detail-currency">¥</span><span class="wallet-detail-amount${amount.length > 9 ? ' wallet-large-amount' : ''}">${amount}</span></p>${item.note ? `<p class="wallet-detail-note">${esc(item.note)}</p>` : ''}<p class="payment-detail-recipient">${incoming ? '来自' : '转账给'}${esc(walletRoleLabel(item))}</p>`;
       const actions=incoming&&paymentStatus==='pending'?'<div class="payment-handle-actions"><button type="button" class="primary-btn weui-btn weui-btn_primary" data-payment-handle="receive">领取</button><button type="button" class="secondary-btn" data-payment-handle="return">退还</button></div>':'';
-      detailPage(redpacket ? '红包详情' : '转账详情', `<div class="wallet-transaction-detail payment-message-detail ${redpacket ? 'is-redpacket-detail' : 'is-transfer-detail'}" data-payment-status="${esc(paymentStatus)}"><div class="payment-detail-summary">${summary}</div>${actions}<div class="payment-detail-record"><span>${incoming ? '收到时间' : '发送时间'}</span><time>${esc(new Date(item.createdAt).toLocaleString('zh-CN'))}</time></div><button type="button" class="payment-detail-bill" id="payment-detail-bill">查看零钱明细${icon('chevron')}</button><p class="feature-bottom-note">虚拟互动记录，不涉及真实支付</p></div>`, back);
+      detailPage(redpacket ? '红包详情' : '转账详情', `<div class="wallet-transaction-detail payment-message-detail ${redpacket ? 'is-redpacket-detail' : 'is-transfer-detail'}" data-payment-status="${esc(paymentStatus)}"><div class="payment-detail-summary">${summary}</div>${actions}<div class="payment-detail-record"><span>${incoming ? '收到时间' : '发送时间'}</span><time>${esc(new Date(item.createdAt).toLocaleString('zh-CN'))}</time></div><button type="button" class="payment-detail-bill" id="payment-detail-bill">查看零钱明细${icon('chevron')}</button><p class="feature-bottom-note">虚拟互动记录，不涉及真实支付</p></div>`, back, 'wallet-overlay-page', 'wallet-flush-body', 'wallet-detail-modal', redpacket ? 'redpacket-detail-modal' : 'transfer-detail-modal');
       on('#payment-detail-bill', 'click', () => walletTransaction(id, () => walletTransaction(id, back, options)));
       on('[data-payment-handle]','click',event=>run(async()=>{
         const button=event.currentTarget,chat=document.querySelector('#chat-messages');
@@ -756,14 +757,14 @@
     }
     const row = (title, value) => `<div class="wallet-detail-row"><span>${title}</span><strong>${esc(value)}</strong></div>`;
     const name = walletRoleLabel(item), settledAt = paymentStatus === 'returned' ? walletReturnTime(item) : item.updatedAt;
-    detailPage(redpacket ? '红包详情' : '转账详情', `<div class="wallet-transaction-detail${redpacket ? ' is-redpacket-detail' : ' is-transfer-detail'}" data-payment-status="${esc(paymentStatus)}"><div class="wallet-detail-summary"><div class="wallet-detail-person">${avatar(item.roleId, 42)}<span>${esc(name)}</span></div><p class="wallet-detail-kind">${redpacket ? '红包' : '转账'}${incoming ? '收入' : '支出'}</p><p class="wallet-detail-amount${money(item.amountCents).length > 9 ? ' wallet-large-amount' : ''}">${incoming ? '+' : '−'}${money(item.amountCents)}</p><p class="wallet-detail-status">${statusLabel}</p>${item.note ? `<p class="wallet-detail-note">${esc(item.note)}</p>` : ''}${item.stickerImage ? `<img class="redpacket-detail-sticker" src="${esc(item.stickerImage)}" alt="红包表情">` : ''}</div><div class="wallet-detail-fields">${row(incoming ? '付款方' : '收款方', name)}${row('交易时间', new Date(item.createdAt).toLocaleString('zh-CN'))}${settledAt!==undefined ? row(paymentStatus === 'returned' ? '退还时间' : '领取时间', new Date(settledAt).toLocaleString('zh-CN')) : ''}${row('支付方式', '虚拟零钱')}${row('交易单号', item.id)}</div><p class="feature-bottom-note">虚拟互动记录，不涉及真实支付</p></div>`, back);
+    detailPage(redpacket ? '红包详情' : '转账详情', `<div class="wallet-transaction-detail${redpacket ? ' is-redpacket-detail' : ' is-transfer-detail'}" data-payment-status="${esc(paymentStatus)}"><div class="wallet-detail-summary"><div class="wallet-detail-person">${avatar(item.roleId, 42)}<span>${esc(name)}</span></div><p class="wallet-detail-kind">${redpacket ? '红包' : '转账'}${incoming ? '收入' : '支出'}</p><p class="wallet-detail-amount${money(item.amountCents).length > 9 ? ' wallet-large-amount' : ''}">${incoming ? '+' : '−'}${money(item.amountCents)}</p><p class="wallet-detail-status">${statusLabel}</p>${item.note ? `<p class="wallet-detail-note">${esc(item.note)}</p>` : ''}${item.stickerImage ? `<img class="redpacket-detail-sticker" src="${esc(item.stickerImage)}" alt="红包表情">` : ''}</div><div class="wallet-detail-fields">${row(incoming ? '付款方' : '收款方', name)}${row('交易时间', new Date(item.createdAt).toLocaleString('zh-CN'))}${settledAt!==undefined ? row(paymentStatus === 'returned' ? '退还时间' : '领取时间', new Date(settledAt).toLocaleString('zh-CN')) : ''}${row('支付方式', '虚拟零钱')}${row('交易单号', item.id)}</div><p class="feature-bottom-note">虚拟互动记录，不涉及真实支付</p></div>`, back, 'wallet-overlay-page', 'wallet-flush-body', 'wallet-detail-modal');
     watchPayment(id,back,options);
   }
   function walletTransfer(type, initialRoleId, options = {}) {
     if (!roles().length) return P().toast('先去通讯录添加一个角色');
     const recipient = roles().find(role => role.id === initialRoleId);
     if (!recipient) {
-      detailPage('选择朋友', `<div class="wallet-recipients">${roles().map(role => `<button type="button" class="wallet-recipient" data-wallet-person="${esc(role.id)}">${P().avatar(role, 44)}<span>${esc(role.remark || role.name)}</span>${icon('chevron')}</button>`).join('')}</div>`, options.returnTo);
+      detailPage('选择朋友', `<div class="wallet-recipients">${roles().map(role => `<button type="button" class="wallet-recipient" data-wallet-person="${esc(role.id)}">${P().avatar(role, 44)}<span>${esc(role.remark || role.name)}</span>${icon('chevron')}</button>`).join('')}</div>`, options.returnTo, 'wallet-overlay-page');
       on('[data-wallet-person]', 'click', event => walletTransfer(type, event.currentTarget.dataset.walletPerson, { ...options, chooseRecipient: true }));
       return;
     }

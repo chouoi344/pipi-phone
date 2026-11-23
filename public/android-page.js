@@ -56,7 +56,7 @@
     button.onpointermove = event => {
       if (pointer?.id !== event.pointerId) return;
       const x = event.clientX - pointer.x, y = event.clientY - pointer.y;
-      moved ||= Math.abs(x) > 8 || Math.abs(y) > 8;
+      moved = moved || Math.abs(x) > 8 || Math.abs(y) > 8;
       button.style.setProperty('--android-notice-shift', `${y < 0 && -y > Math.abs(x) ? y : 0}px`);
     };
     button.addEventListener('touchmove', event => {
@@ -67,7 +67,7 @@
     const finish = event => {
       if (pointer?.id !== event.pointerId) return;
       const x = event.clientX - pointer.x, y = event.clientY - pointer.y, cancelled = event.type !== 'pointerup';
-      moved ||= Math.abs(x) > 8 || Math.abs(y) > 8;
+      moved = moved || Math.abs(x) > 8 || Math.abs(y) > 8;
       pointer = null; suppressClick = cancelled || moved;
       if (button.hasPointerCapture(event.pointerId)) button.releasePointerCapture(event.pointerId);
       button.classList.remove('android-notice-dragging'); button.style.removeProperty('--android-notice-shift');

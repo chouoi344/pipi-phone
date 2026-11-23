@@ -1,0 +1,28 @@
+/* Chromium 83 reports gap support because grid supports it, but flex does not.
+ * Keep these local to the startup, main navigation and chat controls. */
+.boot-screen>.boot-logo{margin-bottom:15px}
+.conversation>.conversation-copy{margin-left:12px}
+.cell>.cell-body:not(:first-child){margin-left:16px}
+.contacts .cell>.cell-body:not(:first-child){margin-left:12px}
+/* The shared menu row wraps its label in .cell-main. A hidden icon (Settings)
+   takes its margin with it. Avoid doubling the gap in Chromium 84–87. */
+:is(#view,.navigation-snapshot) :is(.cell.list-item,.add-friend-tool){column-gap:0}
+:is(.cell.list-item,.add-friend-tool)>.cell-icon{margin-right:16px}
+.contacts .cell.list-item>.cell-icon{margin-right:12px}
+:is(#view,.navigation-snapshot)[data-route=role] .role-hero{column-gap:0}
+.role-hero>.avatar{margin-right:16px}
+body.wechat-classic :is(#view,.navigation-snapshot)[data-route=chat] .message-row>:not([hidden])~:not([hidden]){margin-left:8px}
+body.wechat-classic :is(#view,.navigation-snapshot)[data-route=chat] .message-row.mine>:not([hidden])~:not([hidden]){margin-left:0;margin-right:8px}
+body.wechat-classic :is(#view,.navigation-snapshot)[data-route=chat] .voice-message>:not([hidden])~:not([hidden]){margin-left:7px}
+body.wechat-classic :is(#view,.navigation-snapshot)[data-route=chat] .voice-message.voice-mine>:not([hidden])~:not([hidden]){margin-left:0;margin-right:7px}
+.search-input-wrap>.icon{margin-right:6px}
+/* Give the cover and photo tiles a real height where aspect-ratio is ignored. */
+.moments-cover::after{content:"";display:block;padding-top:83.333333%}
+.moment-photo-grid:not(.single-photo) .moment-photo-btn{position:relative}
+.moment-photo-grid:not(.single-photo) .moment-photo-btn::before{content:"";display:block;padding-top:100%}
+.moment-photo-grid:not(.single-photo) .moment-photo{position:absolute;inset:0}
+.compose-photo-item::before{content:"";display:block;padding-top:100%}
+.compose-photo-item>button:first-child{position:absolute;inset:0}
+.moment-media-grid>button{position:relative}
+.moment-media-grid>button::before{content:"";display:block;padding-top:100%}
+.moment-media-grid>button>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}

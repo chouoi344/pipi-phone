@@ -31,7 +31,7 @@ body.wechat-classic #overlay .classic-entry-identity .avatar { width: 56px; heig
 body.wechat-classic #overlay .classic-entry-identity > div { min-width: 0; }
 body.wechat-classic #overlay .classic-entry-identity strong { display: block; font-size: 17px; line-height: 25px; font-weight: 600; overflow-wrap: anywhere; }
 body.wechat-classic #overlay .classic-entry-identity > div > span { display: block; margin-top: 3px; color: #818690; font-size: 12px; line-height: 19px; overflow-wrap: anywhere; }
-body.wechat-classic #overlay .classic-entry-note { margin: 0 0 15px; color: #717781; font-size: 13px; line-height: 21px; overflow-wrap: anywhere; }
+body.wechat-classic #overlay .classic-entry-note { margin: 0 0 15px; color: #717781; font-size: 13px; line-height: 1.62; overflow-wrap: anywhere; }
 body.wechat-classic #overlay .classic-entry-primary { display: block; width: 100%; margin-top: 16px; min-height: 42px; padding: 10px 16px; border-radius: 10px; background: #07c160; color: #fff; font-size: 14px; font-weight: 500; }
 body.wechat-classic #overlay .classic-entry-primary:disabled { opacity: .55; }
 body.wechat-classic #overlay .classic-entry-status { margin: 10px 0 0; font-size: 12px; line-height: 19px; color: #717781; }

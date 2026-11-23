@@ -1,0 +1,15 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+ * Small interaction fixes also needed by WebView 88-104. Keep layout in its
+ * original stylesheets; only WebView without :is() loads webview83.css. */
+[inert]{pointer-events:none!important;user-select:none;-webkit-user-select:none}
+@supports not selector(:has(*)) {
+  #overlay.has-model-sheet{background:#0006;pointer-events:auto}
+  #overlay.has-usage-sheet{background:rgba(0,0,0,.4);pointer-events:auto}
+  body.wechat-classic #overlay.pt-settings-overlay.has-settings-editor{background:#0006;pointer-events:auto}
+  body.wechat-classic #overlay.pt-settings-overlay.has-overlay-mask{background:transparent}
+  html[data-skin=waterdrop] body.wechat-classic #overlay.pt-settings-overlay.has-settings-editor{background:#1b283c59;backdrop-filter:blur(2px)}
+  html[data-skin=waterdrop] body.wechat-classic #overlay.pt-settings-overlay.has-overlay-mask{background:transparent;backdrop-filter:none}
+  html[data-skin=waterdrop] .waterdrop-conversation-group .conversation-wrap.conversation-swiped .conversation-actions{opacity:1}
+  /* The isolated workbench does not load the classic settings decorator. */
+  body[data-initial-view=life-workbench] #overlay:not(:empty){pointer-events:auto}
+}

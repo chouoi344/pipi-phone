@@ -118,14 +118,21 @@ public final class FirstConnectionForm extends Dialog {
         if (Build.VERSION.SDK_INT >= 26) passwordIme |= EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING;
         password.setImeOptions(passwordIme);
         password.setTransformationMethod(PasswordTransformationMethod.getInstance());
-        password.setPadding(dp(12), dp(11), dp(64), dp(11));
         FrameLayout passwordBox = new FrameLayout(getContext());
         passwordBox.addView(password, new FrameLayout.LayoutParams(-1, -2));
         reveal = button("显示", Color.rgb(56, 93, 76), Color.TRANSPARENT);
         reveal.setTextSize(14);
+        reveal.setSingleLine(true);
+        reveal.setMinWidth(dp(60));
+        reveal.setPadding(dp(8), 0, dp(8), 0);
         reveal.setContentDescription("显示密码");
         reveal.setOnClickListener(view -> showPassword(!passwordVisible));
-        passwordBox.addView(reveal, new FrameLayout.LayoutParams(dp(60), -1, Gravity.END));
+        reveal.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            int endPadding = right - left + dp(4);
+            if (password.getPaddingEnd() != endPadding)
+                password.setPaddingRelative(dp(12), dp(11), endPadding, dp(11));
+        });
+        passwordBox.addView(reveal, new FrameLayout.LayoutParams(-2, -1, Gravity.END));
         passwordError = errorText();
         addField("小手机密码", "就是你第一次打开网页版时设置的密码。", passwordBox, password, passwordError, 19);
 

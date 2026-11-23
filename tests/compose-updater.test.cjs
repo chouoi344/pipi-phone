@@ -101,6 +101,23 @@ test('Compose updater: healthy update retains the original named data volume and
   assert.ok(!f.commands.some(args=>args.includes('down')||args.includes('prune')));
 });
 
+test('HTTPS installs preserve the loopback binding and proxy network during update and rollback',async t=>{
+  const f=await fixture(t,{unhealthy:true});
+  const httpsFile=path.join(f.dir,'compose.https.yaml');
+  await fs.copyFile(path.join(__dirname,'../compose.https.yaml'),httpsFile);
+  try{await fs.symlink('compose.https.yaml',path.join(f.dir,'compose.override.yaml'),'file');}
+  catch(error){if(process.platform==='win32'&&error.code==='EPERM')return t.skip('The Ubuntu installer uses a POSIX symlink');throw error;}
+  await f.submit();await f.make().run({once:true});
+  assert.equal((await f.status()).phase,'rolled-back');
+  const commands=f.commands.filter(args=>args[0]==='compose');
+  assert.ok(commands.some(args=>args.includes('up')));
+  for(const args of commands){
+    assert.equal(args[args.indexOf(httpsFile)-1],'-f');
+    assert.ok(args.indexOf(httpsFile)>args.indexOf(f.config.composeFile));
+    assert.ok(args.indexOf(httpsFile)<args.indexOf(f.config.featureFile));
+  }
+});
+
 test('Compose updater: failed migrated version runs the old image on a snapshot clone, preserving both original and snapshot',async t=>{
   const f=await fixture(t,{unhealthy:true});await f.submit();await f.make().run({once:true});
   const status=await f.status(),job=await f.journal();

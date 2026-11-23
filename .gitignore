@@ -1,8 +1,10 @@
 data/
 runtime/
+__pycache__/
 node_modules/
 .env
 .env.*
+/compose.override.yaml
 *.sqlite
 *.sqlite3
 *.sqlite3-*

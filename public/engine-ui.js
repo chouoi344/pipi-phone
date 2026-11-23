@@ -293,7 +293,7 @@
       if(url){
         return `<div class="ref-slot has-img"><img src="${esc(url)}" alt="${esc(kindLabel)}${idx+1}">${idx===0&&fieldKey==='faceReferences'?'<span class="ref-badge">主脸锚点</span>':''}<div class="ref-actions">${idx>0?`<button type="button" data-ref-primary="${fieldKey}:${idx}">设为主图</button>`:''}<button type="button" class="danger" data-ref-remove="${fieldKey}:${idx}">删除</button></div></div>`;
       }
-      return `<div class="ref-slot"><button type="button" class="ref-slot-add" data-ref-upload="${fieldKey}:${idx}"><span>＋</span><span>上传${esc(kindLabel)}</span></button></div>`;
+      return `<div class="ref-slot"><button type="button" class="ref-slot-add" data-ref-upload="${fieldKey}:${idx}"><span>＋</span><span>上传<span class="ref-kind">${esc(kindLabel)}</span></span></button></div>`;
     }).join('');
     return `<div class="ref-grid">${slots}</div>`;
   }

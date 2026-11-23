@@ -35,6 +35,12 @@
   }
 
   function decorateSheets() {
+    overlay.classList.toggle('has-model-sheet', Boolean(overlay.querySelector(':scope > .model-sheet')));
+    overlay.classList.toggle('has-usage-sheet', Boolean(overlay.querySelector(':scope > .usage-sheet')));
+    overlay.classList.toggle('has-contact-remark', Boolean(overlay.querySelector(':scope > .contact-remark-editor')));
+    overlay.classList.toggle('has-chat-background', Boolean(overlay.querySelector(':scope > .chat-background-editor')));
+    overlay.classList.toggle('has-overlay-mask', Boolean(overlay.querySelector(':scope > .overlay-mask')));
+    overlay.classList.toggle('has-settings-editor', Boolean(overlay.querySelector(':scope > .pt-settings-sheet.page-editor')));
     if (!document.body.classList.contains('wechat-classic')) return;
     const view = document.getElementById('view');
     const active = view.classList.contains('pt-settings-view');
@@ -60,6 +66,7 @@
     const sheet = overlay.querySelector(':scope > .page-editor, :scope > .sheet-actions, :scope > .alert-dialog');
     if (!sheet) return;
     sheet.classList.add('pt-settings-sheet');
+    overlay.classList.toggle('has-settings-editor', sheet.classList.contains('page-editor'));
     const voiceChoice = sheet.querySelector('[name="voice-model"]');
     if (voiceChoice && !sheet.classList.contains('pt-voice-model-sheet')) {
       sheet.classList.add('pt-voice-model-sheet');
@@ -286,8 +293,10 @@
         style.setProperty('--pt-dialog-height', bounds.height + 'px');
         placeVoice?.();
       };
-      resizeObserver = new ResizeObserver(updateFrame);
-      resizeObserver.observe(frame);
+      if (window.ResizeObserver) {
+        resizeObserver = new ResizeObserver(updateFrame);
+        resizeObserver.observe(frame);
+      }
       updateFrame();
       view.querySelector('.content')?.classList.add('pt-config-content');
       for (const input of view.querySelectorAll('#engine-module-form .check-row input[type="checkbox"], #schedule-settings .check-row input[type="checkbox"]')) {

@@ -63,7 +63,10 @@
         { opacity: 0, transform: 'translateY(4px)' }
       ], timing);
       const shadeFade = shade.animate([{ opacity: 1 }, { opacity: 0 }], timing);
-      Promise.allSettled([cardFade.finished, shadeFade.finished]).then(finish);
+      Promise.all([cardFade, shadeFade].map(animation => new Promise(resolve => {
+        animation.onfinish = resolve;
+        animation.oncancel = resolve;
+      }))).then(finish);
     }
 
     function outside(event) {

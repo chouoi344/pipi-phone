@@ -30,9 +30,11 @@ final class TrustedOrigin {
         scheme = scheme.toLowerCase(Locale.ROOT);
         host = canonicalHost(host);
         boolean literal = host.startsWith("[") || ipv4(host);
+        int port = parsed.getPort();
+        // The public installer serves HTTPS on 443. Keep local and explicit legacy HTTP addresses usable.
+        if (bare && literal && (port == 443 || port == -1 && !isLocalAddress(host))) scheme = "https";
         if (!scheme.equals("https") && !(scheme.equals("http") && literal))
             throw new IllegalArgumentException("域名请填写完整 HTTPS 网址；IP 地址支持 HTTP");
-        int port = parsed.getPort();
         if ((scheme.equals("https") && port == 443) || (scheme.equals("http") && port == 80)) port = -1;
         String normalized = scheme + "://" + host + (port == -1 ? "" : ":" + port);
         return new TrustedOrigin(URI.create(normalized), normalized);
@@ -60,6 +62,17 @@ final class TrustedOrigin {
         HttpURLConnection connection = (HttpURLConnection)target.toURL().openConnection();
         connection.setInstanceFollowRedirects(false);
         return connection;
+    }
+
+    private static boolean isLocalAddress(String literal) {
+        try {
+            InetAddress ip = InetAddress.getByName(literal);
+            byte[] bytes = ip.getAddress();
+            boolean uniqueLocal = bytes.length == 16 && (bytes[0] & 0xfe) == 0xfc;
+            return uniqueLocal || ip.isSiteLocalAddress() || ip.isLoopbackAddress() || ip.isLinkLocalAddress();
+        } catch (java.net.UnknownHostException invalid) {
+            throw new IllegalArgumentException("IP 地址格式不正确", invalid);
+        }
     }
 
     private static boolean ipv4(String host) {

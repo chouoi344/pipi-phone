@@ -26,7 +26,7 @@ function fixture({enabled=['voiceUnderstanding','stt'], microphone, recognize=as
     window:{MediaRecorder:Recorder,PipiEngine:{serviceReady:kind=>enabled.includes(kind),resetActivity(){}},PipiAudio:{recordingWav:async x=>x}},
     navigator:{mediaDevices:{getUserMedia:()=>microphone?microphone(stream):Promise.resolve(stream())}},
     Date:{now:()=>time}, Blob,FileReader:Reader,MediaRecorder:Recorder,crypto:require('node:crypto').webcrypto,
-    view:{querySelector(){return null;}},document:{hidden:false},syncComposerControls(){},refresh(){},receiveState(){},
+    view:{querySelector(){return null;}},document:{hidden:false,querySelector(){return null;}},syncComposerControls(){},refresh(){},receiveState(){},
     setTimeout(fn){timers.add(fn);return fn;},clearTimeout(fn){timers.delete(fn);},
     async apiRaw(url,blob){uploads.push({url,blob});return {url:'/api/media/'+'a'.repeat(64)+'.wav'};},
     async api(url,body){calls.push([url,JSON.parse(JSON.stringify(body))]);return url==='/api/voice/transcribe'?recognize():{state:{}};},

@@ -55,6 +55,7 @@
         view.querySelector('.waterdrop-waiting')?.remove();
         view.querySelector('.waterdrop-awaiting')?.classList.remove('waterdrop-awaiting');
         view.style.removeProperty('--waterdrop-chat-wallpaper');
+        view.classList.remove('has-custom-wallpaper');
       }
       return;
     }
@@ -64,7 +65,9 @@
     if (!list) return;
     // app.js has already validated this image at the rendering boundary. A
     // single wallpaper behind the entire chat keeps the glass areas continuous.
-    if (list.style.backgroundImage) view.style.setProperty('--waterdrop-chat-wallpaper', list.style.backgroundImage);
+    const hasCustomWallpaper = Boolean(list.style.backgroundImage);
+    view.classList.toggle('has-custom-wallpaper', hasCustomWallpaper);
+    if (hasCustomWallpaper) view.style.setProperty('--waterdrop-chat-wallpaper', list.style.backgroundImage);
     else view.style.removeProperty('--waterdrop-chat-wallpaper');
     updateTyping(view);
     let order = 0;

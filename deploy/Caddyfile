@@ -1,0 +1,14 @@
+{
+	admin off
+	default_sni {$PIPI_PUBLIC_IP}
+}
+
+https://{$PIPI_HTTPS_HOST} {
+	tls {
+		issuer acme {$PIPI_ACME_DIRECTORY:https://acme-v02.api.letsencrypt.org/directory} {
+			profile shortlived
+			disable_tlsalpn_challenge
+		}
+	}
+	reverse_proxy pipi-phone:8000
+}

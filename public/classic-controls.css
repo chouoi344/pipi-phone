@@ -2,14 +2,29 @@
 body.wechat-classic :is(#view,.navigation-snapshot) > .topbar:has(.back-btn),
 body.wechat-classic #overlay .page-editor .modal-header:has(.modal-back) {padding-inline:8px;}
 body.wechat-classic :is(#view,.navigation-snapshot) > .topbar :is(.back-btn,.icon-btn,.nav-text),
-body.wechat-classic #overlay .page-editor .modal-header > :is(.modal-close,.modal-submit,.feature-header-action) {
+body.wechat-classic #overlay .page-editor .modal-header > :is(.modal-close,.feature-header-action) {
   min-width:44px; min-height:44px;
 }
-/* Header actions stay light while their transparent touch targets remain 44pt. */
-body.wechat-classic #overlay .page-editor:not(.moment-compose-page) .modal-header > .modal-submit {
-  min-width:44px; min-height:44px; padding:0 2px; border:0; border-radius:0;
-  background:transparent; color:#087b41; box-shadow:none; font-size:15px; line-height:24px;
-  font-weight:500; white-space:nowrap;
+/* Lightweight soft-emerald header submit button with a full 44pt invisible hit halo. */
+body.wechat-classic .topbar .header-actions > .header-primary,
+body.wechat-classic #overlay .page-editor:not(.confirm-dialog) .modal-header > .modal-submit {
+  position:relative; display:inline-flex; align-items:center; justify-content:center;
+  min-width:52px; height:30px; min-height:30px; padding:0 11px; border:0; border-radius:7px;
+  background:#e8f8ef; color:#077a3d; box-shadow:none;
+  font-size:13.5px; line-height:30px; font-weight:600; white-space:nowrap;
+  transition:transform .12s ease, background-color .15s ease;
+}
+body.wechat-classic .topbar .header-actions > .header-primary::after,
+body.wechat-classic #overlay .page-editor:not(.confirm-dialog) .modal-header > .modal-submit::after {
+  content:""; position:absolute; inset:-7px -4px;
+}
+body.wechat-classic .topbar .header-actions > .header-primary:active:not(:disabled),
+body.wechat-classic #overlay .page-editor:not(.confirm-dialog) .modal-header > .modal-submit:active:not(:disabled) {
+  background:#d6f2e2; transform:scale(.96);
+}
+body.wechat-classic .topbar .header-actions > .header-primary:disabled,
+body.wechat-classic #overlay .page-editor:not(.confirm-dialog) .modal-header > .modal-submit:disabled {
+  background:#f0f2f4; color:#8b939e; opacity:1; box-shadow:none;
 }
 body.wechat-classic :is(#view,.navigation-snapshot) > .topbar .header-leading > .back-btn,
 body.wechat-classic #overlay .page-editor .modal-header > .modal-back {

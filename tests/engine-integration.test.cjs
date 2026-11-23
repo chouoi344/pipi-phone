@@ -323,6 +323,7 @@ test('engine API: unsaved model discovery does not persist credentials; config/b
 
 test('engine HTTP: send returns before generation, burst combines, usage and backup survive restart',async t=>{
   const f=await fixture(t);const before=f.requests.length;
+  assert.equal((await f.request('/api/engine/modules',{id:'waiting',values:{idleSeconds:1,maxWaitSeconds:6}})).status,200);
   const ids=[];
   for(const text of ['一','二','三']){
     const r=await f.request('/api/chat',{roleId:f.roleId,text,requestId:randomUUID()});assert.equal(r.status,200);assert.equal(r.body.accepted,true);ids.push(r.body.messageId);assert.equal(r.body.state.messages.find(m=>m.id===r.body.messageId).status,'pending');

@@ -1,0 +1,30 @@
+services:
+  pipi-phone:
+    ports: !override
+      - "127.0.0.1:${PIPI_PORT:-18766}:8000"
+    environment:
+      TRUST_PROXY: "${PIPI_HTTPS_PREFIX:-172.30.187}.2"
+    networks:
+      default: {}
+      https-edge:
+        ipv4_address: "${PIPI_HTTPS_PREFIX:-172.30.187}.3"
+  pipi-https:
+    image: caddy:2.11.9-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file: .env.https
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - pipi-certificates:/data
+    networks:
+      https-edge:
+        ipv4_address: "${PIPI_HTTPS_PREFIX:-172.30.187}.2"
+volumes:
+  pipi-certificates:
+networks:
+  https-edge:
+    ipam:
+      config:
+        - subnet: "${PIPI_HTTPS_PREFIX:-172.30.187}.0/28"

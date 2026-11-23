@@ -7,10 +7,11 @@
 .model-ui button { font: inherit; cursor: pointer; }
 .model-ui button:disabled { opacity: .45; cursor: default; }
 .model-ui .relay-card {
-  display: flex; align-items: center; gap: 12px; width: 100%;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%;
   min-height: 72px; padding: 12px var(--model-inset); margin-bottom: 8px;
   background: #fff; text-align: left;
 }
+.model-ui .relay-heading { display: flex; align-items: center; gap: inherit; flex: 1 1 max-content; min-width: 0; }
 .model-ui .relay-symbol {
   display: grid; place-items: center; flex: none; width: 36px; height: 36px;
   border-radius: 6px; background: #eaf7ef; color: #078a48;
@@ -19,10 +20,10 @@
 .model-ui .relay-copy { flex: 1; min-width: 0; }
 .model-ui .relay-copy strong { display: block; font-size: 16px; font-weight: 500; }
 .model-ui .relay-copy small {
-  display: block; margin-top: 4px; color: #757575; font-size: 12px; line-height: 1.5;
+  word-break: keep-all; display: block; margin-top: 4px; color: #757575; font-size: 12px; line-height: 1.5;
 }
 .model-ui .relay-action {
-  display: flex; align-items: center; gap: 7px; color: #078a48; font-size: 14px; flex: none;
+  display: flex; align-items: center; gap: 7px; color: #078a48; font-size: 14px; flex: none; margin-left: auto;
 }
 .model-ui .relay-action .icon { width: 18px; height: 18px; }
 .model-ui .category-tabs { background: #fff; }
@@ -116,9 +117,9 @@
   transform: translate(4px, 5px) rotate(-45deg);
 }
 .model-ui .model-copy { flex: 1; min-width: 0; }
-.model-ui .model-tools { display: flex; gap: 8px; padding: 8px var(--model-inset); }
+.model-ui .model-tools { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px var(--model-inset); }
 .model-ui .model-tools button {
-  flex: 1; min-width: 0; min-height: 44px; background: #fff; color: #576b95;
+  flex: 1 1 auto; white-space: nowrap; min-height: 44px; background: #fff; color: #576b95;
   border-radius: 5px; padding: 6px; font-size: 14px;
 }
 .model-ui .provider-grid { background: #fff; margin-bottom: 8px; }

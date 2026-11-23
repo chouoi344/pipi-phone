@@ -1,0 +1,54 @@
+name: Android web compatibility
+on:
+  pull_request:
+    paths:
+      - 'public/**'
+      - 'android/**'
+      - 'scripts/*webview83*'
+      - 'tests/*webview*'
+      - '.github/workflows/webview.yml'
+  workflow_call:
+    inputs:
+      source_ref:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  chat:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.22.3'
+          package-manager-cache: false
+      - name: Test both skins on Chromium 83 and current Chrome
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'chromium-83.zip'
+          curl.exe -fsSL --retry 3 --output $zip https://storage.googleapis.com/chromium-browser-snapshots/Win_x64/756035/chrome-win.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Get-FileHash $zip).Hash -ne '082BEEEDE420DACDD9FB79247F1E41D63946C10479E86BE20E6FFB044EBAB50F') { throw 'Unexpected Chromium 83 archive' }
+          Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $env:RUNNER_TEMP 'webview83')
+          $driver = Join-Path $env:RUNNER_TEMP 'browser-driver'
+          npm install --prefix $driver --no-save --ignore-scripts --no-audit --no-fund puppeteer-core@3.1.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:PIPI_BROWSER_DRIVER = Join-Path $driver 'node_modules/puppeteer-core'
+          $env:CHROME_PATH = Join-Path $env:RUNNER_TEMP 'webview83/chrome-win/chrome.exe'
+          $env:PIPI_CHROME_MAJOR = '83'
+          $env:PIPI_TEST_HTTP = '1'
+          node tests/webview-chat-browser.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item Env:PIPI_CHROME_MAJOR
+          Remove-Item Env:PIPI_TEST_HTTP
+          $env:CHROME_PATH = Join-Path $env:ProgramFiles 'Google/Chrome/Application/chrome.exe'
+          node tests/webview-chat-browser.cjs
+          exit $LASTEXITCODE

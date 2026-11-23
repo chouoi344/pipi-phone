@@ -49,6 +49,17 @@ async function main(){
     const shippedCompose=await fs.readFile(path.join(root,'compose.yaml'),'utf8');
     assert.match(shippedCompose,/    build: \./);assert.match(shippedCompose,/    restart: unless-stopped/);
     await fs.writeFile(composeFile,shippedCompose.replace('    build: .','    image: '+images.old).replace('    restart: unless-stopped','    restart: "no"'));
+    // A fresh network must work even when the application starts before the gateway.
+    const httpsFile = path.join(dir, 'compose.https.yaml');
+    await fs.copyFile(path.join(root, 'compose.https.yaml'), httpsFile);
+    await fs.writeFile(path.join(dir, '.env.https'), 'PIPI_PUBLIC_IP=192.0.2.1\nPIPI_HTTPS_HOST=192.0.2.1\n');
+    const {services} = JSON.parse(await docker(compose('-f', httpsFile, 'config', '--format', 'json')));
+    const application = services['pipi-phone'];
+    const appAddress = application.networks['https-edge'].ipv4_address;
+    const gatewayAddress = services['pipi-https'].networks['https-edge'].ipv4_address;
+    assert.ok(appAddress && gatewayAddress, 'Reserve both addresses independently of start order');
+    assert.notEqual(appAddress, gatewayAddress);
+    assert.equal(application.environment.TRUST_PROXY, gatewayAddress);
     await docker(compose('up','-d','--no-build','pipi-phone'));
     const initial=await currentContainer();
     assert.equal(initial.NetworkSettings.Ports['8000/tcp']?.[0]?.HostPort,String(port),'Docker must publish the application port on the host');

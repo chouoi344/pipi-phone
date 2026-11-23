@@ -2,15 +2,19 @@
 
 把 APK 装到手机，就能登录自己的小手机。好友、模型、图片、语音和聊天记录继续使用原服务器。聊天页面和两套皮肤随安装包一起交付，Android 负责系统返回、切后台、保存草稿、选择文件和消息通知。
 
-首次安装可下载[安卓 App 0.1.5 安装包](https://github.com/chouoi344/pipi-phone/releases/download/v0.13.11/pipi-phone-android-0.1.5-6.apk)。后续正式版见 [GitHub Releases](https://github.com/chouoi344/pipi-phone/releases)。自行签名的 App 后续需要使用自己的原签名覆盖安装。
+首次安装可下载[安卓 App 0.1.7 安装包](https://github.com/chouoi344/pipi-phone/releases/download/v0.13.12/pipi-phone-android-0.1.7-8.apk)。后续正式版见 [GitHub Releases](https://github.com/chouoi344/pipi-phone/releases)。自行签名的 App 后续需要使用自己的原签名覆盖安装。
 
 ## 第一次使用
 
-1. 先在网页版设置好名字和访问密码。安装并打开 App，粘贴网页版的小手机网址，输入同一个密码，再点「进入小手机」。从 0.1.5 起，可以直接填 `服务器公网IP:18766`，也可粘贴完整的 `http://服务器公网IP:18766/` 或 HTTPS 网址。网址末尾带不带 `/` 都可以。登录成功直接打开「微信」消息列表，能看到原来的好友和聊天记录。
+使用此源码构建的 App 会跟随手机的系统字体大小。可以在安卓设置里调整字号，回到屁屁机后打开同一个聊天或表单查看效果。
+
+1. 先在网页版设置好名字和访问密码。安装并打开 App，粘贴网页版的小手机网址，输入同一个密码，再点「进入小手机」。直接填写公网 IP 会使用 HTTPS；填写局域网 IP 会使用 HTTP。原来的 `服务器公网IP:18766` 和完整的 `http://服务器公网IP:18766/` 仍可使用。网址末尾带不带 `/` 都可以。登录成功直接打开「微信」消息列表，能看到原来的好友和聊天记录。
 2. 打开好友对话，输入半句话，滑回桌面，再点 App 图标。可以接着编辑刚才的草稿。阅读旧消息时会记住看到的那条。边缘滑动支持取消，弹窗优先收起，首页返回桌面。
 3. 首次连接时，「新消息提醒」默认开启。如果系统询问是否允许通知，可以当场选择；以后也可在「我 → 设置 → App 连接设置」调整。在其他对话里收到消息时，点顶部横幅能进入对应聊天。回到桌面或锁屏后，收到系统通知也可以点开。
 
-公网 HTTP 连接会以明文传输密码和聊天内容。聊天页的麦克风录音、听写需要 HTTPS。已有 HTTPS 网址可以继续使用。
+App 使用内置聊天页时，按住说话和听写会使用安卓系统麦克风。第一次点「允许使用麦克风」后，再按住录音。上滑到「取消」松手或录音中切到后台都会丢弃这次录音。公网 HTTP 的语音、密码和聊天内容以明文传输，建议使用部署时提供的 HTTPS 地址。手机浏览器或 App 使用服务器提供的网页时，网页直接录音需要 HTTPS。
+
+安卓 0.1.7 支持 WebView 83（手机内置的网页显示组件）。使用官方网页 v0.13.11 的用户可以直接覆盖安装这个版本的 App，继续使用原地址和密码。设备或连接无法录音时，点麦克风会看到原因，文字聊天和收发图片仍然可用。
 
 应用保存最近浏览的少量文字和文字草稿。第一次连通且页面版本核对成功后，断网重开仍能查看本机副本。副本最多保留七天、八个聊天、每个聊天二十四条文字。附件、录音和服务商密钥不进入这个副本。恢复联网后会重新验证登录。退出登录或更换服务器会清除设备上的这份副本。
 
@@ -67,6 +71,7 @@ adb -s emulator-5556 reverse tcp:18766 tcp:18766
 以下命令在仓库根目录执行。普通功能测试仍用 `npm test`；这些额外工具不加入程序的运行依赖。
 
 - 网页操作验收：先执行 `npm install --no-save --package-lock=false playwright`，安装 Chrome 后运行 `node tests/android-page-browser.cjs` 或 `node tests/android-notice-browser.cjs`。已单独安装 Playwright 时，可用 `PIPI_PLAYWRIGHT_MODULE` 指定其模块路径。加 `--check-tools` 只检查模块入口，不重复业务操作。
+- 旧组件检查可运行 `node --test tests/android-webview-compat.test.cjs tests/webview83-css.test.cjs`。发布流程还会用真实的 Chromium 83 和当前 Chrome 跑两套皮肤的聊天、图片、语音播放、缺少麦克风和草稿返回。测试使用临时账户与本机模拟回复。[浏览器验收流程](../.github/workflows/webview.yml)
 - 可选推送构建：设置 `JAVA_HOME`、`ANDROID_HOME` 后运行 `node tests/android-fcm-build.cjs`，默认使用随库的 Gradle 8.9 wrapper。`PIPI_GRADLE` 可指定另一份 `gradlew`，或外部 Gradle 安装目录下的 `bin/gradle`（Windows 为 `bin/gradle.bat`）。`--check-tools` 仅检查 Gradle 入口。完整脚本只使用无效的合成 Google 配置，不安装或运行 APK，也不覆盖标准版安装包。
 - 原生安卓更新协议：准备 JDK 17+ 和测试所用的 JSON-java `org.json:json:20240303`（Maven Central），运行 `node tests/android-official-updates.cjs /path/to/json-20240303.jar /path/to/jdk`。也可分别设置 `PIPI_ANDROID_TEST_JSON_JAR` 与 `JAVA_HOME`。它使用本机临时 HTTP 服务和 Android 平台替身，不调用真实更新源、不安装 APK。
 

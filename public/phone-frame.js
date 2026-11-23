@@ -112,7 +112,7 @@
   new MutationObserver(pageEdges).observe(view, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-route', 'class'] });
   new MutationObserver(overlayEdges).observe(overlay, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   new MutationObserver(schedule).observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'data-skin'] });
-  new ResizeObserver(schedule).observe(probe, { box: 'border-box' });
+  if (window.ResizeObserver) new ResizeObserver(schedule).observe(probe, { box: 'border-box' });
   window.addEventListener('resize', schedule);
   window.addEventListener('pageshow', schedule);
   document.addEventListener('focusin', schedule);

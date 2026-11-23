@@ -155,7 +155,7 @@
     list.push(...[...drafts.values()].filter(draft=>draft.kind===category&&draft.isNew&&!sourceFor(draft.source.id)).map(draft=>draft.source));
     const tabs=items=>items.map(item=>`<button type="button" class="category-tab ${category===item.id?'active':''}" aria-pressed="${category===item.id}" data-model-category="${item.id}">${item.label}</button>`).join('');
     return `<header class="topbar"><div class="header-leading"><button class="back-btn" data-action="back" aria-label="返回">${P().icons.back}</button></div><h2 class="title-centered">模型</h2><div class="header-actions"></div></header><div class="content page-content model-ui home-content">
-      <button class="relay-card" id="model-relay" type="button"><span class="relay-symbol">${icon('site')}</span><span class="relay-copy"><strong>屁屁自己的站</strong><small>对话 · 语音 · 画图 · 辅助</small></span><span class="relay-action">一键配置 ${P().icons.chevron}</span></button>
+      <button class="relay-card" id="model-relay" type="button"><span class="relay-heading"><span class="relay-symbol">${icon('site')}</span><span class="relay-copy"><strong>屁屁自己的站</strong><small>对话 · 语音 · 画图 · 辅助</small></span></span><span class="relay-action">一键配置 ${P().icons.chevron}</span></button>
       <nav class="category-tabs" aria-label="模型分类"><div class="main-categories">${tabs(categories.slice(0,4))}</div><div class="aux-categories">${tabs(categories.slice(4))}</div></nav><p class="category-note">${cat().note}</p>
       <div class="demo-heading"><span>${heading}${list.length?' · '+list.length:''}</span><button type="button" data-provider-add>添加服务商</button></div><section class="model-source-group" aria-label="${heading}">${list.map(sourceCard).join('')||`<div class="empty-state">还没有添加${heading}</div>`}</section></div>`;
   }

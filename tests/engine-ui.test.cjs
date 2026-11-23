@@ -402,6 +402,8 @@ test('engine UI: three sends can be accepted concurrently while the composer kee
   const pending=[],requests=[],activityResets=[];
   const context=vm.createContext({crypto:require('node:crypto').webcrypto,console,pending,requests,window:{PipiEngine:{resetActivity:id=>activityResets.push(id)}}});
   vm.runInContext(`let imageVariants=false,composeImageMeta=null,composeComposing=false,recordingSession=null,composeText='第一条',composeImage='',composeStickerId='',quoteId='',route={name:'chat',arg:'alice'},panel='',forceBottomRole='',composerSelection={};const state={messages:[]},drafts=new Map(),composerHistories=new Map(),failedSends=new Map(),chatScrolls=new Map();function roleById(id){return {id};}function updateComposer(){}function receiveState(){}function toast(){}function refresh(){}function api(path,body){requests.push({path,body});return new Promise(resolve=>pending.push(()=>resolve({state:{revision:requests.length}})));}
+    const sending=false;
+    ${productFunction('canSendComposerDraft')}
     ${productFunction('quotedMessage')}
     ${productFunction('sendMessage')}
     globalThis.ui={sendMessage,text:value=>composeText=value,get:()=>composeText};`,context);
@@ -411,7 +413,8 @@ test('engine UI: three sends can be accepted concurrently while the composer kee
 test('engine UI: incoming pending payments show receive and return controls and update their status after handling',async()=>{
   const featureSource=fs.readFileSync(path.join(__dirname,'../public/features.js'),'utf8'),transactions=[{id:'tx',roleId:'alice',direction:'in',type:'transfer',status:'pending',amountCents:3200,note:'买杯奶茶',createdAt:Date.now()}],calls=[],controls=[{dataset:{paymentHandle:'receive'},isConnected:true,listeners:{},addEventListener(name,handler){this.listeners[name]=handler;}},{dataset:{paymentHandle:'return'},isConnected:true,listeners:{},addEventListener(name,handler){this.listeners[name]=handler;}}];let html='';
   const P={getState:()=>({profile:{name:'我'},roles:[{id:'alice',name:'小甲'}],wallet:{transactions}}),esc:escape,icons:{transfer:'',chevron:''},avatar:()=>'',openPage:(title,body)=>html=body,refresh(){},preserveChatLayout(callback){callback();},toast:message=>{throw new Error(message);},act:async(type,payload)=>{calls.push({type,payload});transactions[0].status=payload.action==='receive'?'received':'returned';}};
-  const window={Pipi:P},document={querySelectorAll:selector=>selector==='[data-payment-handle]'?controls:[],querySelector:()=>null};vm.runInNewContext(featureSource,{window,document,console,setTimeout,clearTimeout,setInterval:()=>1,clearInterval(){},Date});
+  const pageClasses=new Set(),editor={classList:{add:(...items)=>items.forEach(item=>pageClasses.add(item))}};
+  const window={Pipi:P},document={querySelectorAll:selector=>selector==='[data-payment-handle]'?controls:[],querySelector:selector=>selector==='#overlay > .page-editor'?editor:null};vm.runInNewContext(featureSource,{window,document,console,setTimeout,clearTimeout,setInterval:()=>1,clearInterval(){},Date});
   window.PipiFeatures.walletTransaction('tx',undefined,{fromChat:true});assert.match(html,/待领取/);assert.match(html,/data-payment-handle="receive"/);assert.match(html,/data-payment-handle="return"/);await controls[0].listeners.click({currentTarget:controls[0]});assert.equal(calls[0].type,'wallet.handle');assert.equal(calls[0].payload.id,'tx');assert.equal(calls[0].payload.action,'receive');assert.match(html,/已收款/);assert.doesNotMatch(html,/data-payment-handle=/);
   transactions[0].status='returned';window.PipiFeatures.walletTransaction('tx',undefined,{fromChat:true});assert.match(html,/已退还/);assert.doesNotMatch(html,/data-payment-handle=/);
 });

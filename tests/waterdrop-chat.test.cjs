@@ -13,7 +13,13 @@ function fixture({reduced = false, skin = 'waterdrop'} = {}) {
   const root = {dataset: {skin}}, motion = {matches: reduced};
   const title = {classList: {toggle(name, active) {if (active) classes.add(name); else classes.delete(name);}, remove: name => classes.delete(name)}};
   const list = {style: {backgroundImage: ''}, querySelectorAll: () => rows};
+  const viewClasses = new Set();
   const view = {
+    classList: {
+      toggle(name, enabled) {if (enabled) viewClasses.add(name); else viewClasses.delete(name);},
+      remove: name => viewClasses.delete(name),
+      contains: name => viewClasses.has(name)
+    },
     dataset: {route: 'chat', chatRole: 'alice'},
     style: {setProperty: (name, value) => properties.set(name, value), removeProperty: name => properties.delete(name)},
     querySelector(selector) {
@@ -103,7 +109,9 @@ test('waterdrop: stream disconnect and page hiding clear live feedback without r
 test('waterdrop: custom wallpaper is inherited by the whole chat and clearing it restores the shared default', () => {
   const f = fixture(); f.list.style.backgroundImage = 'url("data:image/png;base64,aA==")'; f.render([]);
   assert.equal(f.properties.get('--waterdrop-chat-wallpaper'), f.list.style.backgroundImage);
+  assert.equal(f.view.classList.contains('has-custom-wallpaper'), true);
   f.list.style.backgroundImage = ''; f.render([]); assert.ok(!f.properties.has('--waterdrop-chat-wallpaper'));
+  assert.equal(f.view.classList.contains('has-custom-wallpaper'), false);
 });
 
 test('waterdrop: reduced motion preserves the real waiting text and skips arrival motion', () => {

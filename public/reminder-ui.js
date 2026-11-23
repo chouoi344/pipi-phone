@@ -161,7 +161,7 @@
       const history=view.jobs.filter(job=>!isUpcoming(job)).sort((a,b)=>(finishedTime(b)||b.nextAt)-(finishedTime(a)||a.nextAt));
       body+=renderGroup('upcoming','待发送',upcoming,'暂时没有待发送的提醒',view)+renderGroup('history','发送记录',history,'暂无发送记录',view);
     }else if(!view.error)body='<p class="page-note">正在读取提醒…</p>';
-    return {body:`<div class="reminder-page" data-reminder-role="${esc(roleId)}">${body}</div>`,action:'<button type="button" class="reminder-add" data-reminder-action="create">新建</button>'};
+    return {body:`<div class="reminder-page" data-reminder-role="${esc(roleId)}">${body}</div>`,action:'<button type="button" class="header-primary" data-reminder-action="create">新建</button>'};
   }
 
   function readSchedule(form){

@@ -32,7 +32,7 @@ html[data-skin="waterdrop"] .favorites-search > label {
   min-height:44px;border:var(--wd-rim);border-radius:24px;background:var(--wd-pill);box-shadow:var(--wd-shadow);
 }
 html[data-skin="waterdrop"] .ledger-filter {gap:8px;background:transparent;}
-html[data-skin="waterdrop"] .ledger-filter select {border-radius:20px;background:white;padding-inline:10px;max-width:40%;}
+html[data-skin="waterdrop"] .ledger-filter select {border-radius:20px;background:white;padding-inline:10px;}
 html[data-skin="waterdrop"] :is(.month-picker input,.rp-search input,.usage-search,.moment-picker-search) {min-height:44px;}
 html[data-skin="waterdrop"] :is(.ledger-category-icon,.farm-friend .avatar,.status-current .avatar,.favorite-source .avatar) {border-radius:50%;}
 html[data-skin="waterdrop"] .farm-board {padding:12px;gap:9px;}

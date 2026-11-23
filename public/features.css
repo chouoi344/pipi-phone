@@ -116,7 +116,7 @@
 .moment-privacy-people>button>span:not(.icon),.moment-picker-tag-entry>span:not(.icon){flex:1;min-width:0;overflow-wrap:anywhere}
 .moment-privacy-people>button>.icon,.moment-privacy-people>button>svg,.moment-picker-tag-entry>.icon,.moment-picker-tag-entry>svg{flex:0 0 14px;width:14px;height:14px;margin-left:auto;color:#b2b2b2}
 .moment-privacy-people>button>.icon.mask-icon.chevron,.moment-picker-tag-entry>.icon.mask-icon.chevron{flex-basis:24px;width:24px;height:24px}
-.moment-privacy-people>p{font-size:13px;color:#999;line-height:20px;padding:12px 20px 16px 0;margin:0;overflow-wrap:anywhere}
+.moment-privacy-people>p{font-size:13px;color:#999;line-height:1.54;padding:12px 20px 16px 0;margin:0;overflow-wrap:anywhere}
 .moment-picker-search{display:flex;align-items:center;gap:7px;background:#fff;border-radius:5px;margin:8px;padding:7px 10px;color:#b2b2b2}
 .moment-picker-search>.fw-feature-icon{width:17px;height:17px}
 .moment-picker-search>input{min-width:0;width:100%;border:0;outline:0;background:none;font-size:16px;color:#191919;line-height:22px}
@@ -160,13 +160,13 @@
 .ledger-total>small{font-size:22px;margin-right:4px;font-weight:400}
 .ledger-subtotals{display:flex;flex-wrap:wrap;gap:8px 24px;font-size:12px;color:#646b74;margin-top:7px}
 .ledger-subtotals strong{font-size:13px;font-weight:400;margin-left:4px;color:#555}
-.ledger-quick-actions{display:flex;background:#fff;border-bottom:1px solid #e5e5e5}
-.ledger-quick-actions>button{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:15px;background:#fff;border:0;color:#576b95;font-size:14px}
+.ledger-quick-actions{display:flex;flex-wrap:wrap;background:#fff;border-bottom:1px solid #e5e5e5}
+.ledger-quick-actions>button{flex:1 1 0;min-width:max-content;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:7px;padding:15px;background:#fff;border:0;color:#576b95;font-size:14px}
 .ledger-quick-actions>button+button{border-left:1px solid #eee}
 .ledger-quick-actions svg{width:18px;height:18px}
-.ledger-filter{display:flex;align-items:center;gap:15px;padding:14px 17px;color:#777}
-.ledger-filter select{font-size:13px;border:0;background:transparent;color:#646b74;outline:none;max-width:130px;min-width:0}
-.ledger-filter>span{margin-left:auto;font-size:12px;color:#999}
+.ledger-filter{display:flex;flex-wrap:wrap;align-items:center;gap:4px 15px;padding:14px 17px;color:#777}
+.ledger-filter select{flex:none;font-size:13px;border:0;background:transparent;color:#646b74;outline:none;max-width:100%}
+.ledger-filter>span{flex:none;white-space:nowrap;margin-left:auto;font-size:12px;color:#999}
 .ledger-day{font-size:12px;color:#999;padding:12px 17px 8px;background:#f7f7f7}
 .ledger-entry{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:0;padding:16px 17px;position:relative}
 .ledger-entry:after{content:'';height:1px;background:#eee;position:absolute;left:65px;right:0;bottom:0;transform:scaleY(.5)}
@@ -262,16 +262,19 @@
 .wallet-index-row>small{color:#646b74;font-size:14px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .wallet-index-row>svg:last-child{color:#b2b2b2;width:14px;height:14px}
 .page-editor:has(.wallet-balance-page) .modal-body{padding:0;background:#fff}
+.page-editor.wallet-balance-modal .modal-body{padding:0;background:#fff}
 .wallet-balance-page{min-height:100%;display:flex;flex-direction:column;background:#fff;position:relative}
 .wallet-detail-link{align-self:flex-end;margin:4px 16px 0}
 .wallet-balance-page .wallet-balance-card{padding-top:25px;flex:1}
 .wallet-balance-page .wallet-actions{margin-top:96px}
 .wallet-balance-page .wallet-footer{padding-bottom:32px}
 .page-editor:has(.wallet-bills-page) .modal-body{padding:0;background:#ededed}
+.page-editor.wallet-bills-modal .modal-body{padding:0;background:#ededed}
 .wallet-bills-page{min-height:100%;background:#ededed}
 .wallet-bill-month{padding:16px 18px;font-size:15px;color:#191919;background:#ededed}
 button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;border:0;border-bottom:.5px solid #eee;text-align:left;font:inherit}
 .page-editor:has(.wallet-transaction-detail) .modal-body{padding:0;background:#fff}
+.page-editor.wallet-detail-modal .modal-body{padding:0;background:#fff}
 .wallet-transaction-detail{min-height:100%;background:#fff}
 .wallet-detail-summary{margin:0 24px;padding:32px 0 30px;text-align:center;border-bottom:.5px solid #ddd}
 .wallet-detail-person{display:flex;align-items:center;justify-content:center;gap:10px;font-size:16px;overflow-wrap:anywhere}
@@ -340,8 +343,11 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
  * separate drill-down. These are reference-informed approximations, not a
  * version-bound iPhone 8.0.80 acceptance claim. */
 .page-editor:has(.payment-message-detail.is-transfer-detail) .modal-header{background:#fff;border-bottom-color:transparent}
+.page-editor.transfer-detail-modal .modal-header{background:#fff;border-bottom-color:transparent}
 .page-editor:has(.payment-message-detail.is-redpacket-detail) .modal-header{background:#d85c4d;color:#fce5b2;border-bottom-color:transparent}
+.page-editor.redpacket-detail-modal .modal-header{background:#d85c4d;color:#fce5b2;border-bottom-color:transparent}
 .page-editor:has(.payment-message-detail.is-redpacket-detail) .modal-close{color:inherit}
+.page-editor.redpacket-detail-modal .modal-close{color:inherit}
 .payment-message-detail{display:flex;flex-direction:column;min-height:100%;padding-bottom:24px}
 .payment-detail-summary{position:relative;text-align:center;padding:42px 24px 33px;overflow:hidden}
 .payment-detail-symbol{width:54px;height:54px;margin:0 auto 18px;color:#fa9d3b}
@@ -518,9 +524,10 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .moment-cover-empty{height:45vh;display:grid;place-items:center;background:#8b918f;color:#fff}
 .moment-detail{margin:-8px -20px 0;min-height:100%}
 .moment-media-album{background:#fff;position:relative;min-height:100%;padding-bottom:max(24px,var(--safe-bottom,env(safe-area-inset-bottom)))}
-.moment-album-title{overflow:visible!important;height:44px}
-.moment-album-tabs{display:inline-flex;align-items:stretch;height:44px;gap:22px;white-space:nowrap;transform:translateX(12px)}
-.moment-album-tabs>button{padding:0 9px;border:0;border-bottom:2px solid transparent;background:none;color:#aaa;font:inherit;font-size:17px;font-weight:500;white-space:nowrap}
+:is(#view,.navigation-snapshot)[data-route=moment-album]>.topbar{grid-template-columns:44px minmax(0,1fr) 44px}
+.moment-album-title{height:44px}
+.moment-album-tabs{display:inline-flex;align-items:stretch;height:44px;gap:clamp(4px,4vw,22px);white-space:nowrap}
+.moment-album-tabs>button{padding:0 4px;border:0;border-bottom:2px solid transparent;background:none;color:#aaa;font:inherit;font-size:17px;font-weight:500;white-space:nowrap}
 .moment-album-tabs>button[aria-selected=true]{color:#191919;border-bottom-color:#191919}
 .moment-album-empty{position:absolute;left:0;right:0;top:40%;transform:translateY(-50%);text-align:center;color:#888;font-size:17px;line-height:26px}
 .moment-album-empty>p{margin:0 0 5px}
@@ -544,7 +551,7 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .moment-timeline-day>time strong{font-size:28px;font-weight:600;display:block;line-height:1.25;white-space:nowrap}
 .moment-timeline-day>time span{display:block;font-size:12px;margin-top:5px}
 .moment-timeline-items{flex:1;min-width:0}
-.moment-publish-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;max-width:180px}
+.moment-publish-tiles{display:grid;grid-template-columns:repeat(2,minmax(max-content,1fr));gap:5px;width:max-content;min-width:min(180px,100%);max-width:100%}
 .moment-publish-tiles>button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:0;border-radius:1px;background:#f7f7f7;color:#7d8aab;padding:12px 4px;aspect-ratio:1;font:inherit;font-size:13px}
 .moment-publish-tiles>button>svg,.moment-publish-tiles>button>.fw-feature-icon{width:25px;height:25px}
 .moment-timeline-empty{margin:9px 0 0!important;text-align:center;color:#b2b2b2;font-size:16px;line-height:21px;max-width:180px}
@@ -619,6 +626,7 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .moment-management .moment-auto-row{justify-content:space-between}
 .moment-management .moment-auto-row>span{flex:1}
 #overlay .page-editor:has(.moment-management) .modal-body{padding:0;background:#ededed}
+#overlay .page-editor.moment-management-modal .modal-body{padding:0;background:#ededed}
 .moment-management{margin:0;padding:8px 0 24px}
 .moment-management [hidden]{display:none!important}
 .moment-management .feature-field>span{flex:0 0 auto;white-space:nowrap}

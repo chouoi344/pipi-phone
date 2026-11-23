@@ -67,6 +67,13 @@ public final class TrustedOriginTest {
             for (String input : List.of("http://203.0.113.23:18766", "203.0.113.23:18766", " 203.0.113.23:18766/ "))
                 normalized(input,"http://203.0.113.23:18766");
             normalized("HTTP://203.0.113.23:80/","http://203.0.113.23");
+            normalized("203.0.113.23/", "https://203.0.113.23");
+            normalized("203.0.113.23:443", "https://203.0.113.23");
+            normalized("[2001:db8::1]/", "https://[2001:db8::1]");
+            normalized("203.0.113.23:80/", "http://203.0.113.23");
+            normalized("192.168.1.10/", "http://192.168.1.10");
+            normalized("[::1]/", "http://[::1]");
+            normalized("[fd00::20]/", "http://[fd00::20]");
             normalized("HTTPS://Phone.Example.COM:443/","https://phone.example.com");
             normalized("https://phone.example.com:8443/","https://phone.example.com:8443");
             normalized(TrustedOrigin.DEVELOPMENT,TrustedOrigin.DEVELOPMENT);

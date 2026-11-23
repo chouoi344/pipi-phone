@@ -3,6 +3,7 @@
 html[data-skin="waterdrop"] body {
   --wd-canvas:#f2f4f7; --wd-paper:#fff; --wd-ink:#1b1d1f; --wd-muted:#646b74;
   --wd-line:#0000000a; --wd-green:#1ec96b;
+  --wd-card-shadow:inset 0 1px 0 #fff,0 3px 14px rgba(15,25,42,.055);
   --ui-font:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   --ink:var(--wd-ink); --bg:var(--wd-canvas); --muted:var(--wd-muted); --line:var(--wd-line);
   --green:var(--wd-green); --green-dark:#0eb95e;
@@ -65,7 +66,7 @@ html[data-skin="waterdrop"] #overlay .top-menu [data-menu-action="coming-pay"] .
 /* A floating dock with a persistent, springing water-drop indicator. */
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .bottom-tabs {
   position:absolute; z-index:10; left:16px; right:16px; bottom:calc(13px + var(--safe-bottom,0px));
-  height:60px; min-height:60px; padding:5px; margin:0; border:1px solid #ffffffeb; border-radius:999px;
+  height:auto; min-height:60px; padding:5px; margin:0; border:1px solid #ffffffeb; border-radius:999px;
   background:#ffffffbd; -webkit-backdrop-filter:blur(22px) saturate(165%); backdrop-filter:blur(22px) saturate(165%);
   box-shadow:inset 0 1.5px 2px #fffffffa,0 10px 28px #121c2d1c;
 }
@@ -80,55 +81,72 @@ html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .bottom-tabs .tab 
 }
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .bottom-tabs .tab.active {color:var(--wd-green);}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .bottom-tabs .tab .icon {width:24px; height:24px;}
-html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .bottom-tabs .tab-label {font-size:10.5px; line-height:14px; font-weight:500;}
-html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .bottom-tabs .tab-dot {top:0; border-color:#fff; background:#ee5346;}
-/* Reserve the entire dock area outside the scroll viewport. Padding inside a
-   scrolling list lets its rows show through the gap below a floating dock. */
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .bottom-tabs .tab-label {font-size:10.5px; line-height:1.35; font-weight:500;}
+@media(max-width:350px){
+  html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .bottom-tabs {left:6px; right:6px;}
+}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .bottom-tabs .tab-dot {top:0; border-color:#fff;}
+/* Let scrollable cards flow softly behind the translucent floating dock with a
+   gentle bottom canvas mist so nothing peeks harshly beneath the 13px gap. */
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):is([data-route="chats"],[data-route="contacts"],[data-route="discover"],[data-route="me"]) {
-  padding-bottom:calc(86px + var(--safe-bottom,0px));
+  padding-bottom:0;
+}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):is([data-route="chats"],[data-route="contacts"],[data-route="discover"],[data-route="me"])::after {
+  content:""; position:absolute; left:0; right:0; bottom:0; z-index:8;
+  height:calc(36px + var(--safe-bottom,0px)); pointer-events:none;
+  background:linear-gradient(to top,var(--wd-canvas) 24%,rgba(242,244,247,.72) 58%,rgba(242,244,247,0) 100%);
 }
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):is([data-route="chats"],[data-route="contacts"],[data-route="discover"],[data-route="me"]) > .content {
-  padding-bottom:12px; background:var(--wd-canvas);
+  padding-bottom:calc(94px + var(--safe-bottom,0px)); background:var(--wd-canvas);
 }
-html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .search-bar {padding:3px 12px 10px; background:transparent;}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .search-bar {padding:4px 12px 10px; background:transparent;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap {
   min-height:44px; height:44px; border:0; border-radius:999px; isolation:isolate;
   background:transparent; box-shadow:none;
 }
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap::before {
-  content:""; position:absolute; z-index:-1; inset:4px 0; pointer-events:none;
-  border:1px solid #fff; border-radius:inherit; background:#ffffffcc; box-shadow:0 1px 3px #0000000d;
+  content:""; position:absolute; z-index:-1; inset:3px 0; pointer-events:none;
+  border:1px solid rgba(255,255,255,.96); border-radius:inherit; background:rgba(255,255,255,.86);
+  box-shadow:0 2px 8px rgba(15,25,40,.04);
 }
-html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap input {height:34px; min-height:34px; font-size:12px; line-height:18px;}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap input {height:36px; min-height:36px; font-size:14px; line-height:20px;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap input::placeholder,
-html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap > span:last-child {font-size:12px; color:var(--wd-muted);}
-html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap .icon {width:16px; height:16px;}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap > span:last-child {font-size:13.5px; color:#8e96a3;}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap .icon {width:17px; height:17px; background-color:#939ba8;}
 
-/* The genuine filters and records stay attached to their original controls. */
-html[data-skin="waterdrop"] .classic-chat-filters {justify-content:flex-start; gap:24px; padding:0 20px 9px;}
-html[data-skin="waterdrop"] .classic-chat-filters button {
-  position:relative; min-height:44px; min-width:44px; padding:8px 0; gap:4px; border:0;
-  font-size:13.5px; line-height:20px; color:var(--wd-muted); font-weight:400;
+/* Centered rounded white pill filter bar matching the approved reference. */
+html[data-skin="waterdrop"] .classic-chat-filters {
+  justify-content:center; gap:0;
+  margin:0 12px 10px; padding:0 4px; min-height:44px;
+  border:1px solid rgba(255,255,255,.96); border-radius:999px;
+  background:rgba(255,255,255,.88);
+  -webkit-backdrop-filter:blur(12px) saturate(140%); backdrop-filter:blur(12px) saturate(140%);
+  box-shadow:0 2px 10px rgba(15,25,42,.04),inset 0 1px 1px #fff;
 }
-html[data-skin="waterdrop"] .classic-chat-filters button[aria-pressed="true"] {color:#087b41; font-weight:600;}
+html[data-skin="waterdrop"] .classic-chat-filters button {
+  position:relative; min-height:44px; min-width:44px; padding:8px 2px; border:0;
+  font-size:14px; line-height:20px; color:#545b66; font-weight:500;
+}
+html[data-skin="waterdrop"] .classic-chat-filters button[aria-pressed="true"] {color:#077a3d; font-weight:600;}
 html[data-skin="waterdrop"] .classic-chat-filters button[aria-pressed="true"]::after {
-  content:""; position:absolute; left:25%; right:25%; bottom:3px; height:3px; border-radius:99px; background:var(--wd-green);
+  content:""; position:absolute; left:50%; bottom:4px; width:24px; height:2.5px;
+  transform:translateX(-50%); border-radius:999px; background:var(--wd-green);
 }
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .conversation-list {background:transparent; min-height:0;}
 html[data-skin="waterdrop"] .waterdrop-conversation-group {
   margin:0 12px 11px; padding:4px 0; border-radius:22px; overflow:hidden; background:#fff;
   box-shadow:0 2px 12px #0f192808;
 }
-html[data-skin="waterdrop"] .waterdrop-conversation-group:not(:has(> .conversation-wrap:not([hidden]))) {display:none;}
+html[data-skin="waterdrop"] .waterdrop-conversation-group[hidden] {display:none;}
 html[data-skin="waterdrop"] .waterdrop-conversation-group .conversation-wrap {background:transparent;}
-html[data-skin="waterdrop"] .waterdrop-conversation-group .conversation-actions {opacity:0; transition:opacity .16s ease;}
-html[data-skin="waterdrop"] .waterdrop-conversation-group .conversation-wrap:has(> .conversation.swiped) .conversation-actions {opacity:1;}
+html[data-skin="waterdrop"] .waterdrop-conversation-group .conversation-actions {opacity:0; pointer-events:none; transition:opacity .16s ease;}
+html[data-skin="waterdrop"] .waterdrop-conversation-group .conversation-wrap.conversation-swiped .conversation-actions {opacity:1; pointer-events:auto;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .conversation {height:64px; min-height:64px; padding:10px 16px; gap:12px; background:#fff;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .conversation::after {left:72px; right:16px; background:#0000000a;}
 html[data-skin="waterdrop"] .waterdrop-conversation-group .conversation-wrap:last-child .conversation::after {display:none;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .conversation .avatar {width:44px; height:44px; border-radius:50%;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .conversation-name {font-size:15.5px; line-height:22px; font-weight:500;}
-html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .conversation-preview {font-size:13px; line-height:19px; color:var(--wd-muted);}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .conversation-preview {font-size:13px; line-height:1.45; color:var(--wd-muted);}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .conversation-time {font-size:11.5px; line-height:18px; color:var(--wd-muted);}
 html[data-skin="waterdrop"] .classic-filter-empty {font-size:13px; color:var(--wd-muted);}
 
@@ -138,13 +156,13 @@ html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="cha
 }
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="chat"]) .cell {min-height:52px; padding-inline:16px; font-size:15px; line-height:22px; background:#fff;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="chat"]) .cell-title {font-size:15px; line-height:22px; font-weight:500; color:var(--wd-ink);}
-html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="chat"]) .cell-desc {font-size:12px; line-height:18px; color:var(--wd-muted);}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="chat"]) .cell-desc {font-size:12px; line-height:1.5; color:var(--wd-muted);}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="chat"]) .cell-value {font-size:12px; line-height:18px; color:var(--wd-ink);}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="chat"]) .cell-value:is(.classic-empty-value,.waterdrop-empty-value) {color:var(--wd-muted);}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="chat"]) .cell::after {background:#0000000a;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="chat"]) .cell .chevron {color:#b8bcc4; background-color:#b8bcc4;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="chat"]) .avatar {border-radius:50%;}
-html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="chat"]) :is(.section-title,.page-note) {font-size:12px; line-height:18px; color:var(--wd-muted);}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="chat"]) :is(.section-title,.page-note) {font-size:12px; line-height:1.5; color:var(--wd-muted);}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .plain-cell {padding-block:14px;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .section-title {padding:6px 20px 8px;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="chat"]) .centered-cell {font-size:15px; font-weight:500;}
@@ -155,7 +173,7 @@ html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .waterdrop-contact-g
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .contact-tool {width:40px; height:40px; border-radius:50%;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .contacts-index {padding:3px 20px 7px; background:transparent; font-size:12px; line-height:18px; font-weight:600; color:#8c919c;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .contacts-count {padding:10px 16px 18px; border:0; background:transparent; font-size:12px; line-height:18px; color:#a0a5af;}
-html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .contact-index-rail {right:0; width:44px; padding:0;}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .contact-index-rail {right:0; width:44px; padding:0 0 calc(88px + var(--safe-bottom,0px));}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .contact-index-rail button {color:#7b8694; height:24px; font-size:10px;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .discover {padding-top:4px;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .discover .cell {min-height:58px; height:auto; padding-block:14px;}
@@ -174,9 +192,9 @@ html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .me-status-row {gap:
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .me-status-button {font-size:12px; padding:0 12px; color:#3d424d; border:0; background:transparent;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .me-status-button::before {inset:8px 0; border-color:#fff; background:#ffffffcc; box-shadow:0 1px 3px #0000000d;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .me-status-button > span {font-size:12px; line-height:20px;}
-html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .me-status-friends {width:44px;}
-html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .me-status-friends::before {inset:12px 6px; border-color:#fff; background:#ffffffcc;}
-html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .me-status-friends::after {inset:18px 12px; border-color:#8d929c;}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .me-status-friends {width:44px; height:44px;}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .me-status-friends::before {inset:9px; border-color:#fff; background:#ffffffcc; box-shadow:0 1px 3px #0000000d;}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .me-status-friends::after {inset:16px; border-color:#8d929c;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .me-content .cell[data-action="skins"] .icon {stroke-width:1.4;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="role"] .role-hero {min-height:116px; padding:18px 20px 20px; margin:0 0 11px; gap:16px; background:transparent;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="role"] .role-hero > .avatar {width:64px; height:64px; border-radius:50%; border:2px solid #fff; box-shadow:0 3px 8px #00000014;}
@@ -224,10 +242,20 @@ html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) .favorite-content {f
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) :is(.empty h3,.status-current h3,.status-picker-header h2) {font-size:17px; font-weight:600;}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) :is(.empty,.feature-empty) {font-size:13px; line-height:20px; color:var(--wd-muted);}
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) :is(.primary-btn,.secondary-btn,.danger-btn) {border-radius:999px; font-size:15px; font-weight:500;}
+/* Soft cool press feedback replaces harsh square #ececec flashes on rounded glass surfaces. */
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot,#overlay) :is(.cell,.conversation,.contact,.contact-row,.sheet-action):active:not(:disabled) {
+  background-color:#f2f5f9;
+}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot) > .bottom-tabs .tab:active:not(:disabled) {
+  background-color:transparent; opacity:.72;
+}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="chat"]) > .topbar :is(.back-btn,.icon-btn,.nav-text) {
+  transition:transform .14s ease;
+}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot):not([data-route="chat"]) > .topbar :is(.back-btn,.icon-btn,.nav-text):active:not(:disabled) {
+  opacity:1; background-color:transparent; transform:scale(.94);
+}
 @media (min-width:650px) {
   html[data-skin="waterdrop"] body {align-items:center;}
   html[data-skin="waterdrop"] .phone-shell.phone-desktop-preview {max-width:376px; height:min(768px,calc(var(--app-height,100dvh) - 28px)); border:8px solid #fff; border-radius:48px; outline:0; box-shadow:0 24px 60px #0f192a38,0 2px 10px #0f192a14,inset 0 0 0 1px #0000000f;}
-}
-@media (prefers-reduced-motion:reduce) {
-  html[data-skin="waterdrop"] .waterdrop-dock-slider {transition:none;}
 }

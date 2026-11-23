@@ -3,6 +3,7 @@ runtime
 node_modules
 .git
 .env*
+compose.override.yaml
 *.zip
 *.log
 test-results

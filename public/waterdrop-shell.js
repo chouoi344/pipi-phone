@@ -18,6 +18,7 @@
       group.setAttribute('aria-label', pinned ? '置顶聊天' : '其他聊天');
       list.insertBefore(group, list.querySelector('.classic-filter-empty'));
       group.append(...selected);
+      group.hidden = !group.querySelector('.conversation-wrap:not([hidden])');
     }
   }
 

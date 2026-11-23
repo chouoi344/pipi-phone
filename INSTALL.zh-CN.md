@@ -1,4 +1,4 @@
-# 屁屁机 0.13.11 安装与升级
+# 屁屁机 0.13.12 安装与升级
 
 首次打开默认使用微信经典版。水滴版在「我 → 皮肤」输入与本次安装编号对应的激活码后使用，激活后每个浏览器会记住自己的皮肤选择。正在编辑资料或消息时请先保存草稿。
 
@@ -43,7 +43,7 @@
    原来用过 `-p 项目名` 的，继续带相同的 `-p`。Compose 会更新同一服务并保留 `/app/data` 原卷（`pipi-data`）；不要在每个版本的新目录里另起一套，也不要执行 `down -v`。
 4. 如果原实例直接运行 Node，保留原数据目录（`DATA_DIR`）和环境变量，停止旧进程后按原启动方式重启。
 
-更新后在「我 → 设置 → 关于屁屁机」确认版本为 `v0.13.11`。数据卷 `/app/data` 会自动持久化。本次补丁可以继续使用旧版资料。
+更新后在「我 → 设置 → 关于屁屁机」确认版本为 `v0.13.12`。数据卷 `/app/data` 会自动持久化。本次补丁可以继续使用旧版资料。
 - `pipi.sqlite`：主业务数据、消息、好友与设置
 - `livingmemory.sqlite`：长期记忆卡片与角色人物画像独立侧库
 - `media/`：人物正脸/全身参考图与生成的自拍原图（经 `/api/media/*` 安全读写）
@@ -68,13 +68,20 @@ git switch --detach "$tag" && docker compose up -d --build
 
 ## 首次安装
 
-需要 Docker 与 Docker Compose。在解压出的 `pipi-phone` 目录运行：
+新 Ubuntu 公网服务器需要 Python 3、curl、Docker 和 Compose 2.24.4 或更新版本。在云安全组和服务器防火墙放行 TCP 80 和 443，然后在解压出的 `pipi-phone` 目录运行：
 
 ```sh
-docker compose up -d --build
+python3 scripts/install-https.py
 ```
 
-Docker 默认在服务器的所有 IPv4 接口发布 18766 端口。首次构建会下载 Node 基础镜像。云服务器在安全组和已启用的防火墙放行 TCP 18766 后，打开 `http://服务器公网IP:18766`。本机安装打开 `http://127.0.0.1:18766/`。阅读「使用须知」，填写名字并设置至少 8 个字符的访问密码；安卓 App 0.1.5 起可粘贴同一个 IP 地址、输入密码进入小手机。
+脚本会识别公网 IP，下载小手机和 Caddy 网关所需的镜像。Caddy 负责在 80 端口完成证书验证，在 443 端口提供加密网页。浏览器通过 `http://公网IP/` 进入时会自动转到 HTTPS。看到终端显示「小手机已就绪」，即可打开显示的网址、填写名字并设置至少 8 个字符的密码。安卓 App 里粘贴同一条完整的 `https://` 网址。原来的 18766 端口仅供服务器本机使用。
+
+每台服务器独立向 Let's Encrypt 申请免费的短期 IP 证书。Caddy 会提前续期并自动使用新证书。请持续对公网开放验证端口 80，保留证书数据卷 `pipi-certificates` 和业务资料卷 `pipi-data`。[公网 IP 证书说明](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability) · [Caddy 自动续期说明](https://caddyserver.com/docs/automatic-https)
+
+- 提示「尚未取得手机可信的证书」时，检查安全组是否对公网开放 80/443，以及终端显示的 IP 是否与云控制台一致。多公网 IP 或出口与入口 IP 不同时，使用 `PIPI_PUBLIC_IP=实际入口IP python3 scripts/install-https.py`。修好后在原目录重跑即可。
+- 如果 80/443 已由其他网站或面板使用，请在原面板将自己的 HTTPS 网址代理到 `http://127.0.0.1:18766`，保留现有网站。已启用网页一键更新或自定义 Compose 的实例，也请在原部署中配置代理。详见[反向代理和大备份](#反向代理和大备份)。
+- 新装后在原目录使用普通 `docker compose` 命令，安装脚本创建的 `compose.override.yaml` 会自动加载 HTTPS 配置。`.env.https` 记录证书对应的 IP。若 Docker 报网段重叠，请在原目录 `.env` 设置 `PIPI_HTTPS_PREFIX` 为该服务器空闲的私网前三段，例如 `172.29.187`，再重跑安装。
+- 只在电脑本机试用，无需公网证书。在未启用上述 HTTPS 配置的源码目录执行 `docker compose up -d --build`，打开 `http://127.0.0.1:18766/`。
 
 首次设置账号默认只需填写名字和密码。如需启用一次性设置令牌，Docker 部署可在 `.env` 设置 `REQUIRE_SETUP_TOKEN=1` 并重启。启用后，令牌保存在数据目录的 `setup-token.txt`，在部署目录执行下面的命令读取：
 
@@ -84,7 +91,7 @@ docker compose exec pipi-phone cat /app/data/setup-token.txt
 
 直接用 Node 运行时，可在启动环境设置 `REQUIRE_SETUP_TOKEN=1`，再读取 `DATA_DIR/setup-token.txt`。完成设置后，令牌文件自动删除。
 
-公网 HTTP 连接会以明文传输密码和聊天内容。使用聊天里的麦克风录音或听写时，浏览器需要 HTTPS。首次创建账号前，可把安全组的来源限定为自己的公网 IP。使用 HTTPS 网址的部署方式见[反向代理和大备份](#反向代理和大备份)。
+公网 HTTP 连接会以明文传输密码和聊天内容。使用聊天里的麦克风录音或听写时，公网浏览器需要 HTTPS。
 
 如果已有部署只希望通过本机或同机反向代理访问，请在更新部署文件前，在原目录的 `.env` 设置 `PIPI_HOST_BIND=127.0.0.1`。原来显式配置的监听地址和 `PIPI_PORT` 端口继续生效。只在网页中更新服务器镜像时，端口仍按服务器上原有的 Compose 文件发布。
 

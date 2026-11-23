@@ -188,10 +188,10 @@ button svg{pointer-events:none}
 .message-quote{display:block;text-align:left;cursor:pointer}
 .message-quote:disabled{opacity:1;cursor:default}
 .message-bubble{touch-action:manipulation}
-.message-selection-toolbar{display:flex;align-items:center;justify-content:space-around;gap:12px;border-top:.5px solid #ddd;background:#f7f7f7;padding:10px 16px calc(10px + var(--safe-bottom));flex-shrink:0}
-.message-selection-toolbar button{padding:8px 12px;color:#576b95}
+.message-selection-toolbar{display:flex;align-items:center;justify-content:space-around;flex-wrap:wrap;gap:4px 8px;border-top:.5px solid #ddd;background:#f7f7f7;padding:10px 12px calc(10px + var(--safe-bottom));flex-shrink:0}
+.message-selection-toolbar button{min-height:44px;padding:6px 8px;color:#576b95;white-space:nowrap}
 .message-selection-toolbar button.danger{color:#fa5151}
-.message-selection-toolbar span{font-size:14px;color:#777}
+.message-selection-toolbar span{font-size:14px;line-height:1.4;color:#777;white-space:nowrap}
 .message-selection-toolbar button:disabled{opacity:.35}
 .chat-selecting .message-row{padding-left:32px}
 .message-select{position:absolute;left:0;top:10px;width:22px;height:22px;border:1px solid #aaa;border-radius:50%;padding:0;background:#fff;color:#fff;line-height:20px;font-size:16px}

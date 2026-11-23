@@ -17,6 +17,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -25,6 +26,7 @@ import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
+import android.webkit.JsPromptResult;
 import android.webkit.PermissionRequest;
 import android.webkit.SslErrorHandler;
 import android.webkit.ValueCallback;
@@ -60,7 +62,7 @@ import java.util.concurrent.Executors;
 /** The only native/web integration is a small, fixed set of main-frame evaluations. */
 public final class MainActivity extends Activity {
     public static final String SETTINGS_ACTION = "com.pipiphone.app.SETTINGS";
-    private static final int PICK_FILE = 101, MICROPHONE = 102, NOTIFICATIONS = 103, SAVE_FILE = 104;
+    private static final int PICK_FILE = 101, MICROPHONE = 102, NOTIFICATIONS = 103, SAVE_FILE = 104, NATIVE_MICROPHONE = 105;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private SharedPreferences prefs;
@@ -76,6 +78,9 @@ public final class MainActivity extends Activity {
     private TextView notificationStatus, resourceStatus;
     private ValueCallback<Uri[]> fileCallback;
     private PermissionRequest recordingRequest;
+    private VoiceCapture voiceCapture;
+    private long recordGestureDeadline;
+    private boolean recordTouchDown, microphonePermissionOnRelease;
     private BlobDownloads blobDownloads;
     private AppUpdater appUpdater;
     private String updateEntryScript;
@@ -120,6 +125,8 @@ public final class MainActivity extends Activity {
             updateEntryScript = new String(script.toByteArray(),StandardCharsets.UTF_8);
         } catch (IOException error) { throw new IllegalStateException("Cannot read app update entry",error); }
         createWebView();
+        voiceCapture = new VoiceCapture(getCacheDir(), handler, () ->
+                web.evaluateJavascript("window.dispatchEvent(new Event('pipi-recording-interrupted'))", null));
         installInsets();
         if (Build.VERSION.SDK_INT >= 25) Api25Shortcuts.install(this);
         if (Build.VERSION.SDK_INT >= 34) systemBackCallback = Api34Back.register(this);
@@ -161,7 +168,8 @@ public final class MainActivity extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setJavaScriptCanOpenWindowsAutomatically(false); settings.setSupportMultipleWindows(false);
         settings.setMediaPlaybackRequiresUserGesture(false);
-        settings.setTextZoom(100); settings.setBuiltInZoomControls(false);
+        settings.setTextZoom(Math.round(getResources().getConfiguration().fontScale * 100));
+        settings.setBuiltInZoomControls(false);
         settings.setUserAgentString(settings.getUserAgentString() + " PipiPhoneAndroid/1.0 PipiPhoneUpdater/3 PipiPhoneApp/" + BuildConfig.VERSION_NAME);
         if (Build.VERSION.SDK_INT >= 26) settings.setSafeBrowsingEnabled(true);
         WebView.setWebContentsDebuggingEnabled((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0);
@@ -169,6 +177,24 @@ public final class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         web.setWebViewClient(new PhoneWebClient());
         web.setWebChromeClient(new PhoneChromeClient());
+        web.setOnTouchListener((view, event) -> {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
+                recordTouchDown = true;
+                recordGestureDeadline = SystemClock.uptimeMillis() + 1500;
+            } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                recordTouchDown = false;
+                if (microphonePermissionOnRelease && action == MotionEvent.ACTION_UP) askForVoicePermission();
+                microphonePermissionOnRelease = false;
+            }
+            return false;
+        });
+        web.setOnKeyListener((view, code, event) -> {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && (code == KeyEvent.KEYCODE_ENTER
+                    || code == KeyEvent.KEYCODE_SPACE || code == KeyEvent.KEYCODE_DPAD_CENTER))
+                recordGestureDeadline = SystemClock.uptimeMillis() + 1500;
+            return false;
+        });
         blobDownloads=new BlobDownloads(this,web,network,handler,new BlobDownloads.Host(){
             @Override public boolean trusted(){return !isDestroyed()&&origin.isAppPage(web.getUrl());}
             @Override public void chooseDestination(String name,String mime){chooseDownloadDestination(name,mime);}
@@ -228,6 +254,9 @@ public final class MainActivity extends Activity {
             return routeNavigation(Uri.parse(url),true,true);
         }
         @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap favicon) {
+            voiceCapture.cancel();
+            recordGestureDeadline = 0;
+            recordTouchDown = microphonePermissionOnRelease = false;
             if (!origin.owns(Uri.parse(url))) {
                 view.stopLoading();showError("页面离开了已配置的服务器，请重新连接");return;
             }
@@ -240,13 +269,24 @@ public final class MainActivity extends Activity {
         @Override public void onPageFinished(WebView view,String url) {
             loading.setVisibility(View.GONE);
             if (!origin.isAppPage(url)) return;
-            pageReady = true; applyInsets(); PhoneNotifications.onPageFinished(MainActivity.this);
-            web.evaluateJavascript(updateEntryScript,null);
-            appUpdater.onPageReady();
-            blobDownloads.install();
-            FcmTransport.onPageFinished(MainActivity.this);
-            openPendingChat();
-            enableLoginNotifications();
+            final int generation = connectionGeneration;
+            view.evaluateJavascript(WebViewRequirements.PAGE_STARTED, started -> {
+                if (isDestroyed() || generation != connectionGeneration || !url.equals(view.getUrl()) || errorPanel != null) return;
+                if (!WebViewRequirements.passed(started)) {
+                    pageReady = false;
+                    showError("页面没有正常启动。" + (assets != null && assets.enabled
+                            ? "App 内置页面未能运行，请更新 App 或系统网页组件后重新连接。"
+                            : "服务器提供的页面可能与当前系统网页组件不兼容，或页面脚本没有加载成功。请更新服务器网页程序或系统网页组件后重新连接。"));
+                    return;
+                }
+                pageReady = true; applyInsets(); PhoneNotifications.onPageFinished(MainActivity.this);
+                web.evaluateJavascript(updateEntryScript,null);
+                appUpdater.onPageReady();
+                blobDownloads.install();
+                FcmTransport.onPageFinished(MainActivity.this);
+                openPendingChat();
+                enableLoginNotifications();
+            });
         }
         @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error) {
             if (request.isForMainFrame()) showError("连接失败：" + error.getDescription());
@@ -294,6 +334,37 @@ public final class MainActivity extends Activity {
     }
 
     private final class PhoneChromeClient extends WebChromeClient {
+        @Override public boolean onJsPrompt(WebView view, String url, String message, String command, JsPromptResult result) {
+            if (!message.startsWith("pipi-recording:")) return super.onJsPrompt(view, url, message, command, result);
+            String reply;
+            if (!pageReady || paused || !view.hasWindowFocus() || !origin.isAppPage(url)
+                    || !origin.isAppPage(view.getUrl()) || assets == null
+                    || !assets.ownsMicrophoneToken(message.substring("pipi-recording:".length()))) {
+                reply = "请在小手机聊天页重新按住说话";
+            } else try {
+                switch (command) {
+                    case "start":
+                        if (SystemClock.uptimeMillis() > recordGestureDeadline) {
+                            reply = "请亲自按住说话"; break;
+                        }
+                        recordGestureDeadline = 0;
+                        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                            if (recordTouchDown) microphonePermissionOnRelease = true;
+                            else askForVoicePermission();
+                            reply = "permission"; break;
+                        }
+                        voiceCapture.start(); reply = "ok"; break;
+                    case "finish": reply = "audio:" + voiceCapture.finish(); break;
+                    case "cancel": voiceCapture.cancel(); reply = "ok"; break;
+                    default: reply = "未知录音操作";
+                }
+            } catch (IOException | RuntimeException failure) {
+                android.util.Log.w("PipiVoice", "Microphone operation failed", failure);
+                reply = "录音未完成，请重新按住说话";
+            }
+            result.confirm(reply);
+            return true;
+        }
         @Override public void onProgressChanged(WebView view,int progress) {
             if (progress == 100) loading.setVisibility(View.GONE);
         }
@@ -321,6 +392,14 @@ public final class MainActivity extends Activity {
         @Override public void onPermissionRequestCanceled(PermissionRequest request) {
             if (recordingRequest == request) recordingRequest = null;
         }
+    }
+
+    private void askForVoicePermission() {
+        // Allow WebView to finish dispatching this touch and its JS callback before Android takes focus.
+        handler.post(() -> {
+            if (!isDestroyed() && !paused && pageReady && web.hasWindowFocus())
+                requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, NATIVE_MICROPHONE);
+        });
     }
 
     private void installInsets() {
@@ -674,6 +753,9 @@ public final class MainActivity extends Activity {
     @Override public void onNewIntent(Intent intent) { super.onNewIntent(intent);setIntent(intent);takeIntent(intent);openPendingChat(); }
     @Override protected void onResume() { super.onResume();paused=false;appUpdater.setVisible(true);web.onResume();PhoneNotifications.setVisible(this,true);FcmTransport.setVisible(this,true);openPendingChat();enableLoginNotifications(); }
     @Override protected void onPause() {
+        recordGestureDeadline = 0;
+        recordTouchDown = microphonePermissionOnRelease = false;
+        voiceCapture.cancel();
         paused=true;appUpdater.setVisible(false);
         if(origin.isAppPage(web.getUrl())) {
             web.evaluateJavascript("window.PipiAndroidPage&&window.PipiAndroidPage.checkpoint()",ignored->{
@@ -688,6 +770,7 @@ public final class MainActivity extends Activity {
     @Override public void onConfigurationChanged(Configuration config) {super.onConfigurationChanged(config);configureWindow();surface.requestApplyInsets();}
     @Override public boolean onKeyUp(int key,KeyEvent event) {if(key==KeyEvent.KEYCODE_MENU){showSettings();return true;}return super.onKeyUp(key,event);}
     @Override protected void onDestroy() {
+        voiceCapture.cancel();
         appUpdater.close();
         connectionGeneration++;loginGeneration++;blobDownloads.cancel();network.shutdown();handler.removeCallbacksAndMessages(null);
         if(connectionForm!=null)connectionForm.dismiss();
@@ -701,7 +784,9 @@ public final class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants) {
         super.onRequestPermissionsResult(request,permissions,grants);
         boolean allowed=grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED;
-        if(request==MICROPHONE && recordingRequest!=null) {
+        if(request==NATIVE_MICROPHONE) {
+            toast(allowed ? "麦克风已开启，可以按住说话了" : "麦克风未开启，可在系统应用设置中允许录音");
+        } else if(request==MICROPHONE && recordingRequest!=null) {
             if(allowed && origin.isAppPage(web.getUrl()) && origin.owns(recordingRequest.getOrigin())) recordingRequest.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
             else {recordingRequest.deny();toast("录音权限未开启，可在系统应用设置中允许麦克风");}
             recordingRequest=null;

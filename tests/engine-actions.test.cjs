@@ -45,6 +45,16 @@ test('红包200元上限、余额不足与跨好友处理均被拒绝',()=>{
   const f=fixture(),s=f.state(),p=R.values(s,'actions');assert.throws(()=>A.transfer(s,f.a,{amountCents:20001,type:'redpacket'},'assistant',p),/上限/);assert.throws(()=>A.transfer(s,f.a,{amountCents:100001,type:'transfer'},'assistant',p),/余额不足/);assert.equal(s.wallet.roleBalances[f.a],100000);
   const tx=A.transfer(s,f.a,{amountCents:100,type:'transfer'},'user',p);assert.throws(()=>A.settle(s,tx.id,'receive','assistant',f.b),/自己/);assert.throws(()=>A.settle(s,tx.id,'receive','user',f.a),/自己/);assert.equal(tx.status,'pending');
 });
+test('服务器时钟回拨后退款和收款记录仍按交易先后排列',()=>{
+  const f=fixture(),s=f.state(),settings=R.values(s,'actions'),createdAt=Date.now();
+  const outgoing=A.transfer(s,f.a,{amountCents:200,type:'transfer'},'user',settings,createdAt);
+  A.returnPending(s,f.a,createdAt-500);
+  assert.equal(outgoing.returnedAt,createdAt);
+  const incoming=A.transfer(s,f.a,{amountCents:100,type:'redpacket'},'assistant',settings,createdAt);
+  A.settle(s,incoming.id,'receive','user',f.a,createdAt-500);
+  assert.equal(incoming.updatedAt,createdAt);
+  assert.equal(s.messages.find(m=>m.id===incoming.receiptMessageId).createdAt,createdAt);
+});
 test('工具收发按元报告金额，旧参数仍可用，多余小数位不扣款',async()=>{
   const f=fixture(),before=f.getState();
   await assert.rejects(A.execute('send_redpacket',{amountYuan:8.888,note:'测试'},f.ctx(f.a)),/最多两位小数/);

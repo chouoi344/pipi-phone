@@ -1,5 +1,6 @@
 # These existing files are stored with CRLF in Git.
 INSTALL.zh-CN.md whitespace=trailing-space,space-before-tab,cr-at-eol
+package.json whitespace=trailing-space,space-before-tab,cr-at-eol
 lib/engine/actions.cjs whitespace=trailing-space,space-before-tab,cr-at-eol
 tests/engine-actions.test.cjs whitespace=trailing-space,space-before-tab,cr-at-eol
 tests/engine-ui.test.cjs whitespace=trailing-space,space-before-tab,cr-at-eol

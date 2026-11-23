@@ -120,7 +120,7 @@
   let chatSelection=null;
   let globalSearchTerm='';
   let contactsReturn=null,chatsReturn=0;
-  const transcriptViews=new Map(),thumbnailAttempts=new Set(),thumbnailQueue=[],chatImageSizes=new Map();
+  const transcriptViews=new Map(),thumbnailAttempts=new Set(),thumbnailQueue=[],chatImageSizes=new Map(),chatPreviewStatus=new Map();
   let thumbnailWorkers=0;
   const previewWarmups=new Map();
   let previewWarmupTimer=0;
@@ -305,10 +305,41 @@
     if(epoch!==authEpoch)throw new Error('登录状态已变化，请重新选图');
     return uploadMedia(blob,options);
   }
-  async function imageVariant(source,longEdge,quality){
+  async function imageVariant(source,longEdge,quality,thumbnail=false){
     const width=source.naturalWidth||source.width,height=source.naturalHeight||source.height,ratio=Math.min(1,longEdge/Math.max(width,height)),canvas=document.createElement('canvas');
-    canvas.width=Math.max(1,Math.round(width*ratio));canvas.height=Math.max(1,Math.round(height*ratio));canvas.getContext('2d').drawImage(source,0,0,canvas.width,canvas.height);
-    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',quality));if(!blob)throw new Error('图片副本生成失败');return blob;
+    canvas.width=Math.max(1,Math.round(width*ratio));canvas.height=Math.max(1,Math.round(height*ratio));
+    const context=canvas.getContext('2d');context.drawImage(source,0,0,canvas.width,canvas.height);
+    const mime=thumbnail?thumbnailFormat(context,canvas.width,canvas.height):'image/jpeg';
+    if(!mime)return null;
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,mime,quality));if(!blob)throw new Error('图片副本生成失败');return blob;
+  }
+  function thumbnailFormat(context,width,height){
+    const pixels=context.getImageData(0,0,width,height).data;
+    let hasAlpha=false,visible=false,hasColor=false;
+    for(let i=0;i<pixels.length;i+=4){
+      const alpha=pixels[i+3];
+      if(alpha<255)hasAlpha=true;
+      if(alpha>0){
+        visible=true;
+        if(Math.max(pixels[i],pixels[i+1],pixels[i+2])>3)hasColor=true;
+      }
+      if(hasAlpha&&visible&&hasColor)break;
+    }
+    // A transparent first frame or a blank black raster is better served by the original.
+    if(!visible||(!hasAlpha&&!hasColor))return null;
+    return hasAlpha?'image/webp':'image/jpeg';
+  }
+  function checkStoredThumbnail(img){
+    const sample=document.createElement('canvas');sample.width=sample.height=16;
+    try{
+      const context=sample.getContext('2d');
+      context.drawImage(img,0,0,16,16);
+      return Boolean(thumbnailFormat(context,16,16));
+    }catch{return false;} // A device that blocks pixel reads can still display the original.
+  }
+  function rememberChatPreview(source,usable){
+    chatPreviewStatus.set(source,usable);
+    if(chatPreviewStatus.size>256)chatPreviewStatus.delete(chatPreviewStatus.keys().next().value);
   }
   async function prepareChatImage(file, stillCurrent = () => true){
     const blob=await readImage(file,false,true);
@@ -318,7 +349,7 @@
     if(!imageVariants)return result;
     let bitmap;try{bitmap=await createImageBitmap(blob);}catch{return result;}
     try{
-      try{const thumb=await imageVariant(bitmap,320,.78);if(!stillCurrent())return;result.thumb=await uploadMedia(thumb);}catch{}
+      try{const thumb=await imageVariant(bitmap,320,.78,true);if(!stillCurrent())return;if(thumb)result.thumb=await uploadMedia(thumb);}catch{}
       if(!stillCurrent())return;
       if(blob.size>4*1024*1024||Math.max(bitmap.width,bitmap.height)>2560)try{const model=await imageVariant(bitmap,2048,.88);if(!stillCurrent())return;result.modelImage=await uploadMedia(model);}catch{}
       return result;
@@ -331,8 +362,8 @@
     thumbnailAttempts.add(messageId);
     const epoch=authEpoch;
     try{
-      const variant=await imageVariant(img,320,.78);
-      if(epoch!==authEpoch)return;
+      const variant=await imageVariant(img,320,.78,true);
+      if(!variant||epoch!==authEpoch)return;
       const thumb=await uploadMedia(variant);
       if(epoch!==authEpoch)return;
       const current=state.messages.find(item=>item.id===messageId),image=current?.type==='image'?current.content:current?.meta?.image;
@@ -348,7 +379,7 @@
     while(thumbnailWorkers<2&&thumbnailQueue.length){const img=thumbnailQueue.shift();if(!img.isConnected)continue;thumbnailWorkers++;void backfillThumbnail(img).finally(()=>{thumbnailWorkers--;drainChatThumbnails();});}
   }
   function chatImageMarkup(message,original,alt,sticker=false,prioritize=false){
-    const source=!sticker&&safeImage(message.meta?.thumb)?message.meta.thumb:original,size=chatImageSizes.get(source);
+    const thumb=message.meta?.thumb,source=!sticker&&safeImage(thumb)&&chatPreviewStatus.get(thumb)!==false?thumb:original,size=chatImageSizes.get(source);
     const loading=prioritize&&source!==original?'loading="eager" fetchpriority="high"':'loading="lazy"';
     return `<img class="message-image${sticker?'':' chat-photo'}" data-media-preview="${source===original?'original':'thumbnail'}" src="${esc(source)}" alt="${alt}" ${loading} decoding="async"${sticker?'':` width="${size?.width||120}" height="${size?.height||120}" style="width:${size?.width||120}px;height:${size?.height||120}px"`}>`;
   }
@@ -361,7 +392,7 @@
         const counts=new Map(),recent=state.messages.slice(-200);
         for(let index=recent.length-1;index>=0&&previewWarmups.size<4;index--){
           const message=recent[index],source=message.meta?.thumb;
-          if(!roleIds.includes(message.roleId)||(counts.get(message.roleId)||0)>=2||message.meta?.expired||message.meta?.stickerId||!safeImage(source))continue;
+          if(!roleIds.includes(message.roleId)||(counts.get(message.roleId)||0)>=2||message.meta?.expired||message.meta?.stickerId||!safeImage(source)||chatPreviewStatus.get(source)===false)continue;
           counts.set(message.roleId,(counts.get(message.roleId)||0)+1);if(previewWarmups.has(source))continue;
           const image=new Image();image.decoding='async';image.fetchPriority='low';previewWarmups.set(source,image);image.src=source;
           // Optional warming failures leave the normal visible image request in charge.
@@ -373,9 +404,22 @@
   }
   function bindChatThumbnails(){
     for(const img of view.querySelectorAll('.chat-photo')){
+      const useOriginal=()=>{
+        if(!img.isConnected||img.dataset.mediaPreview!=='thumbnail')return;
+        const messageId=img.closest('[data-bubble]').dataset.bubble,message=state.messages.find(item=>item.id===messageId);
+        const original=message?.type==='image'?message.content:message?.meta?.image;
+        if(message?.meta?.expired||!safeImage(original)||img.getAttribute('src')!==message?.meta?.thumb)return;
+        rememberChatPreview(message.meta.thumb,false);
+        img.dataset.mediaPreview='original';img.src=original;
+      };
       const loaded=()=>{
         if(!img.isConnected||!img.naturalWidth)return;
-        const scale=Math.min(150/img.naturalWidth,186/img.naturalHeight),width=Math.round(img.naturalWidth*scale),height=Math.round(img.naturalHeight*scale),source=img.getAttribute('src');
+        const source=img.getAttribute('src');
+        if(img.dataset.mediaPreview==='thumbnail'){
+          if(!chatPreviewStatus.has(source))rememberChatPreview(source,checkStoredThumbnail(img));
+          if(!chatPreviewStatus.get(source)){useOriginal();return;}
+        }
+        const scale=Math.min(150/img.naturalWidth,186/img.naturalHeight),width=Math.round(img.naturalWidth*scale),height=Math.round(img.naturalHeight*scale);
         chatImageSizes.delete(source);chatImageSizes.set(source,{width,height});if(chatImageSizes.size>256)chatImageSizes.delete(chatImageSizes.keys().next().value);
         const list=img.closest('#chat-messages'),bottom=list.dataset.scrollReady==='true'&&list.scrollHeight-list.scrollTop-list.clientHeight<=2,top=list.getBoundingClientRect().top;
         let low=0,high=list.children.length;while(low<high){const middle=(low+high)>>1;if(list.children[middle].getBoundingClientRect().bottom<=top)low=middle+1;else high=middle;}
@@ -384,7 +428,9 @@
         if(list.dataset.scrollReady==='true'){if(bottom)list.scrollTop=list.scrollHeight;else if(anchor)list.scrollTop+=anchor.getBoundingClientRect().top-before;}
         if(imageVariants)queueChatThumbnail(img);
       };
-      if(img.complete)loaded();else img.addEventListener('load',loaded,{once:true});
+      img.addEventListener('load',loaded);
+      img.addEventListener('error',useOriginal);
+      if(img.complete){if(img.naturalWidth)loaded();else useOriginal();}
     }
   }
   async function act(type, payload = {}) { const result = await api('/api/action',{type,payload}); if (result.state) setState(result.state); if(type==='sticker.add'){const images=payload.images||[payload.image];window.PipiStickers?.analyze(state.stickers.filter(s=>images.includes(s.image))).catch(error=>toast(error.message));}return result; }
@@ -2719,7 +2765,7 @@
     window.PipiSkins.configure(null);
     stopSpeech();authSetup=setup;authEpoch++;state=null;window.PipiEngine?.stop();
     window.PipiAccount?.reset();window.PipiStorage?.reset();
-    profileAvatarImages.clear();previewWarmups.clear();chatImageSizes.clear();
+    profileAvatarImages.clear();previewWarmups.clear();chatImageSizes.clear();chatPreviewStatus.clear();
     chatHistoryWindows.clear();
     clearTimeout(emojiRecentTimer);queuedEmojiRecents=[];emojiRecentsSaving=false;
     systemFilePicker?.remove();systemFilePicker=null;

@@ -4,12 +4,25 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const app=fs.readFileSync(path.join(__dirname,'../public/app.js'),'utf8'),part=(start,end)=>app.slice(app.indexOf(start),app.indexOf(end,app.indexOf(start)));
 const original='/api/media/'+'a'.repeat(64)+'.png',thumb='/api/media/'+'b'.repeat(64)+'.jpg',model='/api/media/'+'c'.repeat(64)+'.jpg';
 const turn=()=>new Promise(r=>setImmediate(r));
-function fixture({width=640,height=480,size=100,enabled=true,bitmapFailure=false,canvasFailure=false}={}){const source=new Blob([new Uint8Array(size)],{type:'image/png'}),writes=[],variants=[],calls=[];let closed=0;
- const document={createElement:()=>({getContext:()=>({drawImage(){}}),toBlob(cb,mime,quality){variants.push({width:this.width,height:this.height,mime,quality});cb(canvasFailure?null:new Blob(['variant'],{type:mime}));}})};
- const scope=vm.createContext({authEpoch:1,Blob,Uint8Array,Math,Promise,Set,imageVariants:enabled,document,readImage:async()=>source,uploadMedia:async blob=>{writes.push(blob);return writes.length===1?original:writes.length===2?thumb:model;},createImageBitmap:async()=>{if(bitmapFailure)throw new Error('decode');return {width,height,close(){closed++;}};},thumbnailAttempts:new Set(),state:{messages:[]},safeImage:()=>true,api:async(route,body)=>{calls.push({route,body});return {};},setState(){}});
+function fixture({width=640,height=480,size=100,mime='image/png',pixel=[20,150,50,255],enabled=true,bitmapFailure=false,canvasFailure=false}={}){const source=new Blob([new Uint8Array(size)],{type:mime}),writes=[],variants=[],calls=[];let closed=0;
+ const document={createElement:()=>({getContext:()=>({drawImage(){},getImageData:()=>({data:Uint8ClampedArray.from(pixel)})}),toBlob(cb,mime,quality){variants.push({width:this.width,height:this.height,mime,quality});cb(canvasFailure?null:new Blob(['variant'],{type:mime}));}})};
+ const scope=vm.createContext({authEpoch:1,Blob,Uint8Array,Math,Promise,Set,imageVariants:enabled,document,readImage:async()=>source,uploadMedia:async blob=>{writes.push(blob);return writes.length===1?(mime==='image/jpeg'?original.replace('.png','.jpg'):original):writes.length===2?thumb:model;},createImageBitmap:async()=>{if(bitmapFailure)throw new Error('decode');return {width,height,close(){closed++;}};},thumbnailAttempts:new Set(),state:{messages:[]},safeImage:()=>true,api:async(route,body)=>{calls.push({route,body});return {};},setState(){}});
  vm.runInContext(part('  async function imageVariant(','  async function act('),scope);return {scope,source,writes,variants,calls,closed:()=>closed};}
 
-test('variants: small pictures preserve original bytes and create only a 320-pixel JPEG thumbnail',async()=>{const f=fixture(),result=await f.scope.prepareChatImage({});assert.equal(result.image,original);assert.equal(result.thumb,thumb);assert.equal(result.modelImage,undefined);assert.equal(f.writes[0],f.source);assert.deepEqual(f.variants,[{width:320,height:240,mime:'image/jpeg',quality:.78}]);assert.equal(f.closed(),1);});
+test('variants: small colorful PNG with transparency keeps its original and alpha-capable preview',async()=>{const f=fixture({pixel:[0,0,0,0,20,150,50,255]}),result=await f.scope.prepareChatImage({});assert.equal(result.image,original);assert.equal(result.thumb,thumb);assert.equal(result.modelImage,undefined);assert.equal(f.writes[0],f.source);assert.deepEqual(f.variants,[{width:320,height:240,mime:'image/webp',quality:.78}]);assert.equal(f.closed(),1);});
+test('variants: an opaque PNG uses a compact JPEG thumbnail',async()=>{const f=fixture();await f.scope.prepareChatImage({});assert.equal(f.variants[0].mime,'image/jpeg');});
+test('variants: an opaque JPEG stays JPEG in its thumbnail',async()=>{const f=fixture({mime:'image/jpeg'});await f.scope.prepareChatImage({});assert.equal(f.variants[0].mime,'image/jpeg');});
+test('variants: an entirely black or transparent preview leaves the original available',async()=>{
+ for(const pixel of [[0,0,0,255],[0,0,0,0]]){
+  const f=fixture({pixel});const result=await f.scope.prepareChatImage({});
+  assert.equal(result.image,original);assert.equal(result.thumb,undefined);assert.deepEqual(f.writes,[f.source]);
+ }
+});
+test('stored thumbnails fall back to the original when the device cannot read pixels',()=>{
+ const f=fixture();
+ f.scope.document.createElement=()=>({getContext:()=>({drawImage(){},getImageData(){throw new Error('pixel read failed');}})});
+ assert.equal(f.scope.checkStoredThumbnail(imageElement(thumb)),false);
+});
 test('variants: long pictures get a 2048-pixel JPEG model copy at quality .88',async()=>{const f=fixture({width:4000,height:3000}),result=await f.scope.prepareChatImage({});assert.equal(result.modelImage,model);assert.deepEqual(f.variants[1],{width:2048,height:1536,mime:'image/jpeg',quality:.88});});
 test('variants: a picture over 4 MB gets a model copy without upscaling',async()=>{const f=fixture({width:800,height:600,size:4*1024*1024+1});assert.equal((await f.scope.prepareChatImage({})).modelImage,model);assert.equal(f.variants[1].width,800);});
 test('variants: exact 4 MB and 2560-pixel boundaries do not create a model copy',async()=>{const f=fixture({width:2560,height:1000,size:4*1024*1024});assert.equal((await f.scope.prepareChatImage({})).modelImage,undefined);});

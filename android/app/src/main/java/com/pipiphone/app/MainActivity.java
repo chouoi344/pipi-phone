@@ -373,6 +373,7 @@ public final class MainActivity extends Activity {
             if (fileCallback != null) fileCallback.onReceiveValue(null);
             fileCallback = callback;
             Intent choose = params.createIntent();
+            configureImagePicker(choose, params);
             choose.addCategory(Intent.CATEGORY_OPENABLE);
             choose.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             try { startActivityForResult(choose,PICK_FILE); }
@@ -392,6 +393,26 @@ public final class MainActivity extends Activity {
         @Override public void onPermissionRequestCanceled(PermissionRequest request) {
             if (recordingRequest == request) recordingRequest = null;
         }
+    }
+
+    private static void configureImagePicker(Intent choose, WebChromeClient.FileChooserParams params) {
+        ArrayList<String> images = new ArrayList<>();
+        for (String group : params.getAcceptTypes()) {
+            for (String entry : group.split(",")) {
+                String type = entry.trim();
+                // Image inputs also list extensions alongside their MIME types.
+                if (type.startsWith(".")) continue;
+                if (!type.startsWith("image/")) return;
+                if (!images.contains(type)) images.add(type);
+            }
+        }
+        // Older WebViews put only the first accepted image type in their intent.
+        if (images.size() > 1) {
+            choose.setType("image/*");
+            choose.putExtra(Intent.EXTRA_MIME_TYPES, images.toArray(new String[0]));
+        }
+        if (!images.isEmpty() && params.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE)
+            choose.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
     }
 
     private void askForVoicePermission() {

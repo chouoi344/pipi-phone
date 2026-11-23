@@ -4,7 +4,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const app=fs.readFileSync(path.join(__dirname,'../public/app.js'),'utf8');
 const part=(start,end)=>app.slice(app.indexOf(start),app.indexOf(end,app.indexOf(start)));
 const original='/api/media/original.png',thumb='/api/media/thumb.jpg';
-function fixture(){const scope=vm.createContext({chatImageSizes:new Map(),thumbnailQueue:[],thumbnailWorkers:0,safeImage:value=>typeof value==='string'&&value.startsWith('/api/media/'),esc:value=>value});vm.runInContext(part('  function queueChatThumbnail(','  async function act('),scope);return scope;}
+function fixture(){const scope=vm.createContext({chatImageSizes:new Map(),chatPreviewStatus:new Map(),thumbnailQueue:[],thumbnailWorkers:0,safeImage:value=>typeof value==='string'&&value.startsWith('/api/media/'),esc:value=>value});vm.runInContext(part('  function queueChatThumbnail(','  async function act('),scope);return scope;}
 test('chat preview uses the thumbnail without embedding the original and keeps sticker animation source',()=>{
  const f=fixture(),message={meta:{thumb}};
  const markup=f.chatImageMarkup(message,original,'聊天图片');

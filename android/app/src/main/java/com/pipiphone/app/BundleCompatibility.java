@@ -9,7 +9,8 @@ final class BundleCompatibility {
     static final String SERVER_0_13_12 = "375e57fe5cb72d753bfa2d71d1eb1d1f66d066eb76f30d8f749c5da8efa00b99";
     // Server 0.13.14 only changed its installer and uses the same page as 0.13.13.
     static final String SERVER_0_13_13 = "f7ec36c35f16519ac6f6e6f14eb4db3213b036928a8869c56a77a6fad81a92f0";
-    static final String WEBVIEW_83_BUNDLE = "65902fa6fc397750d9183c388c3f72df0a1eda45f5956cd39b8091c0ddd4ddad";
+    static final String PRE_CHAT_PHOTO_FIX = "65902fa6fc397750d9183c388c3f72df0a1eda45f5956cd39b8091c0ddd4ddad";
+    static final String WEBVIEW_83_BUNDLE = "ecfa9734011d1bab1de2d0fb62a8afddb43b158ce0a62888940a6d9261057845";
     private BundleCompatibility() {}
 
     static boolean accepts(String localHash, String serverHash) {
@@ -17,6 +18,6 @@ final class BundleCompatibility {
                 || WEBVIEW_83_BUNDLE.equals(localHash) && (SERVER_0_13_11.equals(serverHash)
                     || EARLIER_LOCAL_83.equals(serverHash) || PRE_UI_NATIVE_VOICE.equals(serverHash)
                     || PRE_CONTROL_FIT.equals(serverHash) || SERVER_0_13_12.equals(serverHash)
-                    || SERVER_0_13_13.equals(serverHash));
+                    || SERVER_0_13_13.equals(serverHash) || PRE_CHAT_PHOTO_FIX.equals(serverHash));
     }
 }

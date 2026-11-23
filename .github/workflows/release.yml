@@ -154,7 +154,12 @@ jobs:
       - name: Verify real image replacement, retained data and failure recovery
         run: node tests/compose-updater-docker.cjs
       - name: Verify the public Ubuntu installer enables updates on a fresh server
-        run: sudo bash tests/install-https-smoke.sh
+        run: |
+          # Hosted runners share /opt with the runner account. Match the root-owned
+          # deployment directory of a stock Ubuntu server on this disposable VM.
+          stat -c '%U %G %a %n' /opt
+          sudo install -d -o root -g root -m 0755 /opt
+          sudo bash tests/install-https-smoke.sh
 
   image:
     name: Build the two server architectures

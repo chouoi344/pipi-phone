@@ -159,6 +159,22 @@ jobs:
           # deployment directory of a stock Ubuntu server on this disposable VM.
           stat -c '%U %G %a %n' /opt
           sudo install -d -o root -g root -m 0755 /opt
+          # A fresh Ubuntu Docker host has no Node executable. Exercise the
+          # installer's own provisioning path instead of the runner's tool cache.
+          saved_node=()
+          restore_node() {
+            for executable in "${saved_node[@]}"; do
+              sudo mv -- "$executable.pipi-runner-backup" "$executable"
+            done
+          }
+          trap restore_node EXIT
+          for executable in /usr/bin/node /usr/local/bin/node; do
+            if [[ -e "$executable" || -L "$executable" ]]; then
+              test ! -e "$executable.pipi-runner-backup"
+              sudo mv -- "$executable" "$executable.pipi-runner-backup"
+              saved_node+=("$executable")
+            fi
+          done
           sudo bash tests/install-https-smoke.sh
 
   image:

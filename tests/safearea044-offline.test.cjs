@@ -20,9 +20,18 @@ function fixture({touchPoints=1,fine=false}={}){
  const window={innerHeight:844,innerWidth:390,matchMedia:()=>pointer,Pipi:{preserveChatLayout(update){preserved++;update();}},addEventListener(name,fn){listeners.set(name,fn);},dispatchEvent(event){events.push(event.type);},visualViewport:{height:844,offsetTop:0,scale:1,addEventListener(name,fn){listeners.set('visual:'+name,fn);}}};
  const ResizeObserver=class{constructor(callback){this.callback=callback;resizeObservers.push(this);}observe(target,options){this.target=target;this.options=options;}};
  window.ResizeObserver=ResizeObserver;
- vm.runInNewContext(source,{document,window,navigator,getComputedStyle:e=>e.className==='phone-safe-probe'?Object.fromEntries(Object.entries(insets).map(([side,value])=>['padding'+side[0].toUpperCase()+side.slice(1),value+'px'])):{backgroundColor:e.backgroundColor||'transparent'},MutationObserver:class{constructor(callback){this.callback=callback;observers.push(this);}observe(){}},ResizeObserver,requestAnimationFrame:fn=>frames.push(fn),CustomEvent:class{constructor(type){this.type=type;}}});
- return {shell,view,created,events,classes:view.classes,listeners,observers,resizeObservers,insets,window,frames,pointer,navigator,setOwner(value){owner=value===true?'.bottom-tabs':value;},focus(properties={}){document.activeElement={...node(),tagName:'INPUT',type:'text',...properties};},blur(){document.activeElement=null;},get preserved(){return preserved;},flush(){while(frames.length)frames.shift()();}};
+ vm.runInNewContext(source,{document,window,navigator,getComputedStyle:e=>e.className==='phone-safe-probe'?Object.fromEntries(Object.entries(insets).map(([side,value])=>['padding'+side[0].toUpperCase()+side.slice(1),value+'px'])):{backgroundColor:e.backgroundColor||'transparent',getPropertyValue:key=>e.style.values.get(key)||''},MutationObserver:class{constructor(callback){this.callback=callback;observers.push(this);}observe(){}},ResizeObserver,requestAnimationFrame:fn=>frames.push(fn),CustomEvent:class{constructor(type){this.type=type;}}});
+ return {shell,view,root,created,events,classes:view.classes,listeners,observers,resizeObservers,insets,window,frames,pointer,navigator,setOwner(value){owner=value===true?'.bottom-tabs':value;},focus(properties={}){document.activeElement={...node(),tagName:'INPUT',type:'text',...properties};},blur(){document.activeElement=null;},get preserved(){return preserved;},flush(){while(frames.length)frames.shift()();}};
 }
+test('Android reserves the three-button navigation strip after each rotation',()=>{
+ const f=fixture();
+ f.navigator.userAgent='PipiPhoneAndroid/1.0';
+ for(const [left,right,bottom] of [[0,48,0],[48,0,0],[0,0,48]]){
+  for(const [side,value] of Object.entries({left,right,bottom}))f.root.style.setProperty('--pipi-system-'+side,value+'px');
+  f.window.PipiPhoneFrame.refresh();
+  assert.deepEqual(['left','right','bottom'].map(side=>f.shell.style.values.get('--safe-'+side)),[left+'px',right+'px',bottom+'px']);
+ }
+});
 test('044 controller transfers changed real four-edge values and clears all edges to zero',()=>{
  const f=fixture();assert.deepEqual([...f.shell.style.values],['top','right','bottom','left'].map(side=>['--safe-'+side,'0px']));
  Object.assign(f.insets,{top:23,right:11,bottom:37,left:17});f.window.PipiPhoneFrame.refresh();

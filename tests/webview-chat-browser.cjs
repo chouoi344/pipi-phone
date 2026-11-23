@@ -11,6 +11,85 @@ const {createApp} = require('../server.cjs');
 const State = require('../lib/state.cjs');
 const Media = require('../lib/media-store.cjs');
 
+async function exerciseAlbum(page, friendId, tap) {
+  await page.evaluate(id => Pipi.showView('role-config', id), friendId);
+  await tap('#view [data-life-category=photo]');
+  await page.waitForSelector('#view .life-album-deck img');
+  const cover = await page.$eval('#view .life-album-deck', el => {
+    const box = el.getBoundingClientRect(), image = el.querySelector('img').getBoundingClientRect();
+    return {width: box.width, height: box.height, imageHeight: image.height};
+  });
+  assert.ok(cover.width > 0 && Math.abs(cover.width / 1.4 - cover.height) < 2 && cover.imageHeight > 20,
+    'the dated album must reserve a visible cover even before its lazy image loads');
+  await tap('#view [data-life-action=albumDay]');
+  await page.waitForFunction(() => document.querySelector('.life-photo-grid img')?.naturalWidth > 0);
+  const photo = await page.$eval('.life-photo-grid button', el => el.getBoundingClientRect().toJSON());
+  assert.ok(photo.width > 40 && Math.abs(photo.width - photo.height) < 2, 'the opened album shows square photo previews');
+  await page.evaluate(() => { Pipi.closeModal(); Pipi.showView('chats'); });
+}
+
+async function exerciseVoiceOverlay(page, {width, tap, capture}) {
+  // Supply only the native recorder responses, including on the HTTP fixture.
+  // The app still opens its own overlay and receives real captured pointer events.
+  const fixture = await page.evaluateHandle(() => {
+    const meta = document.createElement('meta');
+    meta.name = 'pipi-recording'; meta.content = 'test';
+    document.head.append(meta);
+    const prompt = window.prompt, commands = [];
+    window.prompt = (message, command) => {
+      if (message !== 'pipi-recording:test') return prompt(message, command);
+      commands.push(command);
+      return 'ok';
+    };
+    return {commands, restore() { meta.remove(); window.prompt = prompt; }};
+  });
+  await tap('[data-action=toggle-voice]');
+  const center = async selector => {
+    const {x, y, width, height} = await (await page.$(selector)).boundingBox();
+    return {x: x + width / 2, y: y + height / 2};
+  };
+  const start = await center('[data-record]');
+  const touch = width < 650 ? await page.target().createCDPSession() : null;
+  const move = point => touch
+    ? touch.send('Input.dispatchTouchEvent', {type: 'touchMove', touchPoints: [point]})
+    : page.mouse.move(point.x, point.y);
+  if (touch) await touch.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [start]});
+  else { await move(start); await page.mouse.down(); }
+  try {
+    await page.waitForSelector('[data-record].recording');
+    const layout = await page.evaluate(() => {
+      const shell = document.querySelector('.phone-shell');
+      const safeBottom = shell.getBoundingClientRect().bottom - parseFloat(getComputedStyle(shell).getPropertyValue('--safe-bottom'));
+      const box = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
+      return {safeBottom, bubble:box('.vg-bubble'), hint:box('.vg-release-hint'), send:box('.vg-send-area svg'),
+        targets:[box('.vg-target[data-mode=cancel] i'), box('.vg-target[data-mode=text] i')]};
+    });
+    await capture('voice-hold');
+    assert.ok(layout.bubble.width >= 100 && layout.bubble.height >= 40,
+      'the recording bubble should have a visible width and height: ' + JSON.stringify(layout));
+    for (const target of layout.targets) {
+      assert.ok(target.width >= 44 && target.height >= 44 && layout.bubble.bottom < target.top,
+        'the recording actions should be reachable below the bubble');
+      assert.ok(target.bottom < layout.hint.top && layout.hint.bottom <= layout.send.top &&
+        layout.send.bottom <= layout.safeBottom + 1, 'the actions and prompt should clear the system controls');
+    }
+    for (const mode of ['text', 'cancel']) {
+      await move(await center('.vg-target[data-mode=' + mode + '] i'));
+      await page.waitForSelector('.vg-surface[data-mode=' + mode + ']');
+    }
+  } finally {
+    if (touch) {
+      await touch.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
+      await touch.detach();
+    } else await page.mouse.up();
+    await fixture.evaluate(f => f.restore());
+  }
+  await page.waitForSelector('.vg-surface', {hidden: true});
+  assert.deepEqual(await fixture.evaluate(f => f.commands), ['start', 'cancel'], 'lifting over cancel discards the recording');
+  await fixture.dispose();
+  await tap('[data-action=toggle-voice]');
+}
+
 async function exerciseDraftRedraw(page, {skin, timing, width, tap, visible}) {
   // Release the real read receipt while composing to exercise the redraw from
   // a late server response. All other requests continue normally.
@@ -124,6 +203,7 @@ async function run() {
   State.apply(state, 'role.save', {name: '兼容测试好友', momentsAutoEnabled: false});
   const friend = state.roles[0];
   const image = Media.saveImage(directory, Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'));
+  state.engine.data.selfie.photos = {[friend.id]: [{id: 'test-album-photo', image, createdAt: Date.now()}]};
   State.message(state, friend, 'assistant', image, 'image');
   const wave = Buffer.alloc(44 + 32000);
   wave.write('RIFF'); wave.writeUInt32LE(wave.length - 8, 4); wave.write('WAVEfmt ', 8);
@@ -191,6 +271,7 @@ async function run() {
         PipiSkins.configure({waterdropActivated: true});
         PipiSkins.select(id);
       }, skin);
+      await exerciseAlbum(page, friend.id, tap);
       await tap('[data-open-chat]');
       await visible('#chat-messages[data-scroll-ready=true]');
       await page.waitForFunction(() => !document.querySelector('.navigation-snapshot') &&
@@ -204,10 +285,14 @@ async function run() {
       });
       assert.equal(layout.inputVisible, true, 'chat input stays within the phone');
       assert.equal(layout.loadedLegacy, layout.needsLegacy, 'load legacy layout only for engines that need it');
-      if (process.env.PIPI_SCREENSHOTS) {
+      const capture = async suffix => {
+        if (!process.env.PIPI_SCREENSHOTS) return;
         await fs.mkdir(process.env.PIPI_SCREENSHOTS, {recursive: true});
-        await page.screenshot({path: path.join(process.env.PIPI_SCREENSHOTS, version.split('/').pop() + '-' + width + '-' + skin + '.png')});
-      }
+        const filename = [version.split('/').pop(), width, skin, suffix].filter(Boolean).join('-') + '.png';
+        await page.screenshot({path: path.join(process.env.PIPI_SCREENSHOTS, filename)});
+      };
+      await capture();
+      await exerciseVoiceOverlay(page, {width, tap, capture});
       await tap('.chat-photo');
       await visible('.image-viewer');
       await page.waitForFunction(() => document.querySelector('.image-stage img')?.naturalWidth > 0);
@@ -234,6 +319,8 @@ async function run() {
         await tap('#view #moment-album-timeline');
         await tap('#view #moment-publish-private');
         await visible('#overlay .moment-compose-text');
+        const addPhoto = await page.$eval('#overlay .moment-add-photo', el => el.getBoundingClientRect().toJSON());
+        assert.ok(addPhoto.width > 44 && Math.abs(addPhoto.width - addPhoto.height) < 2, 'the add-photo tile is square');
         assert.equal(await page.$eval('#overlay .modal-header h3', title => title.textContent), '私密发表');
         assert.equal(await page.$eval('#overlay #moment-visibility small', value => value.textContent), '私密');
         console.log('PASS waterdrop private Moments editor from Me and album timeline');

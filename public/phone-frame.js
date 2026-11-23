@@ -36,8 +36,10 @@
     const android = /\bPipiPhoneAndroid\/1(?:\.|\b)/.test(navigator.userAgent);
     if (android) {
       const system = getComputedStyle(document.documentElement);
-      insets.top = parseFloat(system.getPropertyValue('--pipi-system-top')) || 0;
-      insets.bottom = parseFloat(system.getPropertyValue('--pipi-system-bottom')) || 0;
+      for (const side of Object.keys(insets)) {
+        const reported = parseFloat(system.getPropertyValue(`--pipi-system-${side}`));
+        if (Number.isFinite(reported)) insets[side] = reported;
+      }
     }
     // Touch-capable devices keep their real browser insets, including zero.
     // A tablet with a mouse can report a fine pointer, so check touch as well.

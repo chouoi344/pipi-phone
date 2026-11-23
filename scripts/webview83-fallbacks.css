@@ -16,6 +16,13 @@ body.wechat-classic :is(#view,.navigation-snapshot)[data-route=chat] .message-ro
 body.wechat-classic :is(#view,.navigation-snapshot)[data-route=chat] .voice-message>:not([hidden])~:not([hidden]){margin-left:7px}
 body.wechat-classic :is(#view,.navigation-snapshot)[data-route=chat] .voice-message.voice-mine>:not([hidden])~:not([hidden]){margin-left:0;margin-right:7px}
 .search-input-wrap>.icon{margin-right:6px}
+/* Grid gap also works in WebView 83. Wrapping filter chips keep flex and
+   split their intended gap across adjacent buttons, including on a new row. */
+.life-wardrobe-actions{display:grid;grid-auto-flow:column}
+.life-wardrobe-filters,.life-memory-tools .lm-filters{--chip-margin:1.5px;gap:0!important}
+body.wechat-classic .pt-basic-root :is(.life-wardrobe-filters,.life-memory-tools .lm-filters){--chip-margin:3px}
+:is(.life-wardrobe-filters,.life-memory-tools .lm-filters)>button{margin:var(--chip-margin)}
+.life-memory-months,body.wechat-classic .pt-basic-root .life-memory-months{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
 /* Classic uses a 6:5 cover. Waterdrop already has a fixed-height cover. */
 html:not([data-skin="waterdrop"]) .moments-cover{height:0;padding-top:83.333333%}
 .moment-photo-grid:not(.single-photo) .moment-photo-btn{position:relative}
@@ -26,3 +33,16 @@ html:not([data-skin="waterdrop"]) .moments-cover{height:0;padding-top:83.333333%
 .moment-media-grid>button{position:relative}
 .moment-media-grid>button::before{content:"";display:block;padding-top:100%}
 .moment-media-grid>button>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+
+/* These thumbnail frames must keep their size before a lazy image loads and
+   when a portrait or panorama replaces it. Chromium 83 ignores aspect-ratio. */
+.life-album-deck::before{content:"";display:block;padding-top:71.4286%}
+.life-wardrobe-image,.life-photo-grid button,.life-feed-image,.sticker-library-image,.engine-sticker-thumb,.sticker-grid>button[data-role-sticker],.ref-slot,.favorite-note-images .favorite-image-button,.moment-compose-photos>.moment-add-photo:not([hidden]){position:relative;display:block}
+.life-wardrobe-image::before{content:"";display:block;padding-top:80%}
+.ref-slot::before{content:"";display:block;padding-top:133.3333%}
+.life-photo-grid button::before,.life-feed-image::before,.sticker-library-image::before,.engine-sticker-thumb::before,.sticker-grid>button[data-role-sticker]::before,.note-image-item::before,.favorite-note-images .favorite-image-button::before,.moment-compose-photos>.moment-add-photo::before{content:"";display:block;padding-top:100%}
+.life-wardrobe-image>img,.life-photo-grid button>img,.life-feed-image>img,.sticker-library-image>img,.ref-slot>img,.ref-slot-add,.note-image-item>button:first-child,.favorite-note-images .favorite-image-button>.favorite-image{position:absolute;inset:0;width:100%;height:100%}
+.engine-sticker-thumb>img,.sticker-grid>button[data-role-sticker]>img{position:absolute;inset:0;margin:auto}
+.life-wardrobe-image>.icon{position:absolute;inset:0;margin:auto}
+.life-feed-image:only-child{grid-column:1/-1;width:min(144px,100%)}
+.moment-compose-photos>.moment-add-photo>span{position:absolute;inset:0;display:grid;place-items:center}

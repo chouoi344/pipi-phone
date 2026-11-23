@@ -77,14 +77,14 @@ test('invalid or excessive publication records and upstream redirects/errors pro
 });
 
 test('APK downloads are verified on disk, support trusted GitHub redirects and join simultaneous requests',async t=>{
-  let done;
+  const requested=Promise.withResolvers(),releaseDownload=Promise.withResolvers();
   const cdn='https://release-assets.githubusercontent.com/github-production-release-asset/123/abc?signature=isolated';
   const f=fixture(t,{fetchImpl:async(url)=>{
     if(url.startsWith(API))return Response.json([release()]);
-    if(url.startsWith('https://github.com/')){await new Promise(resolve=>{done=resolve;});return new Response(null,{status:302,headers:{Location:cdn}});}
+    if(url.startsWith('https://github.com/')){requested.resolve();await releaseDownload.promise;return new Response(null,{status:302,headers:{Location:cdn}});}
     assert.equal(url,cdn);return new Response(bytes,{headers:{'Content-Length':String(bytes.length)}});
   }});
-  const one=f.service.open('2'),two=f.service.open('2');await tick();done();
+  const one=f.service.open('2'),two=f.service.open('2');await requested.promise;releaseDownload.resolve();
   const a=await one,b=await two,file=a.stream.path;
   assert.equal(a.stream.path,b.stream.path);assert.equal(path.dirname(file).startsWith(path.join(os.tmpdir(),'pipi-android-updates-')),true);
   assert.deepEqual(await Promise.all([read(a),read(b)]),[bytes,bytes]);assert.equal(f.calls.length,3);

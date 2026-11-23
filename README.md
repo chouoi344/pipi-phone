@@ -4,9 +4,9 @@
 
 自己部署的 AI 角色小手机，支持聊天、朋友圈、语音、日程与共同记忆。
 
-网页正式版 **v0.13.14** · 安卓 App **0.1.7** · Node.js 24+ · AGPL-3.0-only
+网页正式版 **v0.13.14** · 安卓 App **0.1.8** · Node.js 24+ · AGPL-3.0-only
 
-[下载安卓 App](https://github.com/chouoi344/pipi-phone/releases/download/v0.13.13/pipi-phone-android-0.1.7-8.apk) · [快速开始](#快速开始) · [安装与升级](INSTALL.zh-CN.md) · [使用说明](docs/USAGE.zh-CN.md) · [更新记录](CHANGELOG.md) · [问题反馈](https://github.com/chouoi344/pipi-phone/issues)
+[下载安卓 App](https://github.com/chouoi344/pipi-phone/releases/download/android-v0.1.8/pipi-phone-android-0.1.8-9.apk) · [快速开始](#快速开始) · [安装与升级](INSTALL.zh-CN.md) · [使用说明](docs/USAGE.zh-CN.md) · [更新记录](CHANGELOG.md) · [问题反馈](https://github.com/chouoi344/pipi-phone/issues)
 
 </div>
 

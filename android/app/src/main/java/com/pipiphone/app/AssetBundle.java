@@ -62,7 +62,7 @@ final class AssetBundle {
             verifiedMatch = BundleCompatibility.accepts(hash, remote); serverChanged = !verifiedMatch;
             prefs.edit().putString("verified_origin", verifiedMatch ? origin.value : "")
                     .putString("verified_bundle", verifiedMatch ? hash : "").apply();
-            return verifiedMatch ? (hash.equals(remote) ? "使用同版本本地页面" : "服务器 0.13.11：使用 App 内置的兼容页面") : cachedMatch
+            return verifiedMatch ? (hash.equals(remote) ? "使用同版本本地页面" : "使用 App 内置的兼容页面") : cachedMatch
                     ? "服务器页面已更新，下次连接使用服务器资源" : "服务器页面已更新，使用服务器资源";
         } catch (JSONException invalidManifest) {
             invalidate(); return cachedMatch ? "服务器版本清单无效，下次连接使用服务器资源"

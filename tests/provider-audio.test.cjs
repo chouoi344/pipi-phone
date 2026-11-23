@@ -13,6 +13,59 @@ test('MiMo ASR uses data URL, Bearer, language:auto and non streaming',async t=>
   const f=await fixture(t,(_,res)=>res.end(JSON.stringify({choices:[{message:{content:'原话'}}]})));
   assert.equal(await A.transcribe(f.c,src),'原话');const r=f.seen[0];assert.equal(r.url,'/v1/chat/completions');assert.equal(r.headers.authorization,'Bearer ISOLATED');assert.equal(r.body.stream,false);assert.deepEqual(r.body.asr_options,{language:'auto'});assert.equal(r.body.messages[0].content[0].input_audio.data,src);
 });
+test('OpenAI-compatible audio chat sends raw Base64 and preserves an upstream 503 without retrying',async t=>{
+  const base64=src.slice(src.indexOf(',')+1);
+  let unavailable=false;
+  const f=await fixture(t,({body},res)=>{
+    const audio=body.messages[0].content.find(part=>part.type==='input_audio').input_audio;
+    if(audio.format!=='wav'||audio.data!==base64||body.stream!==false||body.stream_options||body.modalities){res.writeHead(400);res.end('Invalid audio input');return;}
+    if(unavailable){res.writeHead(503);res.end('Unavailable');return;}
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{message:{content:'听到了'}}]}));
+  });
+  const config={...f.c,protocol:'audio-chat',model:'gemini-audio-test'};
+  assert.equal(await A.transcribe(config,src),'听到了');assert.equal(f.seen[0].url,'/v1/chat/completions');
+  unavailable=true;
+  await assert.rejects(A.transcribe(config,src),{code:'PROVIDER_ERROR',upstreamStatus:503});
+  assert.equal(f.seen.length,2);
+});
+test('audio chat is inferred only for audio-capable recognition models; an explicit adapter wins',()=>{
+  for(const model of ['gpt-audio','openai/gpt-audio-mini','gpt-4o-audio-preview-2024-12-17','google/gemini-2.5-flash','gemini-3.8-flash-按次']){
+    assert.equal(A.speechProtocol({kind:'stt',model}),'audio-chat');
+    assert.equal(A.speechProtocol({kind:'stt',model,protocol:'transcription'}),'transcription');
+    assert.notEqual(A.speechProtocol({kind:'chat',model}),'audio-chat');
+  }
+  for(const model of ['gemini-2.5-flash-preview-tts','gemini-2.5-flash-image','gemini-4-hydrogen-按次','gpt-4o-transcribe','unknown'])
+    assert.equal(A.speechProtocol({kind:'stt',model}),'transcription');
+});
+test('stored codec parameters and M4A keep their original data and obey each protocol’s formats',async t=>{
+  const f=await fixture(t,(_entry,res)=>res.end(JSON.stringify({text:'原话',choices:[{message:{content:'原话'}}]})));
+  const b64=src.split(',')[1],whisper={...f.c,model:'whisper-1'};
+  for(const [type,extension] of [['audio/webm;codecs=opus','webm'],['audio/m4a','m4a']]){
+    const audio='data:'+type+';base64,'+b64;
+    assert.equal(await A.transcribe(whisper,audio),'原话');
+    assert.ok(f.seen.at(-1).raw.includes('filename="recording.'+extension+'"'));
+    assert.ok(f.seen.at(-1).raw.includes(Buffer.from(b64,'base64').toString()));
+    await assert.rejects(A.transcribe(f.c,audio),{code:'PROVIDER_AUDIO_FORMAT'});
+  }
+  assert.equal(await A.transcribe(f.c,src.replace(';base64',';codecs=pcm;base64')),'原话');
+  assert.equal(f.seen.at(-1).body.messages[0].content[0].input_audio.data,src);
+});
+test('recognition failures identify each purpose, model and upstream HTTP status without leaking the upstream body',async t=>{
+  const f=await fixture(t,(_entry,res)=>{res.writeHead(503);res.end(JSON.stringify({error:{message:'private-transcript '+src+' ISOLATED'}}));});
+  const source={id:'custom',name:'自接服务',baseUrl:f.c.baseUrl,key:f.c.key,template:'compatible'};
+  const models=['voice-1','dictation-1'].map(model=>({id:model,model,kind:'stt',sourceId:'custom',protocol:'audio-chat',extraBody:{}}));
+  const state={settings:{ai:{sources:[source],models,assign:{stt:'dictation-1',voiceUnderstanding:'voice-1'}}}},logs=[];
+  for(const [run,id,step,purpose] of [[P.transcribe,'dictation-1','录音转文字','stt'],[P.understandVoice,'voice-1','语音条理解','voiceUnderstanding']]){
+    await assert.rejects(run(state,src,{onUsage:row=>logs.push(row)}),error=>{
+      assert.equal(error.code,'PROVIDER_ERROR');assert.equal(error.status,502);assert.equal(error.upstreamStatus,503);
+      assert.equal(error.message,step+'失败，模型「'+id+'」的服务商返回 HTTP 503。');
+      assert.equal(error.rawBody,undefined);return true;
+    });
+    const row=logs.at(-1);assert.equal(row.success,false);assert.equal(row.model,id);assert.equal(row.purpose,purpose);assert.equal(row.error,'模型服务请求失败（HTTP 503）');
+    assert.doesNotMatch(JSON.stringify(row),/private-transcript|ISOLATED|base64/);
+  }
+  assert.equal(f.seen.length,2);
+});
 test('Omni SSE collects visible content and final usage, keeps transcription plain',async t=>{
   const f=await fixture(t,(_,res)=>{res.setHeader('content-type','text/event-stream');res.write('data: '+JSON.stringify({choices:[{delta:{reasoning_content:'隐藏推理',content:'原'}}]})+'\n\n');res.end('data: '+JSON.stringify({choices:[{delta:{content:'话'}}]})+'\r\n\r\ndata: '+JSON.stringify({choices:[],usage:{prompt_tokens:12,completion_tokens:2,total_tokens:14}})+'\n\ndata: [DONE]\n\n');});
   const c={...f.c,model:'qwen3.8-omni-flash'},responses=[];

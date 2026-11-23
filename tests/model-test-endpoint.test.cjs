@@ -300,8 +300,8 @@ test('model-test uses selected native protocols and reports failed empty vectors
     f.respond=(entry,res)=>{
       assert.equal(entry.url,'/v1/chat/completions');assert.equal(entry.body.model,'upstream-stt-selected');
       const audio=entry.body.messages[0].content.find(part=>part.type==='input_audio').input_audio.data;
-      assert.equal(audio,'data:audio/wav;base64,'+sample.toString('base64'));
-      if(['mimo-asr','qwen-asr'].includes(protocol))res.end(JSON.stringify({choices:[{message:{content:'原话'}}]}));
+      assert.equal(audio,(protocol==='audio-chat'?'':'data:audio/wav;base64,')+sample.toString('base64'));
+      if(protocol!=='qwen-omni')res.end(JSON.stringify({choices:[{message:{content:'原话'}}]}));
       else res.end('data: '+JSON.stringify({choices:[{delta:{content:'原话'}}]})+'\n\ndata: [DONE]\n\n');
     };
     const before=structuredClone(state),result=await Probe.testConnection(state,'stt-selected',{onUsage:record=>usage.push(record)});

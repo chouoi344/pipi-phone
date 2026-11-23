@@ -20,11 +20,11 @@ test('文件音频转写与语音理解向服务商发送原音频字节，兼�
   const dir=directory(t),buffer=wav(),ref=Media.saveAudio(dir,buffer),src='data:audio/wav;base64,'+buffer.toString('base64');
   const f=await fixture(t,(request,res)=>{
     if(request.url.endsWith('/audio/transcriptions'))return res.end(JSON.stringify({text:'转写原话'}));
-    res.setHeader('Content-Type','text/event-stream');res.end('data: '+JSON.stringify({choices:[{delta:{content:'{"text":"语音原话","contentEmotion":"接受","voiceEmotion":"平静"}'}}]})+'\n\ndata: [DONE]\n\n');
+    res.end(JSON.stringify({choices:[{message:{content:'{"text":"语音原话","contentEmotion":"接受","voiceEmotion":"平静"}'}}]}));
   });
   const transcription=f.state('stt');assert.equal(await Providers.transcribe(transcription,ref,{dataDir:dir}),'转写原话');assert(f.seen[0].bytes.includes(buffer));assert.match(f.seen[0].raw,/recording.wav/);assert.doesNotMatch(f.seen[0].raw,/\/api\/media\//);
   const understanding=f.state('stt');understanding.settings.ai.models[0].protocol='audio-chat';understanding.settings.ai.assign.voiceUnderstanding='model';
-  assert.deepEqual(await Providers.understandVoice(understanding,ref,{dataDir:dir}),{text:'语音原话',contentEmotion:'接受',voiceEmotion:'平静'});assert.equal(f.seen[1].body.messages[0].content[1].input_audio.data,src);
+  assert.deepEqual(await Providers.understandVoice(understanding,ref,{dataDir:dir}),{text:'语音原话',contentEmotion:'接受',voiceEmotion:'平静'});assert.deepEqual(f.seen[1].body.messages[0].content[1].input_audio,{format:'wav',data:buffer.toString('base64')});
   assert.equal(await Audio.transcribe({baseUrl:f.base,key:'ISOLATED',model:'whisper-1'},src),'转写原话');
 });
 

@@ -15,6 +15,7 @@ public final class BundleCompatibilityTest {
         check(BundleCompatibility.accepts(local, BundleCompatibility.EARLIER_LOCAL_83), "The prior local 0.13.11 ZIP can use native voice");
         check(BundleCompatibility.accepts(local, BundleCompatibility.PRE_UI_NATIVE_VOICE), "The pre-UI native voice server can use the audited new page");
         check(BundleCompatibility.accepts(local, BundleCompatibility.PRE_CONTROL_FIT), "The preceding UI build can use the current local page");
+        check(BundleCompatibility.accepts(local, BundleCompatibility.SERVER_0_13_12), "The previous release can use the corrected local layout");
         check(BundleCompatibility.accepts(local, local), "An exact current server bundle still works");
         check(BundleCompatibility.accepts(remote, remote), "Other exact matching bundles still work");
         check(!BundleCompatibility.accepts("0".repeat(64), remote), "A future local edit invalidates the old mapping");

@@ -16,8 +16,8 @@ body.wechat-classic :is(#view,.navigation-snapshot)[data-route=chat] .message-ro
 body.wechat-classic :is(#view,.navigation-snapshot)[data-route=chat] .voice-message>:not([hidden])~:not([hidden]){margin-left:7px}
 body.wechat-classic :is(#view,.navigation-snapshot)[data-route=chat] .voice-message.voice-mine>:not([hidden])~:not([hidden]){margin-left:0;margin-right:7px}
 .search-input-wrap>.icon{margin-right:6px}
-/* Give the cover and photo tiles a real height where aspect-ratio is ignored. */
-.moments-cover::after{content:"";display:block;padding-top:83.333333%}
+/* Classic uses a 6:5 cover. Waterdrop already has a fixed-height cover. */
+html:not([data-skin="waterdrop"]) .moments-cover{height:0;padding-top:83.333333%}
 .moment-photo-grid:not(.single-photo) .moment-photo-btn{position:relative}
 .moment-photo-grid:not(.single-photo) .moment-photo-btn::before{content:"";display:block;padding-top:100%}
 .moment-photo-grid:not(.single-photo) .moment-photo{position:absolute;inset:0}

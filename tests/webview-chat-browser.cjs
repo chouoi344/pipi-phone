@@ -129,6 +129,24 @@ async function run() {
       await tap('[data-action=dictation]');
       await page.waitForFunction(insecure => document.querySelector('#toast').textContent.includes(insecure ? 'HTTPS' : '暂时无法录音'), {}, httpOnly);
       await tap('[data-action=toggle-panel]');
+      // Release the real read receipt while composing to exercise the redraw from
+      // a late server response. All other requests continue normally.
+      const readReceipt = await page.evaluateHandle(() => {
+        const fetch = window.fetch;
+        const receipt = {ready: false};
+        const hold = new Promise(resolve => { receipt.release = resolve; });
+        window.fetch = async function(url, options) {
+          if (url !== '/api/action' || JSON.parse(options.body).type !== 'conversation.read') {
+            return fetch.apply(this, arguments);
+          }
+          window.fetch = fetch;
+          const response = await fetch.apply(this, arguments);
+          receipt.ready = true;
+          await hold;
+          return response;
+        };
+        return receipt;
+      });
       const message = 'sent-' + skin;
       await page.type('#compose-text', message);
       await tap('#compose-form [type=submit]');
@@ -136,19 +154,44 @@ async function run() {
       const replyCount = skin === 'classic' ? 1 : 2;
       await page.waitForFunction(count => [...document.querySelectorAll('#chat-messages [data-bubble]')]
         .filter(bubble => bubble.textContent === '收到测试消息。').length >= count, {}, replyCount);
-      await page.focus('#compose-text');
-      await page.keyboard.sendCharacter('draft-' + skin);
+      await page.waitForFunction(receipt => receipt.ready, {}, readReceipt);
+      const focusComposer = () => page.evaluate(() => document.querySelector('#view #compose-text').focus());
+      await focusComposer();
+      const prefix = skin === 'waterdrop' ? 'draft-' : '';
+      if (prefix) await page.keyboard.sendCharacter(prefix);
+      const editorBeforeReceipt = await page.evaluateHandle(receipt => {
+        const editor = document.querySelector('#view #compose-text');
+        receipt.release();
+        return editor;
+      }, readReceipt);
+      await page.waitForFunction(editor => !editor.isConnected, {}, editorBeforeReceipt);
+      assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('#view #compose-text')), true,
+        'the editor keeps focus across a read receipt');
+      assert.equal(await page.$eval('#view #compose-text', input => input.textContent), prefix);
+      await editorBeforeReceipt.dispose();
+      await readReceipt.dispose();
+      await page.keyboard.sendCharacter(prefix ? skin : 'draft-' + skin);
       assert.equal(await page.$eval('#compose-text', input => input.textContent), 'draft-' + skin);
       await tap('[data-action=back]');
       await visible('#view[data-route=chats]');
       await tap('[data-open-chat]');
       await page.waitForFunction(text => document.querySelector('#compose-text').innerText === text, {}, 'draft-' + skin);
-      await page.focus('#compose-text');
+      await focusComposer();
       await page.keyboard.down('Control'); await page.keyboard.press('a'); await page.keyboard.up('Control');
       await page.keyboard.press('Backspace');
       await tap('[data-action=back]');
       await visible('#view[data-route=chats]');
       console.log('PASS ' + skin + ' image / voice playback / unavailable microphone / send and receive / back and draft');
+      if (skin === 'waterdrop') {
+        await tap('#view .bottom-tabs [data-nav=me]');
+        await tap('#view [data-action=my-moments]');
+        await tap('#view #moment-album-timeline');
+        await tap('#view #moment-publish-private');
+        await visible('#overlay .moment-compose-text');
+        assert.equal(await page.$eval('#overlay .modal-header h3', title => title.textContent), '私密发表');
+        assert.equal(await page.$eval('#overlay #moment-visibility small', value => value.textContent), '私密');
+        console.log('PASS waterdrop private Moments editor from Me and album timeline');
+      }
     }
     assert.deepEqual(errors, []);
   } catch (error) {

@@ -87,11 +87,11 @@ class InstallHttpsTests(unittest.TestCase):
 
     def test_custom_volume_or_updated_deployment_is_preserved(self):
         config = {"name": "phone", "volumes": {"pipi-data": {"name": "phone_pipi-data"}}}
-        container = {"Config": {"Labels": {
+        container = {"Id": "a" * 64, "Config": {"Labels": {
             "com.docker.compose.project": "phone",
             "com.docker.compose.project.working_dir": str(Path.cwd()),
             "com.docker.compose.project.config_files": str(Path.cwd() / "compose.yaml")
-        }}, "Mounts": [{"Destination": "/app/data", "Name": "preexisting_volume"}]}
+        }}, "Mounts": [{"Destination": "/app/data", "Type": "volume", "Name": "preexisting_volume"}]}
         with patch.object(install, "output", side_effect=[json.dumps(config), "id", "id", json.dumps([container])]), \
                 self.assertRaises(SystemExit):
             install.check_installation()
@@ -99,6 +99,68 @@ class InstallHttpsTests(unittest.TestCase):
         with patch.object(install, "output") as docker, self.assertRaises(SystemExit):
             install.check_installation()
         docker.assert_not_called()
+
+    def test_old_project_adopts_its_actual_project_name(self):
+        project = {"name": "old-name", "volumes": {"pipi-data": {"name": "old-name_pipi-data"}}}
+        container = {"Id": "a" * 64, "Config": {"Labels": {
+            "com.docker.compose.project": "old-name", "com.docker.compose.project.working_dir": str(Path.cwd()),
+            "com.docker.compose.project.config_files": str(Path.cwd() / "compose.yaml")}},
+            "Mounts": [{"Destination": "/app/data", "Type": "volume", "Name": "old-name_pipi-data"}]}
+        with patch.object(install, "output", side_effect=[json.dumps({"name": "different"}), "", "id",
+                          json.dumps([container]), json.dumps(project)]) as query:
+            self.assertEqual(install.check_installation(), (project, container))
+        self.assertIn("old-name", query.call_args.args[0])
+
+    def test_running_port_binding_and_repository_win_over_unrelated_defaults(self):
+        app = {"ports": [{"target": 8000, "published": 18766}], "environment": {
+            "PIPI_UPDATE_REPOSITORY": "chouoi344/pipi-phone", "REQUIRE_SETUP_TOKEN": "0"}}
+        config = {"name": "previous", "services": {"pipi-phone": app}}
+        container = {"HostConfig": {"PortBindings": {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "19999"}]}},
+                     "Config": {"Env": ["PIPI_UPDATE_REPOSITORY=owner/fork", "REQUIRE_SETUP_TOKEN=0"]}}
+        settings = install.update_settings(config, container, False)
+        self.assertEqual(settings["PIPI_UPDATE_COMPOSE_PROJECT"], "previous")
+        self.assertEqual(settings["PIPI_UPDATE_HEALTH_ORIGIN"], "http://127.0.0.1:19999")
+        self.assertEqual(settings["PIPI_PORT"], "19999")
+        self.assertEqual(settings["PIPI_HOST_BIND"], "127.0.0.1")
+        self.assertEqual(settings["PIPI_UPDATE_REPOSITORY"], "owner/fork")
+        container["Config"]["Env"][1] = "REQUIRE_SETUP_TOKEN=1"
+        with self.assertRaisesRegex(SystemExit, "REQUIRE_SETUP_TOKEN"):
+            install.update_settings(config, container, False)
+
+    def test_completed_rollback_will_not_switch_data_back_on_repeated_enable(self):
+        config = {"name": "phone", "volumes": {"pipi-data": {"name": "phone_pipi-data"}}}
+        install.STATE.mkdir()
+        install.UPDATE_ENV.write_text(install.GENERATED + "\n")
+        install.ACTIVE.write_text(json.dumps({"volumes": {"pipi-update-data": {"name": "rollback-restored"}}}))
+        (install.STATE / "current.json").write_text(json.dumps({"stage": "done", "status": {"phase": "rolled-back"}}))
+        labels = {"com.docker.compose.project": "phone", "com.docker.compose.project.working_dir": str(Path.cwd()),
+                  "com.docker.compose.project.config_files": str(Path.cwd() / "compose.yaml")}
+        container = {"Id": "a" * 64, "Config": {"Labels": labels}, "Mounts": [
+            {"Destination": "/app/data", "Type": "volume", "Name": "phone_pipi-data"}]}
+        with patch.object(install, "output", side_effect=[json.dumps(config), "id", "id", json.dumps([container])]), \
+                self.assertRaises(SystemExit):
+            install.check_installation()
+        container["Mounts"][0]["Name"] = "rollback-restored"
+        with patch.object(install, "output", side_effect=[json.dumps(config), "id", "id", json.dumps([container])]):
+            self.assertEqual(install.check_installation()[1]["Id"], container["Id"])
+
+    def test_interrupted_work_is_left_to_the_original_worker(self):
+        install.STATE.mkdir()
+        journal = install.STATE / "current.json"
+        for stage, phase, busy in [("snapshotting", "backing-up", True), ("recovery-needed", "failed", True),
+                                  ("done", "succeeded", False), ("done", "rolled-back", False)]:
+            journal.write_text(json.dumps({"stage": stage, "status": {"phase": phase}}))
+            self.assertEqual(install.worker_busy(), busy)
+
+    @unittest.skipUnless(hasattr(os, "geteuid") and os.geteuid() == 0, "root-only POSIX permission check")
+    def test_root_worker_refuses_group_writable_checkout_and_its_symlink_target(self):
+        unsafe = Path("unsafe")
+        unsafe.mkdir(mode=0o777)
+        unsafe.chmod(0o777)
+        (unsafe / "updater.cjs").touch()
+        Path("entry.cjs").symlink_to((unsafe / "updater.cjs").resolve())
+        with self.assertRaisesRegex(SystemExit, "写入权限"):
+            install.require_root_control(Path("entry.cjs"))
 
 
 if __name__ == "__main__":

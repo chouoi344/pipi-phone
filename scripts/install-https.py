@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Install the public-IP HTTPS entry point on a Docker host."""
+import argparse
+from datetime import datetime, timezone
 import ipaddress
 from itertools import chain
 import json
@@ -7,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -14,12 +17,41 @@ import time
 from urllib.parse import urlsplit
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path.cwd() if __file__ == "<stdin>" else Path(__file__).resolve().parents[1]
 BASE = ["docker", "compose", "-f", "compose.yaml"]
 HTTPS = [*BASE, "-f", "compose.https.yaml"]
 PRODUCTION = "https://acme-v02.api.letsencrypt.org/directory"
 MARKER = Path("compose.override.yaml")
 SETTINGS = Path(".env.https")
+UPDATE_ENV = Path(".env.updates")
+STATE = Path(".pipi-updater")
+CHANNEL = Path(".pipi-update-channel")
+ACTIVE = STATE / "active-compose.json"
+GENERATED = "# Managed by pipi-phone install-https.py"
+SYSTEM_UNITS = Path("/etc/systemd/system")
+
+
+def require_root_control(path):
+    # A persistent root service must not execute files an unprivileged account can replace.
+    path = path.absolute()
+    for leaf in {path, path.resolve()}:
+        for item in (*reversed(leaf.parents), leaf):
+            info = item.lstat()
+            sticky_parent = item != leaf and stat.S_ISDIR(info.st_mode) and info.st_mode & stat.S_ISVTX
+            if info.st_uid != 0 or (not item.is_symlink() and info.st_mode & 0o022 and not sticky_parent):
+                sys.exit(f"宿主机更新服务需要 root 管理的部署路径。请核对 {item} 的所有者和写入权限。")
+
+
+def check_host_files():
+    if any(ord(char) < 32 for char in str(ROOT)):
+        sys.exit("部署目录名不能包含换行或控制字符。")
+    require_root_control(ROOT)
+    for name in ("scripts/compose-updater.cjs", "lib/updates.cjs", "package.json", "compose.yaml", "compose.updates.yaml",
+                 "compose.https.yaml", "deploy/Caddyfile", ".env", ".env.https", ".env.updates", "compose.override.yaml",
+                 ".pipi-updater", ".pipi-updater/active-compose.json"):
+        path = ROOT / name
+        if path.exists() or path.is_symlink():
+            require_root_control(path)
 
 
 def output(command):
@@ -70,8 +102,9 @@ def check_installation():
     if (Path("compose.override.yml").exists() or os.environ.get("COMPOSE_FILE")
             or (env_file.is_file() and re.search(r"(?m)^\s*(?:export\s+)?COMPOSE_FILE\s*=", env_file.read_text()))):
         sys.exit("检测到自定义 Compose 文件。请在原部署配置中接入 HTTPS，保留原服务与数据卷。")
-    if Path(".pipi-updater/active-compose.json").exists() or Path(".env.updates").exists():
-        sys.exit("此实例已配置网页一键更新，请使用原更新服务管理业务容器。请参阅安装说明中的已有实例。")
+    managed = UPDATE_ENV.is_file() and UPDATE_ENV.read_text().startswith(GENERATED + "\n")
+    if UPDATE_ENV.is_symlink() or (not managed and (ACTIVE.exists() or UPDATE_ENV.exists())):
+        sys.exit("此实例已有手工配置的网页更新服务，请继续使用原更新服务。")
     config = json.loads(output([*BASE, "config", "--format", "json"]))
     project = config["name"]
     own = set(output([*BASE, "ps", "--all", "--quiet", "pipi-phone"]).split())
@@ -79,17 +112,29 @@ def check_installation():
                         f"label=com.docker.compose.project.working_dir={ROOT}",
                         "--filter", "label=com.docker.compose.service=pipi-phone"]).split())
     if not own and not local:
-        return
+        return config, None
     containers = json.loads(output(["docker", "inspect", *(own | local)]))
+    if len({item["Id"] for item in containers}) != 1:
+        sys.exit("此目录关联了多个小手机实例，请核对原项目。")
     for container in containers:
         labels = container["Config"]["Labels"]
+        if labels["com.docker.compose.project"] != project and not own:
+            project = labels["com.docker.compose.project"]
+            config = json.loads(output([*BASE, "--project-name", project, "config", "--format", "json"]))
         sources = {Path(name).resolve() for name in labels["com.docker.compose.project.config_files"].split(",")}
         data = next((mount for mount in container["Mounts"] if mount["Destination"] == "/app/data"), {})
+        files = {ROOT / "compose.yaml", ROOT / "compose.https.yaml"}
+        volume = config["volumes"]["pipi-data"]["name"]
+        if managed:
+            files.update({ROOT / "compose.updates.yaml", ROOT / ACTIVE})
+            if ACTIVE.is_file():
+                volume = json.loads(ACTIVE.read_text())["volumes"]["pipi-update-data"]["name"]
         if (labels["com.docker.compose.project"] != project
                 or Path(labels["com.docker.compose.project.working_dir"]).resolve() != ROOT
-                or not sources <= {ROOT / "compose.yaml", ROOT / "compose.https.yaml"}
-                or data.get("Name") != config["volumes"]["pipi-data"]["name"]):
+                or not sources <= files or data.get("Type") != "volume"
+                or data.get("Name") != volume and not worker_busy()):
             sys.exit("检测到已有实例使用其他项目名、配置或数据卷。请在原部署中配置 HTTPS，保持原资料。")
+    return config, containers[0]
 
 
 def public_ip():
@@ -180,21 +225,199 @@ def wait_for_https(host, *, application):
         time.sleep(2)
 
 
+def write_atomic(path, content, mode=0o600):
+    with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False) as temporary:
+        temporary.write(content)
+        os.fchmod(temporary.fileno(), mode)
+    os.replace(temporary.name, path)
+
+
+def node_runtime():
+    private_node = (STATE / "node").resolve()
+    for node in (private_node, Path("/usr/bin/node"), Path("/usr/local/bin/node")):
+        if node.is_file():
+            require_root_control(node)
+            result = subprocess.run([node, "--version"], capture_output=True, text=True)
+            match = re.fullmatch(r"v(\d+)\.\d+\.\d+", result.stdout.strip())
+            if result.returncode == 0 and match and int(match[1]) >= 24:
+                return node
+    # The app is built from this official multi-architecture image. Never copy code out of a live app.
+    image = "docker.io/library/node:24-bookworm-slim"
+    container = output(["docker", "create", "--network", "none", "--entrypoint", "/bin/true", image])
+    try:
+        with tempfile.TemporaryDirectory(dir=STATE) as directory:
+            candidate = Path(directory).resolve() / "node"
+            subprocess.run(["docker", "cp", container + ":/usr/local/bin/node", str(candidate)], check=True)
+            candidate.chmod(0o755)
+            if not re.fullmatch(r"v24\.\d+\.\d+", output([candidate, "--version"])):
+                sys.exit("官方镜像中的 Node 24 无法在这台服务器运行。")
+            os.replace(candidate, private_node)
+    finally:
+        subprocess.run(["docker", "rm", container], check=True, stdout=subprocess.DEVNULL)
+    return private_node
+
+
+def worker_busy():
+    journal = STATE / "current.json"
+    if not journal.is_file():
+        return False
+    job = json.loads(journal.read_text())
+    return job["stage"] != "done" or job["status"]["phase"] not in {"succeeded", "rolled-back", "failed"}
+
+
+def update_settings(config, container, https):
+    app = config["services"]["pipi-phone"]
+    published = next(p for p in app["ports"] if p["target"] == 8000)
+    port, bind = str(published["published"]), published.get("host_ip", "0.0.0.0")
+    repository = app["environment"]["PIPI_UPDATE_REPOSITORY"]
+    if container:
+        bindings = container["HostConfig"]["PortBindings"].get("8000/tcp") or []
+        if len(bindings) != 1 or bindings[0]["HostIp"] not in {"", "0.0.0.0", "127.0.0.1"}:
+            sys.exit("原容器没有可供网页更新服务检查的本机端口，未修改原部署。")
+        port, bind = bindings[0]["HostPort"], bindings[0]["HostIp"] or "0.0.0.0"
+        original = dict(item.split("=", 1) for item in container["Config"]["Env"])
+        repository = original.get("PIPI_UPDATE_REPOSITORY", repository)
+        # An ephemeral shell override must not silently disappear when Compose recreates the app.
+        for key, value in app["environment"].items():
+            if key not in {"PIPI_UPDATE_REPOSITORY", "PIPI_UPDATE_DIR", "TRUST_PROXY"} and key in original and original[key] != value:
+                sys.exit(f"原容器的 {key} 与现有 Compose 设置不同。请先在原 .env 中保留该值。")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*", repository):
+        sys.exit("现有更新仓库格式无效，请核对 PIPI_UPDATE_REPOSITORY。")
+    return {"PIPI_UPDATE_REPOSITORY": repository, "PIPI_UPDATE_DIR": str(ROOT / CHANNEL),
+            "PIPI_UPDATE_STATE_DIR": str(ROOT / STATE), "PIPI_UPDATE_COMPOSE_FILE": str(ROOT / "compose.yaml"),
+            "PIPI_UPDATE_COMPOSE_PROJECT": config["name"], "PIPI_UPDATE_HEALTH_ORIGIN": "http://127.0.0.1:" + port,
+            "PIPI_PORT": port, **({} if https else {"PIPI_HOST_BIND": bind})}
+
+
+def wait_worker(service):
+    started = datetime.now(timezone.utc)
+    deadline = time.monotonic() + 35
+    while time.monotonic() < deadline:
+        try:
+            fd = os.open(CHANNEL / "worker-ready.json", os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        except FileNotFoundError:
+            pass
+        else:
+            with os.fdopen(fd) as heartbeat:
+                info = os.fstat(fd)
+                if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022 or info.st_size > 4096:
+                    sys.exit("更新服务写入的心跳文件异常，请核对共享目录。")
+                stamp = json.load(heartbeat)["updatedAt"].replace("Z", "+00:00")
+            if started <= datetime.fromisoformat(stamp) <= datetime.now(timezone.utc):
+                if subprocess.run(["systemctl", "is-active", "--quiet", service]).returncode == 0:
+                    return
+        time.sleep(1)
+    sys.exit(f"网页更新服务尚未就绪。请查看 journalctl -u {service} -n 30 后重试。")
+
+
+def enable_updates(config, container, enable_only):
+    if not Path("/run/systemd/system").is_dir() or not shutil.which("systemctl"):
+        sys.exit("此安装方式需要使用 systemd 的 Ubuntu 宿主机。")
+    if not (Path("scripts/compose-updater.cjs").is_file() and Path("compose.updates.yaml").is_file()):
+        sys.exit("原目录缺少网页更新服务文件，请确认指定的是小手机部署目录。")
+    output(["systemctl", "show", "--property=Version", "--value"])
+    project = config["name"]
+    service = f"pipi-phone-updater-{project}.service"
+    unit_path = SYSTEM_UNITS / service
+    unit_marker = f"{GENERATED} for {ROOT}\n"
+    existing_unit = output(["systemctl", "show", service, "--property=FragmentPath", "--value"])
+    if ((existing_unit and Path(existing_unit) != unit_path) or unit_path.is_symlink()
+            or unit_path.exists() and not unit_path.read_text().startswith(unit_marker)):
+        sys.exit(f"同名系统服务 {service} 已用于其他部署，未覆盖。")
+    if enable_only and not container and not UPDATE_ENV.exists():
+        sys.exit("此目录没有已部署的小手机。首次安装请使用普通安装命令。")
+    if STATE.is_symlink() or CHANNEL.is_symlink() or ACTIVE.is_symlink():
+        sys.exit("更新状态或共享目录是非预期的符号链接，未修改。")
+    STATE.mkdir(mode=0o700, exist_ok=True)
+    if STATE.stat().st_uid != 0 or STATE.stat().st_mode & 0o077:
+        sys.exit(".pipi-updater 必须是 root 私有目录，未修改现有资料。")
+    if worker_busy():
+        if not UPDATE_ENV.is_file() or not unit_path.is_file():
+            sys.exit("原更新任务尚未结束，请通过原更新服务恢复。")
+        subprocess.run(["systemctl", "enable", "--now", service], check=True)
+        sys.exit("原网页更新服务正在处理尚未结束的任务。待任务结束后可重新运行此命令。")
+    https = not enable_only or MARKER.is_symlink()
+    settings = update_settings(config, container, https)
+    node = node_runtime()
+    # Docker inherits these values directly; systemd reads the same values on boot.
+    def env_quote(value):
+        return '"' + re.sub(r'([\\"$`])', r'\\\1', value) + '"'
+    content = GENERATED + "\n" + "".join(key + "=" + env_quote(value) + "\n" for key, value in settings.items())
+    if UPDATE_ENV.exists() and content != UPDATE_ENV.read_text():
+        sys.exit("现有更新配置与此项目不一致，请沿用原项目名、仓库和端口。")
+    if not UPDATE_ENV.exists():
+        write_atomic(UPDATE_ENV, content)
+    CHANNEL.mkdir(mode=0o770, exist_ok=True)
+    os.chown(CHANNEL, 1000, 1000)
+    CHANNEL.chmod(0o770)
+    # systemd expands percent specifiers and command arguments separately.
+    unit_root = str(ROOT).replace("%", "%%")
+    def command_arg(filename):
+        return json.dumps(str(filename), ensure_ascii=False).replace("%", "%%").replace("$", "$$")
+    unit = (unit_marker + "[Unit]\nDescription=Pipi Phone web updater\nAfter=docker.service network-online.target\n"
+            "[Service]\nType=simple\n" + f"WorkingDirectory={unit_root}\nEnvironmentFile={unit_root}/.env.updates\n"
+            + "ExecStart=" + command_arg(node) + " " + command_arg(ROOT / "scripts/compose-updater.cjs") + "\n"
+            + "Restart=on-failure\nRestartSec=5\nTimeoutStopSec=infinity\n[Install]\nWantedBy=multi-user.target\n")
+    if not unit_path.is_file() or unit_path.read_text() != unit:
+        write_atomic(unit_path, unit, 0o644)
+    subprocess.run(["systemctl", "daemon-reload"], check=True)
+    compose = [*BASE, "--project-name", project]
+    env = {**os.environ, **settings}
+    already_attached = container and any(m["Destination"] == "/app/update-channel" and m.get("Type") == "bind"
+                                          and Path(m["Source"]) == ROOT / CHANNEL for m in container["Mounts"])
+    if not enable_only:
+        host = configure_address()
+        configure_proxy_network()
+    if https:
+        compose.extend(["-f", "compose.https.yaml"])
+    def run_compose(*args):
+        subprocess.run([*compose, *args], env=env, check=True)
+    if not enable_only:
+        print(f"正在为 {host} 启动 HTTPS 并验证证书。公网 TCP 80 和 443 需能访问。", flush=True)
+        run_compose("up", "-d", "--no-deps", "pipi-https")
+        wait_for_https(host, application=False)
+        if not MARKER.is_symlink():
+            MARKER.symlink_to("compose.https.yaml")
+    compose.extend(["-f", "compose.updates.yaml"])
+    if container and not already_attached and not ACTIVE.exists():
+        # Preserve the exact running image even if an identically named tag has since moved.
+        volume = next(m["Name"] for m in container["Mounts"] if m["Destination"] == "/app/data")
+        overlay = {"services": {"pipi-phone": {"image": container["Image"], "volumes": [
+            {"type": "volume", "source": "pipi-update-data", "target": "/app/data"}]}},
+            "volumes": {"pipi-update-data": {"external": True, "name": volume}}}
+        write_atomic(ACTIVE, json.dumps(overlay) + "\n")
+    if ACTIVE.exists():
+        compose.extend(["-f", str(ACTIVE)])
+    run_compose("config", "--quiet")
+    if not already_attached or not container["State"]["Running"]:
+        run_compose("up", "-d", "--no-deps", *(["--no-build", "--pull", "never"] if ACTIVE.exists() else ["--build"]), "pipi-phone")
+    subprocess.run(["systemctl", "enable", "--now", service], check=True)
+    wait_worker(service)
+    if https and not enable_only:
+        wait_for_https(host, application=True)
+        print(f"小手机已就绪，网页和安卓 App 的地址为 https://{host}/ 。证书会自动续期。")
+    print("网页一键更新已启用，可在「我 → 设置 → 关于屁屁机 → 网页程序更新」检查和安装新版。")
+
+
 def main():
+    global ROOT
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--enable-updates", type=Path, metavar="原部署目录")
+    args = parser.parse_args()
+    if args.enable_updates:
+        ROOT = args.enable_updates.resolve()
     os.chdir(ROOT)
-    check_installation()
-    host = configure_address()
-    configure_proxy_network()
-    subprocess.run([*HTTPS, "config", "--quiet"], check=True)
-    print(f"正在为 {host} 启动 HTTPS 并验证证书。公网 TCP 80 和 443 需能访问。", flush=True)
-    # Obtain a valid certificate before moving an existing HTTP service behind the proxy.
-    subprocess.run([*HTTPS, "up", "-d", "--no-deps", "pipi-https"], check=True)
-    wait_for_https(host, application=False)
-    if not MARKER.is_symlink():
-        MARKER.symlink_to("compose.https.yaml")
-    subprocess.run([*HTTPS, "up", "-d", "--build", "pipi-phone"], check=True)
-    wait_for_https(host, application=True)
-    print(f"小手机已就绪，网页和安卓 App 的地址为 https://{host}/ 。证书会自动续期。")
+    if os.geteuid() != 0:
+        sys.exit("请用 sudo 或 root 运行安装命令，以便启用宿主机网页更新服务。")
+    import fcntl
+    lock = os.open(ROOT, os.O_RDONLY)
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        check_host_files()
+        config, container = check_installation()
+        enable_updates(config, container, args.enable_updates is not None)
+    finally:
+        os.close(lock)
 
 
 if __name__ == "__main__":

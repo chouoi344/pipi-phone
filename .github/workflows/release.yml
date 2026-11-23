@@ -153,6 +153,8 @@ jobs:
           package-manager-cache: false
       - name: Verify real image replacement, retained data and failure recovery
         run: node tests/compose-updater-docker.cjs
+      - name: Verify the public Ubuntu installer enables updates on a fresh server
+        run: sudo bash tests/install-https-smoke.sh
 
   image:
     name: Build the two server architectures

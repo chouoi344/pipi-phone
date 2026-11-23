@@ -4,7 +4,7 @@
 
 自己部署的 AI 角色小手机，支持聊天、朋友圈、语音、日程与共同记忆。
 
-网页正式版 **v0.13.16** · 安卓 App **0.1.10** · Node.js 24+ · AGPL-3.0-only
+网页正式版 **v0.13.17** · 安卓 App **0.1.10** · Node.js 24+ · AGPL-3.0-only
 
 [下载安卓 App](https://github.com/chouoi344/pipi-phone/releases/download/v0.13.15/pipi-phone-android-0.1.10-12.apk) · [快速开始](#快速开始) · [安装与升级](INSTALL.zh-CN.md) · [使用说明](docs/USAGE.zh-CN.md) · [更新记录](CHANGELOG.md) · [问题反馈](https://github.com/chouoi344/pipi-phone/issues)
 
@@ -55,15 +55,15 @@
 
 ### Docker Compose
 
-Ubuntu 云服务器首次安装需要 Git、curl、Python 3、Docker 和 Compose 2.24.4 或更新版本。放行公网 TCP 80、443 后，复制下面这行即可下载最新正式版并配置 HTTPS。已经解压好源码的用户可以在项目目录直接运行 `python3 scripts/install-https.py`。
+Ubuntu 云服务器首次安装需要 Git、curl、Python 3、Docker 和 Compose 2.24.4 或更新版本。放行公网 TCP 80、443 后，在管理员终端复制下面这行，安装最新正式版，同时启用 HTTPS 和网页一键更新。已经解压好源码的用户可以在项目目录直接运行 `python3 scripts/install-https.py`。
 
 ```sh
-repo=https://github.com/chouoi344/pipi-phone && release=$(curl --http1.1 -fsSLI -o /dev/null -w '%{url_effective}' "$repo/releases/latest") && git -c http.version=HTTP/1.1 clone --depth 1 --branch "${release##*/}" "$repo.git" pipi-phone && cd pipi-phone && python3 scripts/install-https.py
+cd /opt && repo=https://github.com/chouoi344/pipi-phone && release=$(curl --http1.1 -fsSLI -o /dev/null -w '%{url_effective}' "$repo/releases/latest") && git -c http.version=HTTP/1.1 clone --depth 1 --branch "${release##*/}" "$repo.git" pipi-phone && cd pipi-phone && python3 scripts/install-https.py
 ```
 
 安装完成后，终端会显示 `https://你的公网IP/`。在手机浏览器打开它，填写名字和至少 8 个字符的访问密码。安卓 App 也粘贴这个完整网址，使用同一个密码。浏览器首次录音时，点「允许使用麦克风」。服务器会自动申请并续期免费证书。
 
-Docker 内已包含 Node.js，业务资料保存在 `pipi-data` 数据卷。普通重启和重新构建会保留资料。
+标准安装会准备网页更新服务所需的 Node.js，业务资料保存在 Docker 数据卷中。以后要升级服务器，请打开「我 → 设置 → 关于屁屁机 → 网页程序更新」。
 
 只在自己电脑上试用时，在源码目录运行 `docker compose up -d --build`，打开 [http://127.0.0.1:18766/](http://127.0.0.1:18766/)。使用面板且已有 HTTPS 的服务器沿用原网址。[已有网站、端口冲突和安装说明](INSTALL.zh-CN.md#首次安装)
 
@@ -90,12 +90,12 @@ Windows 也可以双击 `start.cmd`。打开 [http://127.0.0.1:18766/](http://12
 
 ## 更新与数据
 
-当前网页版本为 **0.13.16**。打开「我 → 设置 → 关于屁屁机」，图标下方是服务器的网页版本。在安卓手机上点「安卓 App 更新」，可以查看这台手机的 App 版本。升级已有安装前，先导出备份，保留原部署目录、数据卷与环境变量。[0.13.0 数据升级说明](升级说明_0.13.0.md) · [更新记录](CHANGELOG.md)
+当前网页版本为 **0.13.17**。打开「我 → 设置 → 关于屁屁机」，图标下方是服务器的网页版本。在安卓手机上点「安卓 App 更新」，可以查看这台手机的 App 版本。升级已有安装前，先导出备份，保留原部署目录、数据卷与环境变量。[0.13.0 数据升级说明](升级说明_0.13.0.md) · [更新记录](CHANGELOG.md)
 
 - **备份与恢复**　在「我 → 设置 → 聊天记录管理」导出 TAR 备份，可恢复 TAR 和旧版 JSON。导出默认包含模型 API Key、图片和语音，可取消相应选项。含密钥的备份请妥善保管。
 - **媒体保存**　聊天图片和语音默认保存 7 天，可在「存储空间」调整。服务器剩余空间不足时，会按时间清理最旧的聊天媒体。
 - **资料保留**　恢复备份会替换目标安装的业务资料。普通升级继续使用原资料目录。`docker compose down -v` 会删除数据卷。
-- **网页更新**　部署者开启一键更新后，可在「网页程序更新」安装正式网页版本。[网页更新说明](docs/WEB-UPDATE.zh-CN.md)
+- **网页更新**　在「网页程序更新」检查新版，点「立即更新」。旧版公网 HTTPS 安装若显示「未启用一键更新」，可在原服务器执行一次启用命令。[旧版启用命令和网页更新说明](docs/WEB-UPDATE.zh-CN.md)
 - **安卓更新**　新版服务器可提供 GitHub 正式发布的安卓安装包。打开「安卓 App 更新」，按手机的系统提示确认安装。这项功能可在网页一键更新服务关闭时使用。[安卓发布与更新说明](android/README.md#在-app-里更新)
 
 ## 常见问题

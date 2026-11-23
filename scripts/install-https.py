@@ -324,7 +324,7 @@ def enable_updates(config, container, enable_only):
     if ((existing_unit and Path(existing_unit) != unit_path) or unit_path.is_symlink()
             or unit_path.exists() and not unit_path.read_text().startswith(unit_marker)):
         sys.exit(f"同名系统服务 {service} 已用于其他部署，未覆盖。")
-    if enable_only and not container and not UPDATE_ENV.exists():
+    if enable_only and not container and not ACTIVE.exists() and not worker_busy():
         sys.exit("此目录没有已部署的小手机。首次安装请使用普通安装命令。")
     if STATE.is_symlink() or CHANNEL.is_symlink() or ACTIVE.is_symlink():
         sys.exit("更新状态或共享目录是非预期的符号链接，未修改。")
@@ -336,16 +336,22 @@ def enable_updates(config, container, enable_only):
             sys.exit("原更新任务尚未结束，请通过原更新服务恢复。")
         subprocess.run(["systemctl", "enable", "--now", service], check=True)
         sys.exit("原网页更新服务正在处理尚未结束的任务。待任务结束后可重新运行此命令。")
-    https = not enable_only or MARKER.is_symlink()
+    previous_https = MARKER.is_symlink()
+    https = not enable_only or previous_https
     settings = update_settings(config, container, https)
     node = node_runtime()
     # Docker inherits these values directly; systemd reads the same values on boot.
     def env_quote(value):
         return '"' + re.sub(r'([\\"$`])', r'\\\1', value) + '"'
     content = GENERATED + "\n" + "".join(key + "=" + env_quote(value) + "\n" for key, value in settings.items())
-    if UPDATE_ENV.exists() and content != UPDATE_ENV.read_text():
-        sys.exit("现有更新配置与此项目不一致，请沿用原项目名、仓库和端口。")
-    if not UPDATE_ENV.exists():
+    if UPDATE_ENV.exists():
+        previous = UPDATE_ENV.read_text()
+        # A formerly HTTP-only instance may retain its old bind; HTTPS always uses loopback.
+        if https:
+            previous = re.sub(r"(?m)^PIPI_HOST_BIND=\"(?:0\.0\.0\.0|127\.0\.0\.1)\"\n", "", previous)
+        if content != previous:
+            sys.exit("现有更新配置与此项目不一致，请沿用原项目名、仓库和端口。")
+    else:
         write_atomic(UPDATE_ENV, content)
     CHANNEL.mkdir(mode=0o770, exist_ok=True)
     os.chown(CHANNEL, 1000, 1000)
@@ -389,7 +395,7 @@ def enable_updates(config, container, enable_only):
     if ACTIVE.exists():
         compose.extend(["-f", str(ACTIVE)])
     run_compose("config", "--quiet")
-    if not already_attached or not container["State"]["Running"]:
+    if not already_attached or not container["State"]["Running"] or (https and not previous_https):
         run_compose("up", "-d", "--no-deps", *(["--no-build", "--pull", "never"] if ACTIVE.exists() else ["--build"]), "pipi-phone")
     subprocess.run(["systemctl", "enable", "--now", service], check=True)
     wait_worker(service)

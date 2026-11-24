@@ -201,6 +201,10 @@ test('model metadata and list accept a draft without saving source data or reusi
   assert.equal(info.body.timeoutSeconds,120);
   const decision=await f.request(route,{...draft,model:'jev-latest',kind:'decision',protocol:'system-one'});
   assert.equal(decision.status,200);assert.deepEqual(decision.body,{timeoutSeconds:5});
+  const image=await f.request(route,{...draft,model:'gpt-image-2.5-sunburst',kind:'image'});
+  assert.equal(image.status,200);assert.deepEqual(image.body,{timeoutSeconds:120});
+  const rerank=await f.request(route,{...draft,model:'rerank-test',kind:'rerank'});
+  assert.equal(rerank.status,200);assert.deepEqual(rerank.body,{timeoutSeconds:20});
   assert.equal(metadata.mock.calls.length,1);
   assert.deepEqual(metadata.mock.calls[0].arguments,['gpt-4.1-mini',{baseUrl:f.providerUrl,maxContextTokens:8192}]);
   assert.equal((await f.request(route,{...draft,baseUrl:'file:///model'})).status,400);

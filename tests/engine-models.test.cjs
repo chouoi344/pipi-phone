@@ -45,12 +45,12 @@ test('首个请求送出后撤销资料权限，同模型重试和回退均不�
 test('model defaults follow the provider protocol and explicit saved timeouts take precedence',()=>{
   const s=state(),initial=M.migrate(s);
   const sources=[...M.sanitize(initial).sources,{id:'custom',name:'隔离测试',baseUrl:'https://model.example/v1',key:SECRET,builtin:false}];
-  const entries=[['chat','gpt-4.1-mini','chat','auto',120],['mimo','mimo-v2.5-asr','stt','auto',20],['whisper','whisper-1','stt','transcription',600],['omni','qwen3.8-omni-flash','stt','auto',45],['speech','tts-1','tts','auto',20],['minimax','speech-2.8-hd','tts','minimax',60],['breeze','breeze-tts-2','tts','auto',45],['photo','image-test','image','auto',45],['judge','jev-latest','decision','auto',5],['embed','embedding-test','embedding','auto',20],['rerank','reranker-test','rerank','auto',20]];
+  const entries=[['chat','gpt-4.1-mini','chat','auto',120],['mimo','mimo-v2.5-asr','stt','auto',20],['whisper','whisper-1','stt','transcription',600],['omni','qwen3.8-omni-flash','stt','auto',45],['speech','tts-1','tts','auto',20],['minimax','speech-2.8-hd','tts','minimax',60],['breeze','breeze-tts-2','tts','auto',45],['photo','image-test','image','auto',120],['judge','jev-latest','decision','auto',5],['embed','embedding-test','embedding','auto',20],['rerank','reranker-test','rerank','auto',20]];
   const models=entries.map(([id,name,kind,protocol])=>model(id,'custom',{model:name,kind,protocol,timeoutSeconds:null}));
   const first=M.save(s,{sources,models,assign:initial.assign});
   for(const [id,,kind,,seconds] of entries){
     const saved=first.models.find(entry=>entry.id===id);
-    assert.equal(saved.timeoutSeconds,seconds,id);
+    assert.equal(saved.timeoutSeconds,kind==='image'?null:seconds,id);
     assert.equal(M.resolve(s,kind,{modelId:id}).timeoutSeconds,seconds,id);
   }
   const config=M.sanitize(first),judge=config.models.find(entry=>entry.id==='judge');
@@ -61,6 +61,21 @@ test('model defaults follow the provider protocol and explicit saved timeouts ta
   assert.equal(M.resolve(s,'decision',{modelId:'judge'}).timeoutSeconds,5);
   delete s.settings.ai.models.find(entry=>entry.id==='judge').timeoutSeconds;
   assert.equal(M.resolve(s,'decision',{modelId:'judge'}).timeoutSeconds,5);
+  const photo=config.models.find(entry=>entry.id==='photo');
+  photo.timeoutSeconds=45;M.save(s,config);
+  assert.equal(M.resolve(s,'image',{modelId:'photo'}).timeoutSeconds,45);
+  M.migrate(s);
+  assert.equal(M.resolve(s,'image',{modelId:'photo'}).timeoutSeconds,45);
+  delete s.settings.ai.imageTimeoutDefault;
+  M.migrate(s);
+  assert.equal(M.resolve(s,'image',{modelId:'photo'}).timeoutSeconds,120);
+  photo.timeoutSeconds=95;M.save(s,config);
+  delete s.settings.ai.imageTimeoutDefault;
+  M.migrate(s);
+  assert.equal(M.resolve(s,'image',{modelId:'photo'}).timeoutSeconds,95);
+  photo.timeoutSeconds=null;M.save(s,config);
+  assert.equal(M.sanitize(s.settings.ai).models.find(entry=>entry.id==='photo').timeoutSeconds,null);
+  assert.equal(M.resolve(s,'image',{modelId:'photo'}).timeoutSeconds,120);
 });
 
 test('migration preserves every legacy address/key pair and vision maps to caption',()=>{
@@ -400,11 +415,12 @@ test('station setup saves chat credentials alone and fills only keyed non-chat g
   assert.deepEqual(chat.assign,before.assign);
 
   const all=M.configureStation(s,{'pipi-voice':'ISOLATED_STATION_VOICE','pipi-image':'ISOLATED_STATION_IMAGE','pipi-auxiliary':'ISOLATED_STATION_AUX'});
-  const configuredPurposes={stt:['pipi-auxiliary','mimo-v2.5-asr',20],voiceUnderstanding:['pipi-auxiliary','qwen3.8-omni-flash',45],tts:['pipi-voice','breeze-tts-2',45],image:['pipi-image','gpt-image-2.5-sunburst',45],decision:['pipi-auxiliary','jev-latest',5],embedding:['pipi-auxiliary','Qwen/Qwen3-VL-Embedding-8B',20],rerank:['pipi-auxiliary','Qwen/Qwen3-VL-Reranker-8B',20]};
+  const configuredPurposes={stt:['pipi-auxiliary','mimo-v2.5-asr',20],voiceUnderstanding:['pipi-auxiliary','qwen3.8-omni-flash',45],tts:['pipi-voice','breeze-tts-2',45],image:['pipi-image','gpt-image-2.5-sunburst',null],decision:['pipi-auxiliary','jev-latest',5],embedding:['pipi-auxiliary','Qwen/Qwen3-VL-Embedding-8B',20],rerank:['pipi-auxiliary','Qwen/Qwen3-VL-Reranker-8B',20]};
   for(const [purpose,expected] of Object.entries(configuredPurposes)){
     const actual=all.models.find(model=>model.id===all.assign[purpose]);
     assert.deepEqual([actual.sourceId,actual.model,actual.timeoutSeconds],expected);
   }
+  assert.equal(M.resolve(s,'image').timeoutSeconds,120);
   assert.deepEqual(all.models.filter(model=>model.kind==='chat'),before.models);
   const edited=M.sanitize(all),voice=edited.models.find(model=>model.id===all.assign.tts);
   Object.assign(voice,{timeoutSeconds:87,voice:'patched-voice',enabled:false,extraBody:{speed:0.9}});

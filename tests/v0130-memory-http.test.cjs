@@ -30,3 +30,16 @@ test('legacy memory.delete clears both the stored card and its sourced profile f
   await f.request('/api/action',{type:'memory.delete',payload:{id:card.id}});
   const after=f.state();assert.equal(after.memories.some(item=>item.id===card.id),false);assert.equal(MS.getCard(f.dataDir,after,f.roleId,card.id),null);assert.equal(MS.getProfile(f.dataDir,after,f.roleId).preferences['饮品'],undefined);
 });
+test('manual recall records embedding and reranking usage in the usage report',async t=>{
+  const f=await fixture(t),state=f.state(),Models=require('../lib/engine/models.cjs');
+  state.settings.ai.assign.embedding='recall-embedding';state.settings.ai.assign.rerank='recall-rerank';
+  for(let i=0;i<9;i++)MS.upsertCard(f.dataDir,state,f.roleId,{content:'隔离记忆 '+i});f.save(state);
+  const calls=[];
+  const record=(purpose,onUsage)=>{calls.push(purpose);onUsage?.({at:Date.now(),modelId:'recall-'+purpose,model:purpose,purpose,success:true,inputTokens:7,outputTokens:0,durationMs:3});};
+  t.mock.method(Models,'embed',async(_state,_query,{onUsage})=>{record('embedding',onUsage);return [1,0];});
+  t.mock.method(Models,'rerank',async(_state,_query,_documents,{onUsage})=>{record('rerank',onUsage);return [{index:0,score:1}];});
+  const recalled=await f.request('/api/engine/memory',{roleId:f.roleId,action:'recall',query:'隔离记忆'});
+  assert.ok(recalled.cards.length);assert.deepEqual(calls,['embedding','rerank']);
+  const usage=await f.request('/api/engine/usage');assert.equal(usage.summary.count,2);assert.equal(usage.summary.inputTokens,14);
+  assert.deepEqual(usage.logs.items.map(row=>row.purpose).sort(),['embedding','rerank']);
+});

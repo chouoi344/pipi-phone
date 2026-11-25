@@ -103,14 +103,14 @@
 .model-ui .provider-identity .source-mark { width: 28px; height: 28px; }
 .model-ui .provider-identity img, .model-ui .provider-identity svg { width: 22px; height: 22px; }
 .model-ui .button-area { padding: 12px var(--model-inset); }
-.model-ui .primary { width: 100%; min-height: 44px; border-radius: 6px; padding: 8px 14px; background: #07c160; color: #fff; font-size: 16px; font-weight: 600; }
+.model-ui .primary { width: 100%; min-height: 44px; border-radius: 6px; padding: 8px 14px; background: var(--green); color: #fff; font-size: 16px; font-weight: 600; }
 .model-ui .search-wrap { padding: 8px var(--model-inset); background: #ededed; }
 .model-ui .search-wrap input { width: 100%; min-width: 0; border: 0; border-radius: 6px; padding: 8px 12px; background: #fff; font-size: 16px; }
 .model-ui :is(.model-item, .assignment-option) input {
   appearance: none; width: 22px; height: 22px; flex: none; margin: 0;
   border: 1.5px solid #d6d6d6; border-radius: 50%; cursor: pointer;
 }
-.model-ui :is(.model-item, .assignment-option) input:checked { background: #07c160; border-color: #07c160; }
+.model-ui :is(.model-item, .assignment-option) input:checked { background: var(--green); border-color: var(--green); }
 .model-ui :is(.model-item, .assignment-option) input:checked::after {
   content: ''; display: block; width: 10px; height: 6px;
   border-left: 2px solid white; border-bottom: 2px solid white;
@@ -220,7 +220,7 @@
 .model-ui .model-use { padding: 4px 0; color: #576b95; font-size: 13px; }
 .inline-model-switch { position: relative; flex: none; width: 42px; height: 25px; border: 1px solid #ddd; border-radius: 20px; background: #ddd; }
 .inline-model-switch::after { content: ''; position: absolute; top: 1px; left: 1px; width: 21px; height: 21px; border-radius: 50%; background: #fff; }
-.inline-model-switch[aria-checked=true] { border-color: #07c160; background: #07c160; }
+.inline-model-switch[aria-checked=true] { border-color: var(--green); background: var(--green); }
 .inline-model-switch[aria-checked=true]::after { transform: translateX(17px); }
 .inline-provider-save { border-top: var(--model-divider); }
 .inline-provider-error { margin: 6px 16px; color: #c03939; font-size: 13px; }

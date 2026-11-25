@@ -35,7 +35,9 @@
     empty.setAttribute('role', 'status');
     list.append(empty);
     const visibleRows = rows.map(row => {
-      const friend = friends.get(row.querySelector('[data-open-chat]').dataset.openChat);
+      const conv = row.querySelector('[data-open-chat]');
+      const friend = friends.get(conv.dataset.openChat);
+      if (friend?.muted || row.querySelector('.conversation-muted')) conv.classList.add('is-muted');
       return {row, friend};
     });
     function selectFilter(filter) {

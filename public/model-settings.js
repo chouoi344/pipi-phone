@@ -347,7 +347,7 @@
     compress:{label:'压缩模型',kind:'chat',empty:'跟随对话模型'}
   };
   const chatModels=()=>ai().models.filter(model=>model.kind==='chat');
-  const modelLabel=id=>{const model=ai().models.find(model=>model.id===id);return model?sourceFor(model.sourceId).name+' · '+model.model+(model.enabled===false?'（已停用）':''):'';};
+  const modelLabel=id=>{const model=ai().models.find(model=>model.id===id);return model?(sourceFor(model.sourceId)?.name||'')+' · '+model.model+(model.enabled===false?'（已停用）':''):'';};
   function preferenceRow(label,key,value,hint=''){
     return `<button type="button" class="model-preference-row" data-model-pref="${key}"><span class="preference-copy"><strong>${esc(label)}</strong>${hint?`<small>${esc(hint)}</small>`:''}</span><span class="preference-value" title="${esc(value)}">${esc(value)}</span>${P().icons.chevron}</button>`;
   }
@@ -368,7 +368,8 @@
   function renderCaptionPrompt(){
     const setting=config.modules.find(module=>module.id==='caption').settings.find(setting=>setting.key==='prompt');
     const saved=config.settings.caption.prompt;
-    const value=sessionStorage.getItem(captionDraftKey)??saved;
+    let draftPrompt=null;try{draftPrompt=sessionStorage.getItem(captionDraftKey);}catch{}
+    const value=draftPrompt??saved;
     return `<form id="caption-preferences-form" class="form-block caption-preferences-form">
       <details class="caption-prompt-details">
         <summary><span id="caption-prompt-label">${esc(setting.label)}</span><span class="caption-prompt-preview">${esc(value||emptyCaptionPrompt)}</span></summary>
@@ -401,7 +402,7 @@
   function choosePreferenceModel(purpose){
     const {label,kind,empty}=modelPreferences[purpose];
     const models=ai().models.filter(model=>model.kind===kind&&model.enabled!==false&&(purpose!=='caption'||model.capabilities.includes('image')));
-    const options=[...(empty?[{value:'',label:empty}]:[]),...models.map(model=>({value:model.id,label:model.model,detail:sourceFor(model.sourceId).name}))];
+    const options=[...(empty?[{value:'',label:empty}]:[]),...models.map(model=>({value:model.id,label:model.model,detail:sourceFor(model.sourceId)?.name||''}))];
     const needed=purpose==='caption'?'支持识图的对话模型':kind==='chat'?'对话模型':label;
     singleChoiceSheet(label,options,ai().assign[purpose],async (value,form)=>{
       if(value===undefined)throw new Error('请选择模型');
@@ -415,7 +416,7 @@
     const root=document.querySelector('#model-fallback-choices');
     const paint=()=>{
       const ordered=[...selected.map(id=>models.find(model=>model.id===id)).filter(Boolean),...models.filter(model=>model.enabled!==false&&!selected.includes(model.id))];
-      root.innerHTML=ordered.map(model=>{const index=selected.indexOf(model.id);return `<div class="fallback-choice"><label class="choice-row assignment-option"><span>${index>=0?`${index+1}. `:''}${esc(model.model)}<small>${esc(sourceFor(model.sourceId).name)}</small></span><input type="checkbox" data-fallback-choice="${esc(model.id)}" ${index>=0?'checked':''}></label>${index>=0?`<span class="fallback-order"><button type="button" data-fallback-move="${index}" data-direction="-1" aria-label="上移 ${esc(model.model)}" ${index===0?'disabled':''}>↑</button><button type="button" data-fallback-move="${index}" data-direction="1" aria-label="下移 ${esc(model.model)}" ${index===selected.length-1?'disabled':''}>↓</button></span>`:''}</div>`;}).join('')||'<p class="small-note">请先添加对话模型。</p>';
+      root.innerHTML=ordered.map(model=>{const index=selected.indexOf(model.id);return `<div class="fallback-choice"><label class="choice-row assignment-option"><span>${index>=0?`${index+1}. `:''}${esc(model.model)}<small>${esc(sourceFor(model.sourceId)?.name||'')}</small></span><input type="checkbox" data-fallback-choice="${esc(model.id)}" ${index>=0?'checked':''}></label>${index>=0?`<span class="fallback-order"><button type="button" data-fallback-move="${index}" data-direction="-1" aria-label="上移 ${esc(model.model)}" ${index===0?'disabled':''}>↑</button><button type="button" data-fallback-move="${index}" data-direction="1" aria-label="下移 ${esc(model.model)}" ${index===selected.length-1?'disabled':''}>↓</button></span>`:''}</div>`;}).join('')||'<p class="small-note">请先添加对话模型。</p>';
       root.querySelectorAll('[data-fallback-choice]').forEach(input=>input.onchange=()=>{if(input.checked){if(selected.length===20){input.checked=false;P().toast('最多选择 20 个回退模型');return;}selected.push(input.dataset.fallbackChoice);}else selected=selected.filter(id=>id!==input.dataset.fallbackChoice);paint();});
       root.querySelectorAll('[data-fallback-move]').forEach(control=>control.onclick=()=>{const from=Number(control.dataset.fallbackMove),to=from+Number(control.dataset.direction);[selected[from],selected[to]]=[selected[to],selected[from]];paint();});
     };paint();
@@ -448,8 +449,7 @@
     };
     input.oninput=()=>{
       const changed=input.value!==config.settings.caption.prompt;
-      if(changed)sessionStorage.setItem(captionDraftKey,input.value);
-      else sessionStorage.removeItem(captionDraftKey);
+      try{if(changed)sessionStorage.setItem(captionDraftKey,input.value);else sessionStorage.removeItem(captionDraftKey);}catch{}
       preview.textContent=input.value||emptyCaptionPrompt;
       button.disabled=!changed;
     };
@@ -465,7 +465,7 @@
           const result=await P().api('/api/engine/modules',{id:'caption',values:{prompt}});
           P().setState(result.state);
           config=await E().refreshConfig();
-          sessionStorage.removeItem(captionDraftKey);
+          try{sessionStorage.removeItem(captionDraftKey);}catch{}
           const openCaption=document.querySelector('#caption-preferences-form details[open]');
           if(openCaption)openCaption.open=false;
           P().toast('转述要求已保存');
@@ -477,9 +477,9 @@
     };
   }
   function editRelay(){
-    let expectedKeyRevisions=Object.fromEntries(groups.map(({id})=>[id,sourceFor(id).keyRevision]));
+    let expectedKeyRevisions=Object.fromEntries(groups.map(({id})=>[id,sourceFor(id)?.keyRevision]));
     const fields=groups.map(group=>{
-      const source=sourceFor(group.id);
+      const source=sourceFor(group.id)||{};
       return input(group.label,group.id,'',source.keySet?'已保存，留空保留':'填写该分组 API Key','password');
     }).join('');
     sheet('屁屁自己的站',`<p class="relay-intro">填写要配置的分组密钥。对话模型接入后手动获取，其他已填写的分组自动添加默认模型。</p><div class="form-block">${fields}</div><div class="button-area relay-submit"></div>`,async form=>{
@@ -529,6 +529,6 @@
     }
   }
   function restoreCategory(value,id){if(categories.some(item=>item.id===value))category=value;expanded=id||'';}
-  function reset(){drafts.clear();testing.clear();expanded='';category='chat';sessionStorage.removeItem(captionDraftKey);}
+  function reset(){drafts.clear();testing.clear();expanded='';category='chat';try{sessionStorage.removeItem(captionDraftKey);}catch{}}
   window.PipiModels={ttsModels,ttsModelRow,chooseTtsModel,render,bind,renderPreferences,bindPreferences,singleChoiceSheet,getCategory:()=>category,getExpanded:()=>expanded,captureDrafts,restoreDrafts,restoreCategory,reset};
 })();

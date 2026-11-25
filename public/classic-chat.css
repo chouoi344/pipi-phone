@@ -9,13 +9,13 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] {
   color: #191a1d;
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] > .topbar {
-  height: 48px;
+  height: auto;
   min-height: 48px;
-  padding: 0 10px;
+  padding: 4px 10px;
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr) 76px;
   align-items: center;
-  line-height: 24px;
+  line-height: 1.4;
   border-bottom: .5px solid #d9d9d9;
   box-shadow: none;
   background: #ededed;
@@ -38,7 +38,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .topbar 
   text-overflow: ellipsis;
   border-radius: 999px;
   font-size: 17px;
-  line-height: 24px;
+  line-height: 1.412;
   font-weight: 600;
   letter-spacing: 0;
   color: #191919;
@@ -47,19 +47,19 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .topbar 
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 44px;
+  height: auto;
   min-height: 44px;
   min-width: 44px;
   gap: 5px;
   font-size: 15px;
   font-weight: 500;
-  line-height: 22px;
+  line-height: 1.45;
   padding: 0 8px;
   border: 0;
   border-radius: 999px;
   background: transparent;
   box-shadow: none;
-  color: #191919;
+  color: var(--icon-primary);
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .topbar .back-btn {
   justify-content: flex-start;
@@ -98,7 +98,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-se
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-retry-status {
   max-width: 100%;
   font-size: 11px;
-  line-height: 16px;
+  line-height: 1.45;
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-retry-status > span {
   min-width: 0;
@@ -126,7 +126,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .message
   margin: 6px 0 14px;
   color: #9398a0;
   font-size: 12px;
-  line-height: 18px;
+  line-height: 1.5;
 }
 /* Keep the avatar aligned with the top of single-line and multi-line bubbles. */
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .message-row {
@@ -226,7 +226,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .voice-m
   min-width: 0;
   gap: 8px;
   font-size: 15px;
-  line-height: 22px;
+  line-height: 1.47;
   font-variant-numeric: tabular-nums;
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .voice-mine {
@@ -236,7 +236,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .voice-m
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .voice-body .voice-signal {
   width: 17px;
   height: 20px;
-  color: #191919;
+  color: var(--icon-primary);
 }
 
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .mine .message-failure {
@@ -303,7 +303,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .classic
   border-radius: 10px;
   background: transparent;
   box-shadow: none;
-  color: #191919;
+  color: var(--icon-primary);
   font-size: 14px;
   font-weight: 600;
   transition: transform .14s ease, color .16s ease;
@@ -314,7 +314,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .classic
   margin: 0;
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .classic-chat-send {
-  color: #6b737e;
+  color: var(--icon-secondary);
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .classic-chat-send::before {
   content: '';
@@ -326,10 +326,10 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .classic
   transition: background-color .16s ease, box-shadow .16s ease;
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .classic-chat-send.has-draft {
-  color: #fff;
+  color: var(--icon-inverse);
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .classic-chat-send.has-draft::before {
-  background: #07c160;
+  background: var(--green);
   box-shadow: 0 2px 6px rgba(7, 193, 96, .22);
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .classic-chat-send .icon {
@@ -341,7 +341,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .classic
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose-row .compose-trailing {
   margin: 0;
-  height: 44px;
+  height: auto;
   min-height: 44px;
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose-row .compose-trailing[hidden],
@@ -368,7 +368,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose
   display: block;
   width: 100%;
   min-width: 0;
-  min-height: 40px;
+  min-height: max(40px, calc(1.375em + 18px));
   max-height: 112px;
   padding: 9px 2px 9px 11px;
   border: 0;
@@ -377,7 +377,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose
   color: #191919;
   font-size: 16px;
   --editable-font-size: 16px;
-  line-height: 22px;
+  line-height: 1.375;
   font-weight: 400;
   letter-spacing: normal;
   outline: none;
@@ -410,7 +410,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose
   padding: 0;
   border: 0;
   border-radius: 50%;
-  color: #5b626c;
+  color: var(--icon-primary);
   background: transparent;
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose-row .classic-inline-more > .icon {
@@ -437,12 +437,12 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .classic
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose-panel .compose-dictation {
   position: static;
-  color: #4c4c4c;
+  color: var(--icon-secondary);
   border-radius: 0;
   background: transparent;
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose-panel .compose-dictation .icon { width: 30px; height: 32px; }
-body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose-panel .compose-dictation.recording .panel-icon { color: #07a54c; }
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose-panel .compose-dictation.recording .panel-icon { color: var(--icon-active); }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .panel-dots { height: 44px; gap: 0; padding: 0; align-items: center; }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .panel-dots button {
   display: grid; place-items: center; width: 44px; height: 44px; border-radius: 0; background: transparent;
@@ -455,14 +455,14 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .dictati
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .dictation-status > span { flex: 1; min-width: 0; }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .dictation-actions { display: flex; flex: none; gap: 4px; }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .dictation-actions button { min-width: 44px; min-height: 44px; padding: 0 6px; color: #555b66; }
-body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .dictation-actions [data-action="finish-dictation"] { color: #07883f; font-weight: 500; }
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .dictation-actions [data-action="finish-dictation"] { color: var(--green-dark); font-weight: 500; }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .dictation-actions button:disabled { color: #999; }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose-field:focus-within {
   border-color: #c9cfd6;
   box-shadow: none;
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] :is(.classic-chat-send, .classic-inline-more):focus-visible {
-  outline: 2px solid #07c160;
+  outline: 2px solid var(--green);
   outline-offset: 2px;
 }
 
@@ -502,7 +502,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .emoji-s
   color: #6b7280;
   font-size: 12px;
   font-weight: 500;
-  line-height: 18px;
+  line-height: 1.5;
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .emoji-grid {
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -522,7 +522,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .emoji-a
   background: linear-gradient(90deg, transparent, #ececec 22%);
 }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .emoji-floating { right: 12px; bottom: calc(6px + var(--safe-bottom, 0px)); gap: 8px; }
-body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .emoji-floating button { width: 50px; height: 44px; border-radius: 8px; font-size: 14px; font-weight: 500; }
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .emoji-floating button { min-width: 50px; width: auto; height: auto; min-height: 44px; padding: 0 10px; border-radius: 8px; font-size: 14px; font-weight: 500; }
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .emoji-floating [data-action="emoji-delete"] .icon { width: 21px; height: 21px; transform: none; }
 
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] :is(.classic-chat-send, .classic-compose-row > .icon-btn):active:not(:disabled) { transform: scale(.95); }

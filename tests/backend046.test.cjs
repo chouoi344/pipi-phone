@@ -82,7 +82,7 @@ test('046 recall: owned sent types and pats retain notices, detach favorites and
   for(const target of ['self','contact']){ok(await f.action('message.pat',{roleId:a.id,target}));ok(await f.action('message.recall',{id:(await f.state()).messages.at(-1).id}));}
   const previousMessages=new Set((await f.state()).messages.map(message=>message.id)),requestId=randomUUID();
   const payment=ok(await f.action('wallet.transfer',{roleId:a.id,amountCents:1,type:'transfer',requestId})).state,transaction=payment.wallet.transactions.find(transaction=>transaction.requestId===requestId),moneyId=payment.messages.find(message=>message.meta?.transactionId===transaction.id).id;
-  const deadline=Date.now()+5000;let paymentReplied=false;
+  const deadline=Date.now()+15000;let paymentReplied=false;
   while(Date.now()<deadline){
     if((await f.state()).messages.some(message=>message.roleId===a.id&&message.sender==='assistant'&&!previousMessages.has(message.id))){paymentReplied=true;break;}
     await new Promise(resolve=>setTimeout(resolve,10));

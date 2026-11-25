@@ -6,7 +6,7 @@
 :is(#view,.navigation-snapshot)[data-route=contacts] .contacts [data-action=new-friends]>.contact-tool{background-color:#eda150!important;position:relative}
 :is(#view,.navigation-snapshot)[data-route=contacts] .contacts [data-action=new-friends]>.contact-tool>.mask-icon{-webkit-mask-image:url('/vendor/fake-world/masks/people-filled.svg');mask-image:url('/vendor/fake-world/masks/people-filled.svg');transform:translateX(-3px)}
 :is(#view,.navigation-snapshot)[data-route=contacts] .contacts [data-action=new-friends]>.contact-tool:after{content:'';position:absolute;right:6px;bottom:10px;width:11px;height:11px;border-radius:50%;box-shadow:0 0 0 1.5px #eda150;background:linear-gradient(#eda150,#eda150) center/1.5px 7px no-repeat,linear-gradient(#eda150,#eda150) center/7px 1.5px no-repeat,#fff}
-:is(#view,.navigation-snapshot)[data-route=contacts] .contacts [data-action=coming-group]>.contact-tool{background-color:#57be6a!important}
+:is(#view,.navigation-snapshot)[data-route=contacts] .contacts [data-action=coming-group]>.contact-tool{background-color:var(--green)!important}
 :is(#view,.navigation-snapshot)[data-route=contacts] .contacts [data-action=coming-group]>.contact-tool>.mask-icon{-webkit-mask-image:url('/icons/contacts/group-filled.svg');mask-image:url('/icons/contacts/group-filled.svg')}
 :is(#view,.navigation-snapshot)[data-route=contacts] .contacts [data-action=contact-tags]>.contact-tool{background-color:#3d83e6!important}
 :is(#view,.navigation-snapshot)[data-route=contacts] .contacts [data-action=contact-tags]>.contact-tool>.mask-icon{-webkit-mask-image:url('/icons/contacts/tag-filled.svg');mask-image:url('/icons/contacts/tag-filled.svg')}
@@ -14,5 +14,5 @@
 :is(#view,.navigation-snapshot)[data-route=contacts] .contacts [data-action=coming-official]>.contact-tool>.mask-icon{-webkit-mask-image:url('/icons/contacts/public-account.svg');mask-image:url('/icons/contacts/public-account.svg');-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center}
 :is(#view,.navigation-snapshot)[data-route=contacts] .contacts [data-action=coming-service-account]>.contact-tool{background-color:#4fabf8!important}
 :is(#view,.navigation-snapshot)[data-route=contacts] .contacts [data-action=coming-service-account]>.contact-tool>.mask-icon{-webkit-mask-image:url('/icons/contacts/service-account.svg');mask-image:url('/icons/contacts/service-account.svg');-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center}
-:is(#view,.navigation-snapshot)[data-route=contacts]>.bottom-tabs .tab.active[data-nav=contacts]{color:#57be6a}
-:is(#view,.navigation-snapshot)[data-route=contacts]>.bottom-tabs .tab.active[data-nav=contacts] .tab-label{color:#087b41}
+:is(#view,.navigation-snapshot)[data-route=contacts]>.bottom-tabs .tab.active[data-nav=contacts]{color:var(--icon-active)}
+:is(#view,.navigation-snapshot)[data-route=contacts]>.bottom-tabs .tab.active[data-nav=contacts] .tab-label{color:var(--icon-active)}

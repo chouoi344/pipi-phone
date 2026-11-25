@@ -1,21 +1,24 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
-.life-crop-dialog{box-sizing:border-box;width:calc(100% - 32px);max-width:380px;max-height:calc(100dvh - 32px);margin:auto;padding:0;border:0;border-radius:12px;background:#fff;color:#191919;box-shadow:0 12px 48px #0003;overflow:auto;overscroll-behavior:contain;pointer-events:auto}
-.life-crop-dialog::backdrop{background:#0006}
-.life-crop-header{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:52px;border-bottom:1px solid #eee;padding:0 12px}
-.life-crop-header h3{margin:0;font-size:16px;font-weight:500}
-.life-crop-header button{min-height:40px;padding:6px 4px;border:0;background:transparent;font:inherit;font-size:14px;color:#666;cursor:pointer}
-.life-crop-header [data-crop-confirm]{color:#07a855}
-.life-crop{margin:16px;color:#191919}
-.life-crop-frame{position:relative;max-width:min(100%,40dvh);margin:auto;background:#ededed}
-.life-crop-frame canvas{display:block;width:100%;height:auto;touch-action:none;cursor:grab}
-.life-crop-frame canvas:active{cursor:grabbing}
-.life-crop-frame canvas:focus-visible{outline:2px solid #07a855;outline-offset:3px}
-.life-crop-cover{max-width:min(100%,46dvh)}
-/* The compact profile card shows the middle 2.4:1 band of the 6:5 cover. */
-.life-crop-card-guide::after{content:"";position:absolute;inset:25% 0;border-block:1px dashed #fff;box-shadow:0 -1px #0005,0 1px #0005;pointer-events:none}
-.life-crop p{color:#737373;font-size:12px;line-height:1.6;margin:12px 0}
-.life-crop-zoom{display:flex;align-items:center;gap:14px;padding:10px 0;font-size:15px}
-.life-crop-zoom input{flex:1;min-width:0;width:auto;accent-color:#07b75b;cursor:pointer}
-.life-crop-zoom output{min-width:3.1em;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:#555}
-.life-crop-animation{margin-top:16px;font-size:13px;color:#737373}
-.life-crop-animation button{color:#576b95;background:none;border:0;padding:8px 0 8px 6px;font:inherit}
+.life-crop-dialog{box-sizing:border-box;position:fixed;top:0;right:0;bottom:0;left:0;width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;margin:0;padding:0;border:0;border-radius:0;background:#000;color:#fff;overflow:hidden;overscroll-behavior:contain;pointer-events:auto}
+.life-crop-dialog::backdrop{background:#000}
+.life-crop-shell{display:flex;flex-direction:column;width:100%;height:100%;max-width:540px;margin:0 auto;background:#000}
+.life-crop-header{display:flex;align-items:center;justify-content:center;position:relative;min-height:48px;padding:calc(8px + env(safe-area-inset-top,0px)) 16px 8px;background:rgba(0,0,0,.72);z-index:2}
+.life-crop-header h3{margin:0;font-size:16px;font-weight:500;color:#fff;letter-spacing:.01em}
+.life-crop-keep-anim{position:absolute;right:12px;bottom:8px;min-height:32px;padding:4px 10px;border:1px solid rgba(255,255,255,.36);border-radius:999px;background:rgba(255,255,255,.12);color:#fff;font:inherit;font-size:12px;cursor:pointer}
+.life-crop-keep-anim:active{background:rgba(255,255,255,.24)}
+.life-crop-stage{position:relative;flex:1 1 auto;min-height:220px;width:100%;overflow:hidden;background:#000}
+.life-crop-stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+.life-crop-stage canvas:active{cursor:grabbing}
+.life-crop-stage canvas:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
+.life-crop-footer{flex:0 0 auto;padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));background:rgba(16,16,16,.92);border-top:1px solid rgba(255,255,255,.1);z-index:2}
+.life-crop-hint{margin:0 0 8px;text-align:center;color:rgba(255,255,255,.68);font-size:12px;line-height:1.45}
+.life-crop-zoom{display:flex;align-items:center;gap:12px;padding:4px 4px 10px;font-size:13px;color:rgba(255,255,255,.82)}
+.life-crop-zoom input{flex:1;min-width:0;width:auto;accent-color:var(--green);cursor:pointer}
+.life-crop-zoom output{min-width:3.2em;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:rgba(255,255,255,.78)}
+.life-crop-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:4px}
+.life-crop-btn{min-width:64px;min-height:38px;padding:6px 14px;border:0;border-radius:8px;background:transparent;font:inherit;font-size:15px;font-weight:500;color:#fff;cursor:pointer}
+.life-crop-btn:active{opacity:.72}
+.life-crop-reset{color:rgba(255,255,255,.76);font-size:14px}
+.life-crop-reset:disabled{opacity:.35;cursor:default}
+.life-crop-confirm{background:var(--green);color:#fff;padding:6px 18px}
+.life-crop-confirm:disabled,.life-crop-btn:disabled{opacity:.45;cursor:default}

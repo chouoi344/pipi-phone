@@ -18,6 +18,7 @@ public final class BundleCompatibilityTest {
         check(BundleCompatibility.accepts(local, BundleCompatibility.SERVER_0_13_12), "The previous release can use the corrected local layout");
         check(BundleCompatibility.accepts(local, BundleCompatibility.SERVER_0_13_13), "Official 0.13.13 and 0.13.14 use the corrected local recording page");
         check(BundleCompatibility.accepts(local, BundleCompatibility.PRE_CHAT_PHOTO_FIX), "Servers with the 0.1.9 page can use the corrected photo previews");
+        check(BundleCompatibility.accepts(local, BundleCompatibility.SERVER_0_13_15), "Official 0.13.15 servers can use the polished dual-skin local bundle");
         check(BundleCompatibility.accepts(local, local), "An exact current server bundle still works");
         check(BundleCompatibility.accepts(remote, remote), "Other exact matching bundles still work");
         check(!BundleCompatibility.accepts("0".repeat(64), remote), "A future local edit invalidates the old mapping");

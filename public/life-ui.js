@@ -15,7 +15,7 @@
   ];
   function session(id){
     if(!sessions.has(id)){
-      const saved=JSON.parse(sessionStorage.getItem(layoutKey(id))||'{}');
+      const saved=(()=>{try{return JSON.parse(sessionStorage.getItem(layoutKey(id))||'{}')||{};}catch{return {};}})();
       sessions.set(id,{category:saved.category||'basic',data:null,loading:null,loadError:'',error:'',notice:'',scroll:saved.scroll||0,open:new Set(saved.open),draft:{},voices:null,saving:false,readingImages:new Set(),album:null,albumRequest:null,albumError:'',albumBrowse:saved.album||{month:'',page:1},momentFeed:null,momentRequest:null,momentError:'',momentBrowse:saved.moments||{month:'',page:1},wardrobeBrowse:saved.wardrobe||{category:'全部',season:'',page:1}});
     }
     return sessions.get(id);
@@ -625,6 +625,7 @@
         }
         catch(error){P().toast(error.message);}
         finally{
+          input.value='';
           ui.readingImages.delete(key);
           if(document.querySelector('[data-life-root]')?.dataset.lifeRoot===id){capture(id);P().refresh();}
         }
@@ -675,7 +676,7 @@
     if(!id||history.state?.route?.name!=='role-config')return;
     const {category,scroll,open,albumBrowse,momentBrowse,wardrobeBrowse}=session(id);
     const wardrobe={category:wardrobeBrowse.category,season:wardrobeBrowse.season,page:wardrobeBrowse.page};
-    sessionStorage.setItem(layoutKey(id),JSON.stringify({category,scroll,open:[...open],moments:momentBrowse,album:albumBrowse,wardrobe}));
+    try{sessionStorage.setItem(layoutKey(id),JSON.stringify({category,scroll,open:[...open],moments:momentBrowse,album:albumBrowse,wardrobe}));}catch{}
   });
   window.PipiLife={render,bind};
 })();

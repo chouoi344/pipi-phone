@@ -9,7 +9,7 @@
     const src = value(ui, role, key);
     const safe = /^\/api\/media\/[a-f\d]{32,64}\.(png|jpg|jpeg|webp|gif)$/i.test(src) || /^data:image\/(png|jpeg|webp|gif);base64,/i.test(src);
     const fallback = key === 'avatar' ? '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="17" r="9"/><path d="M8 43c0-11 7-17 16-17s16 6 16 17"/></svg>' : '';
-    return `<div class="lb-image lb-image-${key}"><span class="lb-image-picture">${safe ? `<img src="${esc(src)}" alt="${label}预览">` : fallback}</span><button type="button" class="lb-image-action" data-pick-image="${key}">${safe?'更换':'选择'}${label==='头像'?'头像':'背景图'}</button><input type="file" data-basic-image="${key}" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/avif,.bmp,.avif" hidden></div>`;
+    return `<div class="lb-image lb-image-${key}"><span class="lb-image-picture">${safe ? `<img src="${esc(src)}" alt="${label}预览">` : fallback}</span><button type="button" class="lb-image-action" data-pick-image="${key}">${safe?'更换':'选择'}${label==='头像'?'头像':'背景图'}</button><input type="file" data-basic-image="${key}" accept="image/*" hidden></div>`;
   }
 
   function field(ui, role, [key, label, placeholder], outreachState) {

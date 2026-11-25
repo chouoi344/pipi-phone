@@ -92,7 +92,8 @@
   function sheet(title,html){
     P().openModal(title,html,null);
     const dialog=$('#overlay > .page-editor');dialog.classList.add('usage-sheet');
-    dialog.querySelector('.modal-close').remove();
+    const close=dialog.querySelector('.modal-close');
+    if(close){close.textContent='×';close.setAttribute('aria-label','关闭');}
   }
   function info(){sheet('统计说明',`<div class="usage-info"><p>Token 是模型处理输入、生成回复时使用的计量单位，这里的用量不代表账单金额。</p><p>总用量从已有记录累计，之后持续累加。旧版已经清理的历史记录无法补回。</p><p>今天、7天、15天和一个月分别统计对应范围；一个月按近30天计算。趋势固定显示最近7天，按设置中的时区划分。</p><p>服务商未返回用量时沿用程序的估算，并单独标注。详细调用记录保留90天；较早的日志清理不会减少累计总用量。</p></div>`);}
   function showRecord(index){

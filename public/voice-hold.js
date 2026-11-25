@@ -37,6 +37,11 @@
     button.classList.add('vg-hold');
     button.setAttribute('aria-pressed', 'false');
 
+    function reportError(error) {
+      if (!onError) return;
+      onError(error instanceof Error ? error : new Error(String(error?.message || error || '录音失败，请重试')));
+    }
+
     function select(session, mode) {
       if (session.mode === mode) return;
       session.mode = mode;
@@ -46,7 +51,8 @@
 
     function modeAt(session, x, y) {
       const bounds = host.getBoundingClientRect();
-      if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) return 'cancel';
+      // Rolling slightly below the bottom send button should remain 'voice' like native WeChat.
+      if (x < bounds.left || x > bounds.right || y < bounds.top) return 'cancel';
       const actions = session.targets.getBoundingClientRect();
       if (y > actions.bottom + 12 || session.startY - y < 24) return 'voice';
       const fraction = (x - bounds.left) / bounds.width;
@@ -63,8 +69,12 @@
       session.surface.remove();
       session.events.abort();
       button.setAttribute('aria-pressed', 'false');
-      if (session.id !== 'keyboard' && button.hasPointerCapture(session.id)) {
-        button.releasePointerCapture(session.id);
+      if (session.id !== 'keyboard') {
+        try {
+          if (button.hasPointerCapture && button.hasPointerCapture(session.id)) {
+            button.releasePointerCapture(session.id);
+          }
+        } catch {}
       }
     }
 
@@ -83,18 +93,46 @@
         targets: surface.querySelector('.vg-targets'), hint: surface.querySelector('.vg-release-hint'),
       };
       active = session;
-      window.addEventListener('blur', cancel, {signal:session.events.signal});
+      const sig = session.events.signal;
+      // Only cancel on blur once recording has actually started; during permission prompt iOS Safari fires blur!
+      window.addEventListener('blur', () => { if (active === session && session.recorder) cancel(); }, {signal: sig});
+      document.addEventListener('visibilitychange', () => { if (document.hidden && active === session) cancel(); }, {signal: sig});
       document.addEventListener('keydown', event => {
         if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); cancel(); }
-      }, {capture:true,signal:session.events.signal});
+      }, {capture: true, signal: sig});
+      // Track drag & release on window so transient lostpointercapture / overlay mount never aborts recording.
+      if (id !== 'keyboard') {
+        window.addEventListener('pointermove', event => {
+          if (active === session && event.pointerId === session.id) {
+            select(session, modeAt(session, event.clientX, event.clientY));
+          }
+        }, {signal: sig});
+        window.addEventListener('pointerup', event => {
+          if (active === session && event.pointerId === session.id) {
+            select(session, modeAt(session, event.clientX, event.clientY));
+            finish();
+          }
+        }, {signal: sig});
+        window.addEventListener('pointercancel', event => {
+          if (active === session && event.pointerId === session.id) cancel();
+        }, {signal: sig});
+        window.addEventListener('touchmove', event => {
+          if (active === session && event.cancelable) event.preventDefault();
+        }, {passive: false, signal: sig});
+      }
       button.setAttribute('aria-pressed', 'true');
       try {
-        if (id !== 'keyboard') button.setPointerCapture(id);
+        if (id !== 'keyboard') {
+          try { button.setPointerCapture(id); } catch {}
+        }
         session.permissionHint = setTimeout(() => {
-          if (session.mode === 'voice') session.hint.textContent = '正在开启麦克风…';
+          if (active === session && session.mode === 'voice') session.hint.textContent = '正在开启麦克风…';
         }, 400);
-        const recorder = await begin({signal:session.abort.signal, dismiss:()=>dismiss(session),
-          capped:()=>{session.hint.textContent='已录满 60 秒，松手选择发送';}});
+        const recorder = await begin({
+          signal: session.abort.signal,
+          dismiss: () => dismiss(session),
+          capped: () => { if (active === session) session.hint.textContent = '已录满 60 秒，松手选择发送'; }
+        });
         if (active !== session) return;
         if (!recorder) { cancel(); return; }
         clearTimeout(session.permissionHint);
@@ -104,6 +142,7 @@
           const wave = surface.querySelector('.vg-wave');
           wave.classList.add('vg-wave-live');
           const animate = () => {
+            if (active !== session) return;
             wave.style.setProperty('--vg-volume', String(0.15 + 0.85 * Math.min(1, Math.max(0, recorder.level()))));
             session.frame = requestAnimationFrame(animate);
           };
@@ -112,7 +151,7 @@
       } catch (error) {
         if (active === session) {
           cancel();
-          onError(error);
+          reportError(error);
         }
       }
     }
@@ -120,8 +159,13 @@
     async function finish() {
       const session = active;
       if (!session) return;
-      if (session.mode === 'cancel' || !session.recorder) {
+      if (session.mode === 'cancel') {
         cancel();
+        return;
+      }
+      if (!session.recorder) {
+        cancel();
+        reportError(new Error('麦克风正在启动，请按住稍久一点再试'));
         return;
       }
       dismiss(session);
@@ -129,7 +173,7 @@
       try {
         await session.recorder.stop(session.mode);
       } catch (error) {
-        onError(error);
+        reportError(error);
       } finally {
         finishing = false;
       }
@@ -140,24 +184,13 @@
       event.preventDefault();
       start(event.pointerId, event.clientY);
     });
-    button.addEventListener('pointermove', event => {
-      if (active?.id === event.pointerId) select(active, modeAt(active, event.clientX, event.clientY));
-    });
-    button.addEventListener('pointerup', event => {
-      if (active?.id !== event.pointerId) return;
-      select(active, modeAt(active, event.clientX, event.clientY));
-      finish();
-    });
-    for (const type of ['pointercancel', 'lostpointercapture']) {
-      button.addEventListener(type, event => { if (active?.id === event.pointerId) cancel(); });
-    }
     button.addEventListener('contextmenu', event => event.preventDefault());
     button.addEventListener('keydown', event => {
       if (event.key === ' ' || event.key === 'Enter') {
         event.preventDefault();
         if (!event.repeat) start('keyboard', 0);
       } else if (active?.id === 'keyboard') {
-        const mode = {ArrowLeft:'cancel', ArrowRight:'text', ArrowDown:'voice'}[event.key];
+        const mode = {ArrowLeft: 'cancel', ArrowRight: 'text', ArrowDown: 'voice'}[event.key];
         if (mode) { event.preventDefault(); select(active, mode); }
       }
     });

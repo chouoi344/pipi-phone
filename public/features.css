@@ -65,7 +65,7 @@
 .moment-actions>summary{display:grid;place-items:center;list-style:none;width:30px;height:21px;border-radius:3px;background:#f7f7f7;color:#576b95;cursor:pointer}
 .moment-actions>summary::-webkit-details-marker{display:none}
 .moment-actions>summary .fw-feature-icon{width:20px;height:20px}
-.moment-action-menu{position:absolute;right:39px;top:-9px;z-index:4;display:flex;width:181px;max-width:calc(100vw - 110px);height:39px;background:#4c5154;border-radius:4px;overflow:hidden;animation:moment-menu-in .12s ease-out}
+.moment-action-menu{position:absolute;right:39px;top:-9px;z-index:4;display:flex;width:181px;max-width:calc(100vw - 110px);height:auto;min-height:39px;background:#4c5154;border-radius:4px;overflow:hidden;animation:moment-menu-in .12s ease-out}
 .moment-action-menu>button{display:flex;align-items:center;justify-content:center;gap:7px;flex:1;min-width:0;padding:8px;background:transparent;border:0;color:#fff;font-size:14px;line-height:20px;white-space:nowrap}
 .moment-action-menu>button:active{background:#404548}
 .moment-action-menu>button+button:before{content:'';position:absolute;left:50%;height:22px;width:1px;background:#41474a}
@@ -92,11 +92,11 @@
 .moment-remove-photo{padding:7px 0;color:#576b95;font:inherit;font-size:13px;border:0;background:none}
 .moment-compose-cells{border-top:1px solid #ededed}
 .moment-compose-cell{display:flex;align-items:baseline;gap:12px;width:100%;min-height:55px;padding:12px 0;color:#191919;font:inherit;background:none;border:0;border-bottom:1px solid #ededed;text-align:left;position:relative}
-.moment-compose-cell>svg,.moment-compose-cell>.fw-feature-icon,.moment-compose-cell>.icon{width:20px;height:20px;flex-shrink:0;align-self:center;color:#333}
+.moment-compose-cell>svg,.moment-compose-cell>.fw-feature-icon,.moment-compose-cell>.icon{width:20px;height:20px;flex-shrink:0;align-self:center;color:var(--icon-secondary)}
 .moment-compose-cell>span:not(.fw-feature-icon):not(.icon):not(.moment-mention-mark){flex:1;min-width:0}
 .moment-mention-mark{font-size:23px;width:20px;line-height:20px;text-align:center;flex-shrink:0;align-self:center}
 .moment-compose-cell>small{font-size:14px;color:#999;max-width:43%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.moment-compose-cell>svg:last-child,.moment-compose-cell>.icon:last-child{width:14px;height:14px;color:#b2b2b2;margin-left:auto}
+.moment-compose-cell>svg:last-child,.moment-compose-cell>.icon:last-child{width:14px;height:14px;color:var(--icon-muted);margin-left:auto}
 .moment-selection-page{animation:moment-selection-in .22s ease-out}
 #overlay .moment-selection-page .modal-body{padding:0;background:#ededed}
 .moment-selection{display:flow-root;min-height:100%;font-size:16px;color:#191919;padding-bottom:max(24px,var(--safe-bottom,env(safe-area-inset-bottom)))}
@@ -109,12 +109,12 @@
 .moment-privacy-option>span:nth-child(2){flex:1;min-width:0}
 .moment-privacy-option strong{display:block;font-size:17px;font-weight:400;line-height:24px}
 .moment-privacy-option small{display:block;font-size:13px;color:#999;line-height:20px;margin-top:3px}
-.moment-privacy-check{color:#07c160;font-size:23px;visibility:hidden}
+.moment-privacy-check{color:var(--green);font-size:23px;visibility:hidden}
 .moment-privacy-option[aria-checked=true] .moment-privacy-check{visibility:visible}
 .moment-privacy-people{margin-top:8px;background:#fff;padding-left:59px}
 .moment-privacy-people>button,.moment-picker-tag-entry{display:flex;align-items:center;gap:12px;width:100%;min-height:54px;padding:12px 20px 12px 0;background:#fff;border:0;border-bottom:.5px solid #eee;color:#576b95;text-align:left}
 .moment-privacy-people>button>span:not(.icon),.moment-picker-tag-entry>span:not(.icon){flex:1;min-width:0;overflow-wrap:anywhere}
-.moment-privacy-people>button>.icon,.moment-privacy-people>button>svg,.moment-picker-tag-entry>.icon,.moment-picker-tag-entry>svg{flex:0 0 14px;width:14px;height:14px;margin-left:auto;color:#b2b2b2}
+.moment-privacy-people>button>.icon,.moment-privacy-people>button>svg,.moment-picker-tag-entry>.icon,.moment-picker-tag-entry>svg{flex:0 0 14px;width:14px;height:14px;margin-left:auto;color:var(--icon-muted)}
 .moment-privacy-people>button>.icon.mask-icon.chevron,.moment-picker-tag-entry>.icon.mask-icon.chevron{flex-basis:24px;width:24px;height:24px}
 .moment-privacy-people>p{font-size:13px;color:#999;line-height:1.54;padding:12px 20px 16px 0;margin:0;overflow-wrap:anywhere}
 .moment-picker-search{display:flex;align-items:center;gap:7px;background:#fff;border-radius:5px;margin:8px;padding:7px 10px;color:#b2b2b2}
@@ -127,7 +127,7 @@
 .moment-picker-row strong{font-size:16px;font-weight:400;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .moment-picker-row small{font-size:13px;color:#999;display:block;margin-top:3px}
 .moment-picker-row input{appearance:none;-webkit-appearance:none;display:block;flex:0 0 22px;width:22px;height:22px;margin:0;border:1px solid #c8c8c8;border-radius:50%;background:#fff;position:relative}
-.moment-picker-row input:checked,.moment-picker-row input:indeterminate{border-color:#07c160;background:#07c160}
+.moment-picker-row input:checked,.moment-picker-row input:indeterminate{border-color:var(--green);background:var(--green)}
 .moment-picker-row input:checked:after{content:'';display:block;width:6px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);position:absolute;top:3px;left:7px}
 .moment-picker-row input:indeterminate:after{content:'';position:absolute;height:2px;width:10px;left:5px;top:9px;background:#fff}
 .moment-picker-row input:focus-visible{outline:2px solid #07a84f;outline-offset:3px}
@@ -141,11 +141,11 @@
 .moment-management .feature-field{background:#fff;padding:0 16px;border:0;margin-bottom:8px}
 .moment-management-cell{display:flex;align-items:center;width:100%;background:#fff;border:0;padding:17px 16px;font-size:16px;text-align:left;border-bottom:1px solid #eee}
 .moment-management-cell>span:not(.icon){min-width:0;flex:1}
-.moment-management-cell>svg{width:14px;height:14px;color:#b2b2b2}
+.moment-management-cell>svg{width:14px;height:14px;color:var(--icon-muted)}
 .moment-comment-bar{position:fixed;z-index:80;display:flex;align-items:flex-end;gap:10px;padding:10px 12px max(10px,var(--safe-bottom,env(safe-area-inset-bottom)));margin:0;background:#f7f7f7;border-top:1px solid #d9d9d9;box-sizing:border-box}
 .moment-comment-bar.keyboard-open{padding-bottom:10px}
 .moment-comment-bar>textarea{display:block;flex:1;min-width:0;resize:none;min-height:38px;max-height:100px;padding:8px 10px;border:0;outline:none;border-radius:5px;background:#fff;font:inherit;font-size:16px;line-height:22px;color:#191919}
-.moment-comment-bar>button{border:0;background:#07c160;color:#fff;font:inherit;font-weight:500;font-size:15px;min-height:36px;min-width:56px;padding:6px 10px;border-radius:4px;margin-bottom:1px}
+.moment-comment-bar>button{border:0;background:var(--green);color:#fff;font:inherit;font-weight:500;font-size:15px;min-height:36px;min-width:56px;padding:6px 10px;border-radius:4px;margin-bottom:1px}
 .moment-comment-bar>button:disabled{color:#b2b2b2;background:#e8e8e8}
 @keyframes moment-menu-in{from{clip-path:inset(0 0 0 100%)}to{clip-path:inset(0)}}
 @media(prefers-reduced-motion:reduce){.moment-action-menu{animation:none}}
@@ -170,7 +170,7 @@
 .ledger-day{font-size:12px;color:#999;padding:12px 17px 8px;background:#f7f7f7}
 .ledger-entry{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:0;padding:16px 17px;position:relative}
 .ledger-entry:after{content:'';height:1px;background:#eee;position:absolute;left:65px;right:0;bottom:0;transform:scaleY(.5)}
-.ledger-category-icon{width:36px;height:36px;border-radius:3px;background:#07c160;color:#fff;display:grid;place-items:center;flex-shrink:0}
+.ledger-category-icon{width:36px;height:36px;border-radius:3px;background:var(--green);color:#fff;display:grid;place-items:center;flex-shrink:0}
 .ledger-category-icon svg{width:21px;height:21px}
 .ledger-entry-text{flex:1;min-width:0}
 .ledger-entry-text>strong{font-size:15px;font-weight:400;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -184,7 +184,7 @@
 .receipt-draft-title{font-size:14px;color:#666;display:flex;align-items:center;gap:8px}
 .receipt-draft>fieldset{min-width:0;margin:0;padding:0;border:0}
 .receipt-draft>fieldset:disabled{opacity:.45}
-.receipt-draft input[type=checkbox]{accent-color:#07c160}
+.receipt-draft input[type=checkbox]{accent-color:var(--green)}
 .receipt-saved{color:#07a84f;font-size:12px;padding:8px 0}
 #receipt-status{font-size:12px;line-height:1.6;color:#999}
 
@@ -198,8 +198,8 @@
 .wallet-balance>span{font-size:30px;margin-right:5px}
 .wallet-balance-caption{font-size:12px;color:#999;margin-top:10px!important}
 .wallet-actions{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:58px}
-.wallet-actions>button{width:184px;max-width:100%;padding:11px 14px;background:#07c160;color:#fff;border:0;border-radius:4px;font-size:16px;font-weight:500}
-.wallet-actions>button+button{background:#f2f2f2;color:#07a84f}
+.wallet-actions>button{width:184px;max-width:100%;padding:11px 14px;background:var(--green);color:#fff;border:0;border-radius:4px;font-size:16px;font-weight:500}
+.wallet-actions>button+button{background:#f2f2f2;color:var(--green-dark)}
 .wallet-page .feature-section-label{background:#f7f7f7;border-top:1px solid #ededed;font-size:13px}
 .wallet-transactions{background:#fff}
 .wallet-transaction{display:flex;align-items:center;gap:11px;padding:15px 17px;border-bottom:1px solid #eee}
@@ -227,14 +227,14 @@
 .wallet-pay-amount>span{font-size:15px;color:#191919}
 .wallet-pay-amount>div{display:flex;align-items:center;gap:8px;padding:16px 0 18px;min-width:0}
 .wallet-pay-amount b{font-size:32px;font-weight:500;line-height:1.2}
-.wallet-pay-amount input{font-size:45px;--editable-font-size:45px;font-weight:500;line-height:1.2;border:0;background:none;padding:0;width:100%;min-width:0;color:#191919;caret-color:#07c160;font-variant-numeric:tabular-nums}
+.wallet-pay-amount input{font-size:45px;--editable-font-size:45px;font-weight:500;line-height:1.2;border:0;background:none;padding:0;width:100%;min-width:0;color:#191919;caret-color:var(--green);font-variant-numeric:tabular-nums}
 .wallet-pay-amount input::placeholder{color:#c8c8c8;font-weight:400}
 .wallet-pay-note{display:flex;align-items:center;gap:14px;min-height:54px;border-top:1px solid #eee}
 .wallet-pay-note>span{font-size:14px;white-space:nowrap;color:#555}
 .wallet-pay-note input{font-size:14px;background:none;padding:14px 0;border:0;min-width:0;flex:1;color:#191919}
 .wallet-pay-note input::placeholder{color:#b2b2b2}
 .wallet-pay-balance{margin:13px 2px 0;font-size:12px;color:#999;line-height:1.6}
-.wallet-pay-confirm{display:block;width:184px;max-width:100%;min-height:46px;margin:36px auto 0;background:#07c160;color:#fff;border-radius:5px;font-size:17px;font-weight:500}
+.wallet-pay-confirm{display:block;width:184px;max-width:100%;min-height:46px;margin:36px auto 0;background:var(--green);color:#fff;border-radius:5px;font-size:17px;font-weight:500}
 .wallet-pay-disclosure{margin:16px 0 0;text-align:center;font-size:12px;color:#999}
 .wallet-pay-page.is-redpacket .wallet-pay-confirm{background:#e86d4b}
 .wallet-pay-page.is-redpacket .wallet-pay-amount input{caret-color:#e86d4b}
@@ -242,7 +242,7 @@
 .wallet-recipient{display:flex;align-items:center;gap:12px;padding:12px 20px;width:100%;min-width:0;background:#fff;text-align:left;border:0}
 .wallet-recipient>.avatar{flex-shrink:0}
 .wallet-recipient>span:not(.avatar):not(.icon){flex:1;min-width:0;overflow-wrap:anywhere}
-.wallet-recipient>.icon:last-child{color:#b2b2b2;width:14px;height:14px}
+.wallet-recipient>.icon:last-child{color:var(--icon-muted);width:14px;height:14px}
 .wallet-recipient+.wallet-recipient{border-top:.5px solid #eee}
 
 /* Wallet hierarchy and native sending pages. The balance and wallet cells
@@ -260,7 +260,7 @@
 .wallet-index-row>.fw-feature-icon{color:var(--wallet-icon-color);width:24px;height:24px}
 .wallet-index-row>span:not(.fw-feature-icon):not(.icon){flex:1;min-width:0}
 .wallet-index-row>small{color:#646b74;font-size:14px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.wallet-index-row>svg:last-child{color:#b2b2b2;width:14px;height:14px}
+.wallet-index-row>svg:last-child{color:var(--icon-muted);width:14px;height:14px}
 .page-editor:has(.wallet-balance-page) .modal-body{padding:0;background:#fff}
 .page-editor.wallet-balance-modal .modal-body{padding:0;background:#fff}
 .wallet-balance-page{min-height:100%;display:flex;flex-direction:column;background:#fff;position:relative}
@@ -308,12 +308,12 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .transfer-note-dialog{position:fixed;inset:auto;top:calc(var(--viewport-top,0px) + (var(--app-height,100dvh) + var(--safe-top) - var(--safe-bottom)) / 2);left:calc(50% + (var(--safe-left) - var(--safe-right)) / 2);transform:translate(-50%,-50%);margin:0;width:calc(100% - var(--safe-left) - var(--safe-right) - 64px);max-width:320px;max-height:calc(var(--app-height,100dvh) - var(--safe-top) - var(--safe-bottom) - 48px);overflow-y:auto;border:0;border-radius:12px;padding:27px 24px 0;color:#191919;background:#fff;box-shadow:none}
 .transfer-note-dialog::backdrop{background:rgba(0,0,0,.45)}
 .transfer-note-dialog>h3{font-size:17px;font-weight:600;line-height:1.45;text-align:center;margin:0 0 23px}
-.transfer-note-dialog>input{display:block;width:100%;border:0;border-bottom:1px solid #07c160;border-radius:0;background:none;padding:7px 0;font:inherit;font-size:16px;line-height:1.45;color:#191919;outline:none;caret-color:#07c160}
+.transfer-note-dialog>input{display:block;width:100%;border:0;border-bottom:1px solid var(--green);border-radius:0;background:none;padding:7px 0;font:inherit;font-size:16px;line-height:1.45;color:#191919;outline:none;caret-color:var(--green)}
 .transfer-note-dialog>input::placeholder{color:#b2b2b2}
 .transfer-note-actions{display:flex;margin:24px -24px 0;border-top:.5px solid #ededed}
 .transfer-note-actions>button{flex:1;background:none;border:0;min-height:53px;color:#576b95;font:inherit;font-size:17px;font-weight:500}
-.transfer-note-actions>button+button{border-left:.5px solid #ededed;color:#07c160}
-.wallet-pay-confirm{border:0;width:184px;max-width:100%;min-height:46px;padding:10px 16px;margin:22px auto 0;background:#07c160;color:#fff;border-radius:5px;font:inherit;font-size:17px;font-weight:500;line-height:26px;cursor:pointer}
+.transfer-note-actions>button+button{border-left:.5px solid #ededed;color:var(--green)}
+.wallet-pay-confirm{border:0;width:184px;max-width:100%;min-height:46px;padding:10px 16px;margin:22px auto 0;background:var(--green);color:#fff;border-radius:5px;font:inherit;font-size:17px;font-weight:500;line-height:26px;cursor:pointer}
 .wallet-pay-confirm:disabled{background:#9de6bc;color:#effaf4;opacity:1;cursor:default}
 .wallet-pay-balance{margin:14px 0 0;font-size:12px;color:#999;text-align:center;line-height:1.6}
 .wallet-pay-disclosure{margin:auto 0 0;padding-top:30px;font-size:12px;line-height:1.7;text-align:center;color:#999}
@@ -333,7 +333,7 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .redpacket-cover-row{display:flex;align-items:center;gap:10px;width:100%;min-height:50px;border:0;border-radius:8px;padding:10px;background:#fff;text-align:left;font:inherit;font-size:15px;color:#191919}
 .redpacket-cover-row>span:not(.icon){flex:1;min-width:0}
 .redpacket-cover-row>small{font-size:14px;color:#999}
-.redpacket-cover-row>.icon{width:12px;height:12px;color:#b2b2b2;flex-shrink:0}
+.redpacket-cover-row>.icon{width:12px;height:12px;color:var(--icon-muted);flex-shrink:0}
 .redpacket-total{display:flex;align-items:baseline;justify-content:center;gap:5px;font-variant-numeric:tabular-nums;margin:42px 0 0;min-width:0}
 .redpacket-total>span{font-size:32px;font-weight:500}
 .redpacket-total>strong{font-size:43px;font-weight:600;line-height:1.25;overflow-wrap:anywhere;min-width:0}
@@ -362,7 +362,7 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .payment-detail-record{display:flex;justify-content:space-between;gap:16px;margin:0 24px;padding:19px 0;border-top:.5px solid #e5e5e5;font-size:13px;line-height:1.6;color:#999}
 .payment-detail-record time{color:#555;text-align:right}
 .payment-detail-bill{display:flex;align-items:center;justify-content:space-between;width:100%;gap:14px;min-height:52px;padding:14px 24px;background:#fff;border:0;border-top:8px solid #ededed;text-align:left;font:inherit;font-size:14px;line-height:1.55;color:#576b95}
-.payment-detail-bill>.icon{width:12px;height:12px;color:#b2b2b2;flex-shrink:0}
+.payment-detail-bill>.icon{width:12px;height:12px;color:var(--icon-muted);flex-shrink:0}
 .payment-message-detail>.feature-bottom-note{margin-top:auto;padding-top:35px}
 .payment-message-detail.is-redpacket-detail .payment-detail-summary{padding-top:77px;min-height:315px;background:#fff}
 .payment-detail-cover{position:absolute;top:-32px;left:-15%;width:130%;height:80px;background:#d85c4d;border-radius:0 0 50% 50%}
@@ -385,7 +385,7 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .farm-plot>strong{font-weight:400;font-size:12px;color:#555}
 .farm-plot>small{font-size:10px;color:#646b74;margin-top:6px;white-space:nowrap}
 .farm-plot.is-ready{border-color:#b3ddbc;background:#f5faf5}
-.farm-plot.is-ready>small{color:#07a84f}
+.farm-plot.is-ready>small{color:var(--green-dark)}
 .farm-help-note{font-size:11px;line-height:1.6;color:#646b74;text-align:center;padding:10px 16px;background:#fff}
 .farm-friends{background:#fff}
 .farm-friend{display:flex;align-items:center;gap:11px;padding:14px 16px;position:relative}
@@ -393,12 +393,12 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .farm-friend>div{min-width:0;flex:1}
 .farm-friend strong{display:block;font-size:15px;font-weight:400;overflow-wrap:anywhere}
 .farm-friend small{display:block;font-size:11px;color:#646b74;margin-top:5px}
-.farm-friend button{border:0;background:#f2f2f2;color:#087b41;padding:7px 10px;font-size:12px;border-radius:3px;white-space:nowrap}
+.farm-friend button{border:0;background:#f2f2f2;color:var(--green-dark);padding:7px 10px;font-size:12px;border-radius:3px;white-space:nowrap}
 .farm-friend button:disabled{color:#999}
 .farm-seed-options{display:flex;gap:10px;margin:15px 0}
 .farm-seed-options label{display:flex;flex:1;min-width:0;align-items:center;flex-direction:column;padding:16px 4px;border:1px solid #e5e5e5;border-radius:3px;position:relative;background:#fafafa}
-.farm-seed-options label:has(input:checked){border-color:#07c160}
-.farm-seed-options input{position:absolute;left:9px;top:9px;accent-color:#07c160}
+.farm-seed-options label:has(input:checked){border-color:var(--green)}
+.farm-seed-options input{position:absolute;left:9px;top:9px;accent-color:var(--green)}
 .farm-seed-options span{font-size:36px}
 .farm-seed-options strong{font-size:14px;font-weight:400;margin-top:8px}
 .farm-seed-options small{font-size:10px;color:#999;margin-top:6px;white-space:nowrap}
@@ -412,12 +412,12 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .favorites-search input::placeholder{color:#999}
 .favorites-tabs{display:flex;gap:26px;padding:4px 20px 0;background:white}
 .favorites-tabs button{position:relative;border:0;background:none;color:#606771;font-size:14px;padding:11px 1px 13px}
-.favorites-tabs button[aria-pressed=true]{color:#087b41}
-.favorites-tabs button[aria-pressed=true]:after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:#07c160}
+.favorites-tabs button[aria-pressed=true]{color:var(--green-dark)}
+.favorites-tabs button[aria-pressed=true]:after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--green)}
 .favorites-heading{display:flex;justify-content:space-between;align-items:center;padding:14px 16px 9px;font-size:12px;color:#646b74}
 .favorites-heading>button{border:0;background:none;color:#576b95;font-size:14px;padding:5px}
 .favorite-selection-list>label{display:flex;align-items:center;gap:14px;padding:16px 0;border-bottom:1px solid #e5e5e5}
-.favorite-selection-list input{width:20px;height:20px;flex-shrink:0;accent-color:#07c160}
+.favorite-selection-list input{width:20px;height:20px;flex-shrink:0;accent-color:var(--green)}
 .favorite-selection-list span{min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;max-height:140px;overflow:auto}
 .favorite-selection-list small{display:block;color:#999;font-size:12px;margin-top:8px}
 .favorite-list{background:transparent}
@@ -525,8 +525,8 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .moment-detail{margin:-8px -20px 0;min-height:100%}
 .moment-media-album{background:#fff;position:relative;min-height:100%;padding-bottom:max(24px,var(--safe-bottom,env(safe-area-inset-bottom)))}
 :is(#view,.navigation-snapshot)[data-route=moment-album]>.topbar{grid-template-columns:44px minmax(0,1fr) 44px}
-.moment-album-title{height:44px}
-.moment-album-tabs{display:inline-flex;align-items:stretch;height:44px;gap:clamp(4px,4vw,22px);white-space:nowrap}
+.moment-album-title{height:auto;min-height:44px}
+.moment-album-tabs{display:inline-flex;align-items:stretch;height:auto;min-height:44px;gap:clamp(4px,4vw,22px);white-space:nowrap}
 .moment-album-tabs>button{padding:0 4px;border:0;border-bottom:2px solid transparent;background:none;color:#aaa;font:inherit;font-size:17px;font-weight:500;white-space:nowrap}
 .moment-album-tabs>button[aria-selected=true]{color:#191919;border-bottom-color:#191919}
 .moment-album-empty{position:absolute;left:0;right:0;top:40%;transform:translateY(-50%);text-align:center;color:#888;font-size:17px;line-height:26px}
@@ -540,7 +540,7 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .moment-status-current{display:flex;align-items:center;gap:12px;min-height:70px;width:100%;padding:16px 20px;border:0;border-bottom:.5px solid #eee;background:#fff;text-align:left;font:inherit}
 .moment-status-current>strong{font-size:16px;font-weight:400}
 .moment-status-current>span{flex:1;min-width:0;color:#999;font-size:14px;overflow-wrap:anywhere}
-.moment-status-current>svg{width:14px;height:14px;color:#b2b2b2}
+.moment-status-current>svg{width:14px;height:14px;color:var(--icon-muted)}
 .moment-own-timeline{padding:2px 20px 30px 16px}
 .own-album-page .moments-cover{margin-bottom:96px}
 :is(#view,.navigation-snapshot)>.moment-own-topbar:not(.is-scrolled) :is(.back-btn,.icon-btn,.nav-back-mark,.nav-more-mark){color:#fff}
@@ -601,12 +601,12 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 .note-image-item img{display:block;width:100%;height:100%;object-fit:cover}
 .note-image-item>button:last-child{position:absolute;right:2px;top:2px;width:24px;height:24px;border:0;border-radius:50%;background:#0009;color:#fff;font-size:20px;line-height:20px;padding:0}
 .note-todo-editor>div{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:.5px solid #eee}
-.note-todo-editor input[type=checkbox]{accent-color:#07c160;width:19px;height:19px;flex-shrink:0}
+.note-todo-editor input[type=checkbox]{accent-color:var(--green);width:19px;height:19px;flex-shrink:0}
 .note-todo-editor input[type=text]{border:0;background:none;outline:none;font:inherit;font-size:16px;min-width:0;flex:1}
 .note-todo-editor button{border:0;background:none;color:#999;font-size:23px;padding:0 4px}
 .favorites-page.is-selecting{padding-bottom:calc(70px + var(--safe-bottom,0px))}
 .favorites-page.is-selecting .favorite-card:not([hidden]){display:flex;gap:14px;align-items:center}
-.favorite-check{width:22px;height:22px;accent-color:#07c160;flex-shrink:0;pointer-events:none}
+.favorite-check{width:22px;height:22px;accent-color:var(--green);flex-shrink:0;pointer-events:none}
 .favorite-card.is-selected{background:#f6faf6}
 .favorite-selection-bar{position:absolute;z-index:10;left:0;right:0;bottom:0;display:flex;align-items:center;gap:15px;min-height:60px;padding:12px 20px calc(12px + var(--safe-bottom,0px));background:#f7f7f7;border-top:.5px solid #ddd;font-size:13px}
 .favorite-selection-bar>span{flex:1;text-align:center;color:#888}
@@ -620,7 +620,7 @@ button.wallet-transaction{display:flex;width:100%;background:#fff;color:#191919;
 /* Filtering and editor visibility must win over every flex/grid mode. */
 .feature-page [hidden],.moment-compose [hidden],.favorite-note-editor [hidden]{display:none!important}
 .moment-unread-wrap{display:flex;justify-content:center;margin:-18px 0 22px}
-.moment-unread-pill{display:inline-flex;align-items:center;gap:10px;height:40px;padding:0 14px 0 6px;border:0;border-radius:6px;background:#393939;color:#fff;font-size:14px;font-weight:500}
+.moment-unread-pill{display:inline-flex;align-items:center;gap:10px;height:auto;min-height:40px;padding:6px 14px 6px 6px;border:0;border-radius:6px;background:#393939;color:#fff;font-size:14px;font-weight:500}
 .moment-unread-pill>.avatar{border-radius:4px!important}
 .moment-unread-pill>.icon{width:14px;height:14px;background-color:rgba(255,255,255,.65);color:rgba(255,255,255,.65)}
 .moment-management .moment-auto-row{justify-content:space-between}

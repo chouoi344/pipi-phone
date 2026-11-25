@@ -83,6 +83,8 @@ function createApp(options={}){
   }
   try{require('./lib/password-reset.cjs').apply({requested:options.resetPassword??process.env.RESET_PASSWORD==='1',dataDir,getMeta,setMeta,db,transaction});}
   catch(error){db.close();throw error;}
+  // Older stored settings can predate timezone validation. Check once per changed value.
+  let previousZone, storedZone;
   const parse=json=>{
     const state=JSON.parse(json);
     state.profile.cover??='';
@@ -95,6 +97,15 @@ function createApp(options={}){
       r.phone??='';
     }
     const defaults=S.defaults(state);
+    if(defaults.settings.timezone){
+      const zone=defaults.settings.timezone;
+      if(zone!==previousZone){
+        try{storedZone=Time.validateTimezone(zone);}
+        catch(error){if(error.code!=='VALIDATION')throw error;storedZone='UTC';}
+        previousZone=zone;
+      }
+      defaults.settings.timezone=storedZone;
+    }
     Object.defineProperty(defaults,Symbol.for('pipi.mediaDir'),{value:dataDir});
     if(options.lifePreview)Object.defineProperty(defaults,Symbol.for('pipi.lifePreview'),{value:true});
     return defaults;
@@ -208,7 +219,7 @@ function createApp(options={}){
   }
   function storageView(state=read()){
     measureStorage();
-    const {status,detail,startedAt,completedAt,beforeBytes,afterBytes,migratedCount,backupName}=readMigration();
+    const {status,detail,startedAt,completedAt,beforeBytes,afterBytes,migratedCount,backupName}=readMigration()||{};
     return {
       retention:state.settings.mediaRetentionDays??7,usage:storageUsage,calculating:Boolean(measuring),
       lastCleanup:lastCleanup(cleanupKey),lastEarlyCleanup:lastCleanup(pressureKey),
@@ -510,9 +521,11 @@ function createApp(options={}){
     for(const client of clients)if(client.hash!==auth.hash){client.res.end();clients.delete(client);}
   }
   function publish(event,data){
+    const frame=`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for(const client of clients){
-      if(client.expires<=Date.now()||client.res.destroyed){client.res.end();clients.delete(client);continue;}
-      if(!client.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)){client.res.end();clients.delete(client);}
+      if(client.expires<=Date.now()||client.res.destroyed||client.res.writableEnded){client.res.end();clients.delete(client);continue;}
+      if((client.res.writableLength||0)>256*1024){client.res.end();clients.delete(client);continue;}
+      client.res.write(frame);
     }
   }
   function eventStream(req,res,auth){
@@ -929,8 +942,8 @@ function createApp(options={}){
         if(type==='role.delete')require('./lib/engine/memory-store.cjs').removeRole(dataDir,null,b.payload?.id);
         if(type==='role.save'&&result.state.roles.find(r=>r.id===b.payload?.id)?.permissions.blocked)runtime.cancel(b.payload.id);
         if(type==='wallet.transfer'&&!paymentReplay){
-          const s=result.state,r=S.role(s,b.payload.roleId),model=s.settings.ai.models.find(m=>m.id===s.settings.ai.assign.chat),source=model&&Models.effectiveSources(s.settings.ai).find(x=>x.id===model.sourceId);
-          if(source?.key&&source.baseUrl){
+          const s=result.state,r=S.role(s,b.payload.roleId);
+          if(Models.hasReadyChatModel(s)){
             const payment=s.wallet.transactions.find(t=>t.requestId===b.payload.requestId),message=s.messages.find(m=>m.meta?.transactionId===payment.id);
             runtime.enqueue(r.id,message.id);
           }
@@ -1204,7 +1217,7 @@ function createApp(options={}){
           return json(res,200,{profile:result.value,state:S.publicState(result.state)});
         }
         if(action==='recall'){
-          const out=await Mem.recallForPrompt(read(),roleId,S.text(b.query||'',300),{dataDir,getState:read});
+          const out=await Mem.recallForPrompt(read(),roleId,S.text(b.query||'',300),{dataDir,getState:read,onUsage:runtime.onUsage});
           return json(res,200,{cards:out.cards,profile:out.profile});
         }
         if(action==='consolidate'){

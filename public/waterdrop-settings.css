@@ -8,7 +8,7 @@ html[data-skin="waterdrop"] body.wechat-classic {
   --pt-secondary: #747b86;
   --pt-empty: #6a7079;
   --pt-line: #182c4312;
-  --pt-accent: #1ec96b;
+  --pt-accent: var(--green);
   --pt-selected: #effaf4;
   --pt-group-radius: 22px;
   --pt-group-shadow: inset 0 1px 0 #fff, 0 3px 14px #1d2e4405;
@@ -73,7 +73,7 @@ html[data-skin="waterdrop"] body.wechat-classic :is(#view,.navigation-snapshot).
   border-color:#dce3e9; background-color:#e1e7ed; box-shadow:inset 0 1px 3px #35495c14;
 }
 html[data-skin="waterdrop"] body.wechat-classic :is(#view,.navigation-snapshot).pt-settings-view .life-check input[role="switch"]:checked,
-html[data-skin="waterdrop"] body.wechat-classic :is(#view,.navigation-snapshot).pt-settings-view .pt-config-content input.switch:checked {border-color:#18bd62;background-color:#1ec96b;box-shadow:inset 0 1px 3px #119c4e20;}
+html[data-skin="waterdrop"] body.wechat-classic :is(#view,.navigation-snapshot).pt-settings-view .pt-config-content input.switch:checked {border-color:var(--green);background-color:var(--green);box-shadow:inset 0 1px 3px #119c4e20;}
 html[data-skin="waterdrop"] body.wechat-classic .pt-profile .lb-field :is(input,textarea),
 html[data-skin="waterdrop"] body.wechat-classic .pt-basic-root :is(.life-field input:not([role="switch"]),.life-field textarea,.life-comment-form input,.lm-toolbar input,.life-moment-number input),
 html[data-skin="waterdrop"] body.wechat-classic .pt-config-content :is(.form-field,.edit-field) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),textarea,select),
@@ -87,7 +87,7 @@ html[data-skin="waterdrop"] body.wechat-classic .pt-basic-root :is(.life-field i
 html[data-skin="waterdrop"] body.wechat-classic .pt-config-content :is(.form-field,.edit-field) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),textarea,select):focus,
 html[data-skin="waterdrop"] body.wechat-classic .pt-config-content :is(.rp-search,.search-wrap) input:focus,
 html[data-skin="waterdrop"] body.wechat-classic .pt-config-content > .engine-search:focus {
-  background:#fff; border-color:#1ec96b; box-shadow:0 0 0 3px rgba(30,201,107,.13);
+  background:#fff; border-color:var(--green); box-shadow:0 0 0 3px rgba(30,201,107,.13);
 }
 html[data-skin="waterdrop"] body.wechat-classic .pt-profile .pt-field-grid input {border:0;background:transparent;box-shadow:none;}
 html[data-skin="waterdrop"] body.wechat-classic .pt-settings-save {border-top:1px solid #fff;background:#f2f4f7f5;box-shadow:0 -4px 18px #263e5005;backdrop-filter:blur(3px);}
@@ -104,7 +104,7 @@ html[data-skin="waterdrop"] body.wechat-classic .pt-basic-root :is(.life-library
 html[data-skin="waterdrop"] body.wechat-classic .pt-config-content :is(.engine-buttons .secondary-btn,.lm-actions .secondary-btn,.model-tools button) {
   border:1px solid #e3e9ef; border-radius:999px; background:var(--wd-pill); color:var(--pt-ink); box-shadow:inset 0 1px 1px #fff;
 }
-html[data-skin="waterdrop"] body.wechat-classic .pt-basic-root :is(.life-album-pages button[aria-current],.life-wardrobe-categories button[aria-pressed="true"]) {border-color:#1ec96b65;background:var(--pt-selected);color:#16834a;}
+html[data-skin="waterdrop"] body.wechat-classic .pt-basic-root :is(.life-album-pages button[aria-current],.life-wardrobe-categories button[aria-pressed="true"]) {border-color:#1ec96b65;background:var(--pt-selected);color:var(--green-dark);}
 html[data-skin="waterdrop"] body.wechat-classic .pt-config-content :is(.cell,.model-preference-row)::after {border-color:#223b5010;}
 html[data-skin="waterdrop"] body.wechat-classic .pt-config-content :is(.form-section,.model-preference-group,.source-card,.usage-card) {overflow:hidden;}
 html[data-skin="waterdrop"] body.wechat-classic .pt-config-content :is(.inline-provider-models .search-wrap,.category-note) {background:transparent;}
@@ -115,7 +115,7 @@ html[data-skin="waterdrop"] body.wechat-classic .pt-config-content .model-action
 html[data-skin="waterdrop"] body.wechat-classic .pt-config-content :is(.caption-prompt-preview,.caption-preferences-form textarea,.schedule-setting-value input) {border-color:#e3e9ef;background:#f8fafc;}
 html[data-skin="waterdrop"] body.wechat-classic .pt-config-content .rp-cards,
 html[data-skin="waterdrop"] body.wechat-classic .pt-config-content .rp-folders {gap:0 10px;}
-html[data-skin="waterdrop"] body.wechat-classic .pt-config-content .rp-bound {color:#16834a;}
+html[data-skin="waterdrop"] body.wechat-classic .pt-config-content .rp-bound {color:var(--green-dark);}
 html[data-skin="waterdrop"] body.wechat-classic .pt-config-content .rp-card-menu,
 html[data-skin="waterdrop"] body.wechat-classic .pt-config-content .rp-folder-menu {border-radius:50%;color:#747d87;}
 html[data-skin="waterdrop"] body.wechat-classic .pt-config-content .usage-card {border:var(--wd-rim);}
@@ -155,10 +155,10 @@ html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor .modal-err
 /* Symmetric frosted-white glass pills in Waterdrop modal headers with 44pt tap halos. */
 html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor:not(.confirm-dialog) .modal-header > .modal-close:not(.modal-back) {
   position:relative; display:inline-flex; align-items:center; justify-content:center; justify-self:start;
-  min-width:52px; height:31px; min-height:31px; padding:0 11px;
+  min-width:52px; height:auto; min-height:31px; padding:4px 11px;
   border:1px solid rgba(255,255,255,.96); border-radius:999px;
   background:linear-gradient(160deg,rgba(255,255,255,.92),rgba(244,247,251,.72)); color:#525b68;
-  font-size:13.5px; line-height:29px; font-weight:500; text-align:center;
+  font-size:13.5px; line-height:1.4; font-weight:500; text-align:center;
   box-shadow:inset 0 1px 1px #fff,0 2px 6px rgba(15,25,40,.06);
   transition:transform .12s ease, background-color .15s ease;
 }
@@ -168,10 +168,10 @@ html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor:not(.confi
 html[data-skin="waterdrop"] body.wechat-classic .topbar .header-actions > .header-primary,
 html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor:not(.confirm-dialog) .modal-header > .modal-submit {
   position:relative; display:inline-flex; align-items:center; justify-content:center; justify-self:end;
-  min-width:52px; height:31px; min-height:31px; padding:0 11px;
+  min-width:52px; height:auto; min-height:31px; padding:4px 11px;
   border:1px solid rgba(255,255,255,.98); border-radius:999px;
-  background:linear-gradient(160deg,rgba(255,255,255,.95),rgba(236,250,242,.84)); color:#077a3d;
-  font-size:13.5px; line-height:29px; font-weight:600;
+  background:linear-gradient(160deg,rgba(255,255,255,.95),rgba(236,250,242,.84)); color:var(--green-dark);
+  font-size:13.5px; line-height:1.4; font-weight:600;
   box-shadow:inset 0 1px 1px #fff,0 2px 8px rgba(15,25,40,.07);
   transition:transform .12s ease, background-color .15s ease;
 }
@@ -205,7 +205,7 @@ html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor .avatar-pi
 }
 html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor .avatar-picker #pick-avatar::after {
   right:0; bottom:0; width:27px; height:27px; border:2.5px solid #fff;
-  background-color:#1ec96b;
+  background-color:var(--green);
   box-shadow:0 3px 8px rgba(30,201,107,.34);
 }
 html[data-skin="waterdrop"] body.wechat-classic #overlay :is(.form-field,.engine-field,.edit-field) {color:var(--pt-ink);}
@@ -221,7 +221,7 @@ html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor:not(.pt-se
 }
 html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor .check-row input[type="checkbox"]:checked,
 html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor .form-field > input[type="checkbox"]:checked {
-  background:#1ec96b; box-shadow:inset 0 1px 3px rgba(17,156,78,.2);
+  background:var(--green); box-shadow:inset 0 1px 3px rgba(17,156,78,.2);
 }
 html[data-skin="waterdrop"] body.wechat-classic #overlay :is(.form-field > span:first-child,.field-label,.edit-field > span) {
   font-size:13.5px; font-weight:600; color:#2d343e;
@@ -229,12 +229,12 @@ html[data-skin="waterdrop"] body.wechat-classic #overlay :is(.form-field > span:
 html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor :is(.form-field,.engine-field,.edit-field) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),textarea,select),
 html[data-skin="waterdrop"] body.wechat-classic #overlay .pt-settings-sheet :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),textarea,select) {
   min-height:44px; padding:11px 14px; border:1px solid #e2e8f0; border-radius:13px;
-  background:#f4f6f9; color:var(--pt-ink); box-shadow:none; caret-color:#1ec96b;
+  background:#f4f6f9; color:var(--pt-ink); box-shadow:none; caret-color:var(--green);
   transition:background-color .16s ease, border-color .16s ease, box-shadow .16s ease;
 }
 html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor :is(.form-field,.engine-field,.edit-field) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),textarea,select):focus,
 html[data-skin="waterdrop"] body.wechat-classic #overlay .pt-settings-sheet :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),textarea,select):focus {
-  background:#fff; border-color:#1ec96b; box-shadow:0 0 0 3.5px rgba(30,201,107,.14);
+  background:#fff; border-color:var(--green); box-shadow:0 0 0 3.5px rgba(30,201,107,.14);
 }
 html[data-skin="waterdrop"] body.wechat-classic #overlay.has-contact-remark,
 html[data-skin="waterdrop"] body.wechat-classic #overlay.has-chat-background {
@@ -246,13 +246,13 @@ html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor :is(input,
 html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor :is(.page-note,.field-help,.small-note,.schedule-note) {color:#606975;}
 html[data-skin="waterdrop"] body.wechat-classic #overlay .rp-pat-preview {
   display:inline-flex; align-items:center; margin:0 0 12px 2px; padding:6px 14px;
-  border-radius:999px; background:#e7f6ee; color:#117540; font-size:12.5px; font-weight:500;
+  border-radius:999px; background:#e7f6ee; color:var(--green-dark); font-size:12.5px; font-weight:500;
 }
 html[data-skin="waterdrop"] body.wechat-classic #overlay .role-cover-picker #pick-role-cover {
   height:126px; border-radius:15px; border:1.5px dashed #c6d0de; background:#f6f8fb; color:#606975;
 }
 html[data-skin="waterdrop"] body.wechat-classic #overlay .role-cover-picker #pick-role-cover:active {
-  border-color:#1ec96b; background:#eefaf3;
+  border-color:var(--green); background:#eefaf3;
 }
 html[data-skin="waterdrop"] body.wechat-classic #overlay .pt-settings-sheet .search-wrap {background:transparent;}
 html[data-skin="waterdrop"] body.wechat-classic #overlay :is(.choice-row,.provider-choice,.rp-choice,.lm-scope-row),
@@ -280,9 +280,9 @@ html[data-skin="waterdrop"] body.wechat-classic #overlay .alert-dialog p {color:
 html[data-skin="waterdrop"] body.wechat-classic #overlay .alert-actions {border-color:#21394b12;}
 html[data-skin="waterdrop"] body.wechat-classic #overlay .alert-actions button {min-height:50px;color:#4e6374;font-size:14px;}
 html[data-skin="waterdrop"] body.wechat-classic #overlay .alert-actions .danger {color:#cb5853;}
-html[data-skin="waterdrop"] body.wechat-classic :is(.schedule-wardrobe-dialog,.life-crop-dialog,.rp-replace-dialog,.transfer-note-dialog) {border:var(--wd-rim);border-radius:26px 26px 0 0;background:#fafcfd;box-shadow:inset 0 1.5px 2px #fff,0 -8px 30px #263a5126;color:var(--pt-ink);}
+html[data-skin="waterdrop"] body.wechat-classic :is(.schedule-wardrobe-dialog,.rp-replace-dialog,.transfer-note-dialog) {border:var(--wd-rim);border-radius:26px 26px 0 0;background:#fafcfd;box-shadow:inset 0 1.5px 2px #fff,0 -8px 30px #263a5126;color:var(--pt-ink);}
 html[data-skin="waterdrop"] body.wechat-classic :is(.rp-replace-dialog,.transfer-note-dialog) {border-radius:24px;}
-html[data-skin="waterdrop"] body.wechat-classic :is(.schedule-wardrobe-dialog,.life-crop-dialog,.rp-replace-dialog,.transfer-note-dialog)::backdrop {background:#1b283c59;backdrop-filter:blur(2px);}
+html[data-skin="waterdrop"] body.wechat-classic :is(.schedule-wardrobe-dialog,.rp-replace-dialog,.transfer-note-dialog)::backdrop {background:#1b283c59;backdrop-filter:blur(2px);}
 html[data-skin="waterdrop"] body.wechat-classic .schedule-wardrobe-dialog :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),textarea,select) {border-color:#e0e7ed;background:#fff;}
 html[data-skin="waterdrop"] body.wechat-classic .pt-profile .lb-voice-menu:popover-open {border:var(--wd-rim);border-radius:26px 26px 0 0;background:#fafcfd;box-shadow:var(--wd-shadow),0 -8px 30px #263a5126;}
 html[data-skin="waterdrop"] body.wechat-classic .pt-profile .lb-voice-menu:popover-open::before {font-weight:600;}
@@ -339,7 +339,7 @@ html[data-skin="waterdrop"] body.wechat-classic .redpacket-emoji-search {border:
 html[data-skin="waterdrop"] body.wechat-classic .transfer-note-dialog > input {border-color:#67c996;background:#fff;color:#252b30;}
 html[data-skin="waterdrop"] body.wechat-classic .transfer-note-actions {border-color:#e3e9ee;}
 html[data-skin="waterdrop"] body.wechat-classic .transfer-note-actions > button {min-height:48px;color:#668298;}
-html[data-skin="waterdrop"] body.wechat-classic .transfer-note-actions > button + button {border-color:#e3e9ee;color:#19824b;}
+html[data-skin="waterdrop"] body.wechat-classic .transfer-note-actions > button + button {border-color:#e3e9ee;color:var(--green-dark);}
 
 /* The batch wardrobe editor keeps its native progress and per-image controls. */
 html[data-skin="waterdrop"] body.wechat-classic #overlay .wardrobe-import-dialog .modal-header h3 {line-height:1.45;}
@@ -347,12 +347,12 @@ html[data-skin="waterdrop"] body.wechat-classic .wardrobe-import-toolbar > butto
 html[data-skin="waterdrop"] body.wechat-classic .wardrobe-import-thumb {border:var(--wd-rim);border-radius:14px;background:#edf2f6;}
 html[data-skin="waterdrop"] body.wechat-classic .wardrobe-import-row {border-color:#223b5010;}
 html[data-skin="waterdrop"] body.wechat-classic .wardrobe-import-seasons span {border-color:#e0e7ed;border-radius:9px;background:#fff;}
-html[data-skin="waterdrop"] body.wechat-classic .wardrobe-import-seasons input:checked + span {border-color:#1ec96b80;background:#effaf4;color:#19824b;}
+html[data-skin="waterdrop"] body.wechat-classic .wardrobe-import-seasons input:checked + span {border-color:#1ec96b80;background:#effaf4;color:var(--green-dark);}
 html[data-skin="waterdrop"] body.wechat-classic .wardrobe-import-row :is(.wardrobe-import-row-heading button,.wardrobe-import-row-footer button) {min-height:44px;color:#668298;}
 
 @media (min-width:761px) {
   html[data-skin="waterdrop"] body.wechat-classic .pt-profile .lb-voice-menu:popover-open {border-radius:26px 26px 34px 34px;}
-  html[data-skin="waterdrop"] body.wechat-classic :is(.schedule-wardrobe-dialog,.life-crop-dialog) {border-radius:26px 26px 34px 34px;}
+  html[data-skin="waterdrop"] body.wechat-classic .schedule-wardrobe-dialog {border-radius:26px 26px 34px 34px;}
 }
 @media (prefers-reduced-motion:reduce) {
   html[data-skin="waterdrop"] body.wechat-classic #overlay :is(.page-editor,.sheet-actions,.alert-dialog) {animation:none;}

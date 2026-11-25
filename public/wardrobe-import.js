@@ -7,33 +7,29 @@
   const size=bytes=>bytes<1024*1024?Math.round(bytes/1024)+' KB':(bytes/1024/1024).toFixed(1)+' MB';
 
   async function compress(file){
-    if(!['image/png','image/jpeg','image/webp'].includes(file.type))throw new Error('请选择 PNG、JPG 或 WebP 静态图片');
+    const app=P();
+    if(!file)throw new Error('请选择 PNG、JPG 或 WebP 静态图片');
     if(file.size>20*1024*1024)throw new Error('图片不能超过 20 MB');
-    if(file.type!=='image/jpeg'){
-      const bytes=await file.arrayBuffer(),view=new DataView(bytes);
-      const tag=offset=>String.fromCharCode(...new Uint8Array(bytes,offset,4));
-      const webp=file.type==='image/webp';
-      for(let offset=webp?12:8;offset+8<=bytes.byteLength;){
-        const chunk=tag(offset+(webp?0:4));
-        if(chunk==='ANIM'||chunk==='ANMF'||chunk==='acTL')throw new Error('衣柜需要静态图片，请选择其中一帧后上传');
-        const length=view.getUint32(offset+(webp?4:0),webp);
-        offset+=length+(webp?8+length%2:12);
-      }
-    }
-    let bitmap;
-    try{bitmap=await createImageBitmap(file);}catch{throw new Error('无法读取图片，请换一张图片');}
+    const source=app?.readImage?await app.readImage(file,false,true):file;
+    const mime=source.type||file.type;
+    if(mime==='image/gif')throw new Error('衣柜需要静态图片，请选择其中一帧后上传');
+    if(app?.detectAnimatedImage?await app.detectAnimatedImage(source,mime):false)throw new Error('衣柜需要静态图片，请选择其中一帧后上传');
+    let decoded;
     try{
-      const scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));
+      decoded=app?.decodeImageSource?await app.decodeImageSource(source):await (async()=>{const b=await createImageBitmap(source);return {source:b,width:b.width,height:b.height,close(){b.close();}};})();
+    }catch{throw new Error('无法读取图片，请换一张图片');}
+    try{
+      const scale=Math.min(1,1600/Math.max(decoded.width,decoded.height));
       const canvas=document.createElement('canvas');
-      canvas.width=Math.max(1,Math.round(bitmap.width*scale));
-      canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+      canvas.width=Math.max(1,Math.round(decoded.width*scale));
+      canvas.height=Math.max(1,Math.round(decoded.height*scale));
       const context=canvas.getContext('2d');
       let compressed;
       for(let step=0;step<5;step++){
         context.clearRect(0,0,canvas.width,canvas.height);
-        context.drawImage(bitmap,0,0,canvas.width,canvas.height);
+        context.drawImage(decoded.source,0,0,canvas.width,canvas.height);
         for(const quality of [.86,.74,.62]){
-          compressed=await new Promise(resolve=>canvas.toBlob(resolve,'image/webp',quality));
+          compressed=app?.encodeCanvas?await app.encodeCanvas(canvas,{quality,preferWebp:true,alpha:false}):await new Promise(resolve=>canvas.toBlob(resolve,'image/webp',quality));
           if(!compressed)throw new Error('图片压缩失败，请重新选择');
           if(compressed.size<=maxBytes)break;
         }
@@ -42,7 +38,7 @@
         canvas.height=Math.max(1,Math.round(canvas.height*.75));
       }
       if(compressed.size>maxBytes)throw new Error('图片压缩后仍过大，请换一张图片');
-      const output=scale===1&&file.size<=maxBytes&&file.size<compressed.size?file:compressed;
+      const output=scale===1&&['image/png','image/jpeg','image/webp'].includes(mime)&&source.size<=maxBytes&&source.size<compressed.size?source:compressed;
       const image=await new Promise((resolve,reject)=>{
         const reader=new FileReader();
         reader.onload=()=>resolve(reader.result);
@@ -50,7 +46,7 @@
         reader.readAsDataURL(output);
       });
       return {image,bytes:output.size};
-    }finally{bitmap.close();}
+    }finally{decoded.close();}
   }
 
   function open(roleId,onSaved,{simulated=false}={}){
@@ -59,7 +55,7 @@
     const markup=`<div class="wardrobe-import-toolbar">
       <button type="button" data-wardrobe-pick>选择图片</button>
       <span data-wardrobe-progress role="status" aria-live="polite">每次最多 20 张</span>
-      <input type="file" data-wardrobe-files accept="image/png,image/jpeg,image/webp" multiple hidden>
+      <input type="file" data-wardrobe-files accept="image/*" multiple hidden>
     </div>
     <p class="wardrobe-import-note">选图后自动识别穿搭、类型和季节，可修改后统一入库。${simulated?'验收使用本机模拟识别。':'识别使用已配置的识图模型。'}</p>
     <p class="wardrobe-import-selection-error" role="alert" hidden></p>

@@ -165,13 +165,16 @@ public final class FcmTransport {
         info.setText("FCM 系统推送：安装包已配置管理员的 Firebase 项目。设备需有 Google Play 服务，服务器也需单独配置；注册成功才切换通知方式。");form.addView(info);
         Switch toggle=new Switch(activity);toggle.setText("使用可选 FCM 系统推送");toggle.setChecked(requested(activity));form.addView(toggle);
         TextView state=new TextView(activity);state.setTextSize(13);form.addView(state);
+        final boolean[] syncing = {false};
         state.post(new Runnable(){@Override public void run(){
             if(!state.isAttachedToWindow())return;
             state.setText(prefs(activity).getString("status","尚未注册此服务器"));
-            if(toggle.isChecked()!=requested(activity))toggle.setChecked(requested(activity));
+            boolean desired = requested(activity);
+            if(toggle.isChecked()!=desired){syncing[0]=true;toggle.setChecked(desired);syncing[0]=false;}
             state.postDelayed(this,1000);
         }});
         toggle.setOnCheckedChangeListener((button,enabled)->{
+            if(syncing[0])return;
             if(!enabled){disable(activity);PhoneNotifications.resumeCompatible(activity);return;}
             if(!PhoneNotifications.isEnabled(activity)||!hasPlayServices(activity)){
                 Toast.makeText(activity,!PhoneNotifications.isEnabled(activity)?"请先开启后台消息通知":"此设备没有可用的 Google Play 服务，继续使用兼容后台通知",Toast.LENGTH_LONG).show();toggle.setChecked(false);return;

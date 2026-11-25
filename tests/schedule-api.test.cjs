@@ -12,6 +12,11 @@ test('schedule panel API saves isolated friend data, generates through fallback,
  const ok=async promise=>{const r=await promise;assert.equal(r.status,200,JSON.stringify(r.body));return r.body;};
  t.after(async()=>{await app?.close();mock.closeAllConnections();await new Promise(r=>mock.close(r));if(previous===undefined)delete process.env.ALLOW_PRIVATE_PROVIDERS;else process.env.ALLOW_PRIVATE_PROVIDERS=previous;if(path.dirname(dir)===path.resolve(os.tmpdir())&&path.basename(dir).startsWith('pipi-schedule-api-'))fs.rmSync(dir,{recursive:true,force:true});});
  await start();const setup=await ok(request('/api/setup',{password:'Schedule-isolated-test_2026!',displayName:'隔离日程验证'}));const [r1,r2]=setup.state.roles.map(r=>r.id),endpoint='/api/engine/schedule';
+ // Emulate an old locally stored timezone. New invalid configuration must still be rejected.
+ app.db.prepare("UPDATE app SET json=json_set(json, '$.settings.timezone', ?) WHERE id=1").run('Invalid/Zone');
+ const legacyView=await ok(request(endpoint+'?roleId='+r1));
+ assert.equal(legacyView.view.timezone,'UTC');
+ assert.equal((await request('/api/engine/timezone',{timezone:'Invalid/Zone'})).status,400);
  const action=(roleId,action,fields={})=>ok(request(endpoint,{roleId,action,...fields}));
  const ai={...setup.state.settings.ai,sources:[...setup.state.settings.ai.sources,{id:'isolated',name:'隔离模拟服务',baseUrl:'http://127.0.0.1:'+mock.address().port+'/v1',key:'ISOLATED_SCHEDULE_KEY',builtin:false}],models:['primary','backup'].map(model=>({id:model,sourceId:'isolated',model,kind:'chat',capabilities:['text'],maxContextTokens:128000,temperature:null,maxTokens:null,timeoutSeconds:2,extraBody:{}})),assign:{...setup.state.settings.ai.assign,chat:'primary',chatFallbacks:['backup'],chatSelections:['primary','backup']}};
  await ok(request('/api/engine/models',{ai}));await action(r1,'saveSettings',{settings:{weatherEnabled:false,city:'',autoGenerate:false,surpriseProbability:0}});

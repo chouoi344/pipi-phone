@@ -238,6 +238,8 @@ async function run() {
     assert.equal(await page.evaluate(probe('SYNTAX')), true, 'native syntax gate');
     await page.evaluateOnNewDocument(() => {
       Object.defineProperty(window, 'MediaRecorder', {value: undefined, configurable: true});
+      // PCM capture can record without MediaRecorder; disable microphone access too.
+      if (navigator.mediaDevices) Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {value: undefined, configurable: true});
     });
     const httpOnly = process.env.PIPI_TEST_HTTP === '1';
     const origin = 'http://' + (httpOnly ? 'pipi-webview.test' : '127.0.0.1') + ':' + app.server.address().port;

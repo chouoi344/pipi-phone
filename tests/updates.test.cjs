@@ -54,6 +54,36 @@ test('an Android-only latest release leaves server discovery and install availab
   assert.equal(onlyApp,null);
 });
 
+test('manifest download permits GitHub asset redirects while rejecting foreign targets before connecting',async()=>{
+  const metadata=feed().metadata,assetUrl=metadata.assets[0].browser_download_url;
+  for(const target of ['https://release-assets.githubusercontent.com/github-production-release-asset/123/update.json?signature=public',
+    'https://objects.githubusercontent.com/github-production-release-asset-2e65be/123/update.json?signature=public']){
+    const calls=[];
+    const result=await getRelease({repository,fetchImpl:async(url,options)=>{
+      calls.push({url,options});
+      if(url.includes('api.github.com')){assert.equal(options.redirect,'error');return Response.json(metadata);}
+      assert.equal(options.redirect,'manual');
+      return url===assetUrl?new Response(null,{status:302,headers:{Location:target}}):Response.json({version,image});
+    }});
+    assert.equal(result.image,image);assert.equal(calls.length,3);
+    assert(calls.every(call=>!new Headers(call.options.headers).has('authorization')&&!new Headers(call.options.headers).has('cookie')));
+  }
+  for(const target of ['http://127.0.0.1/private','https://attacker.example/update.json',
+    'https://release-assets.githubusercontent.com/untrusted/update.json','https://user:secret@objects.githubusercontent.com/github-production-release-asset/123/update.json',
+    'https://github.com/other/repository/releases/download/v0.12.1/update.json']){
+    let calls=0;
+    await assert.rejects(getRelease({repository,fetchImpl:async url=>{
+      calls++;return url.includes('api.github.com')?Response.json(metadata):new Response(null,{status:302,headers:{Location:target}});
+    }}),{code:'UPDATE_INVALID_FEED'});
+    assert.equal(calls,2);
+  }
+  let calls=0;
+  await assert.rejects(getRelease({repository,fetchImpl:async url=>{
+    calls++;return url.includes('api.github.com')?Response.json(metadata):new Response(null,{status:302,headers:{Location:assetUrl}});
+  }}),{code:'UPDATE_INVALID_FEED'});
+  assert.equal(calls,7);
+});
+
 test('release rejects prereleases, drafts, inconsistent tags, misdirected assets and mismatched manifests',async()=>{
   const examples=[
     {release:{draft:true}},{release:{prerelease:true}},{release:{tag_name:'v0.13.0-beta.1'}},

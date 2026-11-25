@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="/vendor/weui.min.css?v=0.12.0">
   <link rel="stylesheet" href="/fonts/noto-sans-sc.css?v=0.13.0">
   <link rel="stylesheet" href="/styles.css?v=0.13.11">
-  <link rel="stylesheet" href="/features.css?v=0.13.13">
+  <link rel="stylesheet" href="/features.css?v=0.13.14">
   <link rel="stylesheet" href="/status.css?v=0.13.2">
   <link rel="stylesheet" href="/phone-frame.css?v=0.13.2">
   <link rel="stylesheet" href="/composer.css?v=0.12.0">
@@ -33,9 +33,9 @@
   <link rel="stylesheet" href="/wardrobe-import.css?v=0.12.0-role-panel">
   <link rel="stylesheet" href="/life-timeline.css?v=0.12.0-role-panel">
   <link rel="stylesheet" href="/life-basic.css?v=0.12.0-outreach-layout">
-  <link rel="stylesheet" href="/life-crop.css?v=0.12.0-moments-cover">
-  <link rel="stylesheet" href="/classic-social.css?v=classic-6">
-  <link rel="stylesheet" href="/classic-settings.css?v=classic-6">
+  <link rel="stylesheet" href="/life-crop.css?v=wechat-crop-1">
+  <link rel="stylesheet" href="/classic-social.css?v=classic-7">
+  <link rel="stylesheet" href="/classic-settings.css?v=classic-7">
   <link rel="stylesheet" href="/classic-chat.css?v=chat-touch-2">
   <link rel="stylesheet" href="/classic-payments.css?v=0.13.13">
   <link rel="stylesheet" href="/classic-entries.css?v=classic-1">
@@ -49,34 +49,35 @@
   <link rel="stylesheet" href="/storage-ui.css?v=0.13.0-storage">
   <link rel="stylesheet" href="/android-page.css?v=1">
   <link rel="stylesheet" href="/first-use-notice.css?v=1">
+  <link rel="stylesheet" href="/ui-polish.css?v=4">
   <link rel="stylesheet" href="/interaction-compat.css?v=1">
-  <link rel="stylesheet" id="legacy-layout" data-href="/webview83.css?v=8">
+  <link rel="stylesheet" id="legacy-layout" data-href="/webview83.css?v=9">
   <script src="/browser-compat.js?v=webview83-1"></script>
-  <script src="/skins.js?v=activation-1"></script>
+  <script src="/skins.js?v=activation-2"></script>
 </head>
 <body class="wechat-classic">
   <main class="phone-shell" aria-label="私人小手机">
-    <div id="view" class="view" aria-live="polite"><div class="boot-screen"><div class="boot-logo">聊</div><p>正在载入…</p></div></div>
+    <div id="view" class="view" aria-live="polite"><div class="boot-screen"><div class="boot-logo" aria-hidden="true"><svg viewBox="0 0 29 28" width="28" height="28" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M14.875 23.3333C21.3184 23.3333 26.5417 18.8935 26.5417 13.4167C26.5417 7.93984 21.3184 3.5 14.875 3.5C8.43172 3.5 3.20837 7.93984 3.20837 13.4167C3.20837 16.3758 4.73321 19.0322 7.15142 20.8492L6.79898 23.8812C6.76178 24.2012 6.99104 24.4908 7.31105 24.528C7.42049 24.5407 7.53129 24.5222 7.63063 24.4746L11.1107 22.8058C12.2917 23.1478 13.5579 23.3333 14.875 23.3333Z"/></svg></div><p class="boot-caption">正在载入</p></div></div>
     <div id="overlay" class="overlay-root"></div>
     <div id="toast" class="toast" role="status"></div>
   </main>
   <script defer src="/emoji.js?v=0.12.0"></script>
   <script defer src="/moment-visibility.js?v=0.13.0"></script>
-  <script defer src="/features.js?v=ui-forms-2"></script>
+  <script defer src="/features.js?v=mobile-media-1"></script>
   <script defer src="/phone-frame.js?v=0.13.14-1"></script>
-  <script defer src="/model-settings.js?v=0.12.0-provider-key-revision"></script>
-  <script defer src="/usage-ui.js?v=0.13.2"></script>
-  <script defer src="/schedule-ui.js?v=0.12.0-schedule-parameters"></script>
+  <script defer src="/model-settings.js?v=relay-guard-1"></script>
+  <script defer src="/usage-ui.js?v=0.13.3"></script>
+  <script defer src="/schedule-ui.js?v=mobile-media-1"></script>
   <script defer src="/reminder-ui.js?v=reminder-overview"></script>
-  <script defer src="/engine-ui.js?v=waterdrop-2"></script>
+  <script defer src="/engine-ui.js?v=mobile-media-1"></script>
   <script defer src="/personas.js?v=0.12.0-persona-bind-sync"></script>
-  <script defer src="/stickers.js?v=classic-2"></script>
-  <script defer src="/audio-input.js?v=0.12.0-audio-models"></script>
-  <script defer src="/voice-hold.js?v=1"></script>
-  <script defer src="/life-crop.js?v=0.12.0-moments-cover"></script>
-  <script defer src="/life-basic.js?v=0.12.0-friend-outreach-toggle"></script>
-  <script defer src="/wardrobe-import.js?v=0.12.0-role-panel"></script>
-  <script defer src="/life-ui.js?v=0.12.0-friend-moment-gallery"></script>
+  <script defer src="/stickers.js?v=mobile-media-1"></script>
+  <script defer src="/audio-input.js?v=mobile-voice-1"></script>
+  <script defer src="/voice-hold.js?v=mobile-voice-1"></script>
+  <script defer src="/life-crop.js?v=wechat-crop-2"></script>
+  <script defer src="/life-basic.js?v=mobile-media-1"></script>
+  <script defer src="/wardrobe-import.js?v=mobile-media-1"></script>
+  <script defer src="/life-ui.js?v=mobile-media-1"></script>
   <script defer src="/classic-social.js?v=waterdrop-4"></script>
   <script defer src="/waterdrop-shell.js?v=0.13.2"></script>
   <script defer src="/classic-settings.js?v=webview83-3"></script>
@@ -86,9 +87,10 @@
   <script defer src="/updates.js?v=3"></script>
   <script defer src="/storage-ui.js?v=0.13.2"></script>
   <script defer src="/account-ui.js?v=0.13.2"></script>
-  <script defer src="/message-limit.js?v=0.13.0-messages"></script>
+  <script defer src="/message-limit.js?v=storage-guard-1"></script>
   <script defer src="/android-page.js?v=webview83-1"></script>
   <script defer src="/first-use-notice.js?v=webview83-1"></script>
-  <script defer src="/app.js?v=chat-photo-3"></script>
+  <script defer src="/ui-motion.js?v=4"></script>
+  <script defer src="/app.js?v=mobile-fix-2"></script>
 </body>
 </html>

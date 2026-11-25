@@ -44,14 +44,19 @@ public final class FirstConnectionForm extends Dialog {
         default void notificationsChanged(boolean enabled) {}
     }
 
-    private static final int TEXT = Color.rgb(25, 25, 25);
-    private static final int HINT = Color.rgb(96, 104, 101);
-    private static final int GREEN = Color.rgb(8, 124, 76);
-    private static final int ERROR = Color.rgb(175, 48, 46);
+    private static final int TEXT = Color.rgb(24, 25, 28);
+    private static final int SECONDARY = Color.rgb(87, 94, 105);
+    private static final int HINT = Color.rgb(122, 130, 142);
+    private static final int GREEN = Color.rgb(7, 193, 96);
+    private static final int GREEN_DARK = Color.rgb(7, 133, 68);
+    private static final int INPUT_FILL = Color.rgb(244, 246, 249);
+    private static final int CARD_BORDER = Color.rgb(230, 236, 242);
+    private static final int ERROR = Color.rgb(229, 72, 77);
     private final Listener listener;
     private final FrameLayout root;
     private final ScrollView scroll;
     private final LinearLayout content;
+    private final LinearLayout card;
     private final EditText address, password;
     private final TextView addressError, passwordError, formError;
     private final Button reveal, enter, exit;
@@ -68,7 +73,9 @@ public final class FirstConnectionForm extends Dialog {
         setOnCancelListener(dialog -> listener.cancel());
 
         root = new FrameLayout(getContext());
-        root.setBackgroundColor(Color.WHITE);
+        root.setBackground(new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Color.rgb(244, 250, 247), Color.rgb(247, 249, 252), Color.rgb(243, 246, 251)}));
         root.setFocusableInTouchMode(true);
         if (Build.VERSION.SDK_INT >= 26)
             root.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
@@ -83,31 +90,52 @@ public final class FirstConnectionForm extends Dialog {
 
         content = new LinearLayout(getContext());
         content.setOrientation(LinearLayout.VERTICAL);
+        content.setGravity(Gravity.CENTER_HORIZONTAL);
         FormContainer container = new FormContainer();
         container.addView(content, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
         scroll.addView(container, new ScrollView.LayoutParams(-1, -2));
 
         LinearLayout header = new LinearLayout(getContext());
-        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setGravity(Gravity.CENTER_HORIZONTAL);
         ImageView mark = new ImageView(getContext());
         mark.setImageResource(R.drawable.ic_first_connection_chat);
+        mark.setElevation(dp(4));
         mark.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        header.addView(mark, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        header.addView(mark, new LinearLayout.LayoutParams(dp(58), dp(58)));
+
         TextView title = text("连接你的小手机", 23, TEXT);
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        title.setGravity(Gravity.CENTER_HORIZONTAL);
         if (Build.VERSION.SDK_INT >= 28) title.setAccessibilityHeading(true);
-        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, -2, 1);
-        titleParams.leftMargin = dp(12);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-1, -2);
+        titleParams.topMargin = dp(16);
         header.addView(title, titleParams);
+
+        TextView subtitle = text("输入小手机网址和密码，即可同步好友与聊天记录", 13.5f, HINT);
+        subtitle.setGravity(Gravity.CENTER_HORIZONTAL);
+        LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(-1, -2);
+        subtitleParams.topMargin = dp(6);
+        header.addView(subtitle, subtitleParams);
+
         LinearLayout.LayoutParams headerParams = new LinearLayout.LayoutParams(-1, -2);
-        headerParams.bottomMargin = dp(28);
+        headerParams.bottomMargin = dp(24);
         content.addView(header, headerParams);
+
+        card = new LinearLayout(getContext());
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(20), dp(22), dp(20), dp(20));
+        GradientDrawable cardBg = rounded(Color.WHITE, 22);
+        cardBg.setStroke(dp(1), CARD_BORDER);
+        card.setBackground(cardBg);
+        card.setElevation(dp(2));
+        content.addView(card, new LinearLayout.LayoutParams(-1, -2));
 
         address = input(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI, "粘贴网址");
         address.setText(initialAddress);
         address.setImeOptions(EditorInfo.IME_ACTION_NEXT | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         addressError = errorText();
-        addField("小手机的网址", "打开网页版，把地址栏里的网址复制到这里。", address, address, addressError, 0);
+        addField(card, "小手机的网址", "打开网页版，把地址栏里的网址复制到这里。", address, address, addressError, 0);
 
         password = input(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD
                 | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS, "输入密码");
@@ -120,39 +148,40 @@ public final class FirstConnectionForm extends Dialog {
         password.setTransformationMethod(PasswordTransformationMethod.getInstance());
         FrameLayout passwordBox = new FrameLayout(getContext());
         passwordBox.addView(password, new FrameLayout.LayoutParams(-1, -2));
-        reveal = button("显示", Color.rgb(56, 93, 76), Color.TRANSPARENT);
+        reveal = button("显示", GREEN_DARK, Color.TRANSPARENT, 10);
         reveal.setTextSize(14);
+        reveal.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         reveal.setSingleLine(true);
-        reveal.setMinWidth(dp(60));
-        reveal.setPadding(dp(8), 0, dp(8), 0);
+        reveal.setMinWidth(dp(58));
+        reveal.setPadding(dp(10), 0, dp(10), 0);
         reveal.setContentDescription("显示密码");
         reveal.setOnClickListener(view -> showPassword(!passwordVisible));
         reveal.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             int endPadding = right - left + dp(4);
             if (password.getPaddingEnd() != endPadding)
-                password.setPaddingRelative(dp(12), dp(11), endPadding, dp(11));
+                password.setPaddingRelative(dp(14), dp(12), endPadding, dp(12));
         });
         passwordBox.addView(reveal, new FrameLayout.LayoutParams(-2, -1, Gravity.END));
         passwordError = errorText();
-        addField("小手机密码", "就是你第一次打开网页版时设置的密码。", passwordBox, password, passwordError, 19);
+        addField(card, "小手机密码", "就是你第一次打开网页版时设置的密码。", passwordBox, password, passwordError, 18);
 
         LinearLayout notice = new LinearLayout(getContext());
         notice.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams noticeParams = new LinearLayout.LayoutParams(-1, -2);
-        noticeParams.topMargin = dp(23);
-        noticeParams.bottomMargin = dp(23);
-        content.addView(notice, noticeParams);
-        notice.addView(divider(), new LinearLayout.LayoutParams(-1, dp(1)));
+        noticeParams.topMargin = dp(20);
+        noticeParams.bottomMargin = dp(20);
+        card.addView(notice, noticeParams);
+        notice.addView(divider(), new LinearLayout.LayoutParams(-1, Math.max(1, dp(1))));
         notificationRow = new LinearLayout(getContext());
         notificationRow.setGravity(Gravity.CENTER_VERTICAL);
         notificationRow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        notificationRow.setPadding(0, dp(16), 0, dp(16));
+        notificationRow.setPadding(0, dp(14), 0, dp(14));
         LinearLayout copy = new LinearLayout(getContext());
         copy.setOrientation(LinearLayout.VERTICAL);
         copy.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         TextView noticeTitle = label("新消息提醒");
         copy.addView(noticeTitle, new LinearLayout.LayoutParams(-1, -2));
-        TextView noticeHint = text("登录后，去用别的 App 也能收到提醒。有时会晚一点。", 14, HINT);
+        TextView noticeHint = text("登录后，去用别的 App 也能收到提醒。有时会晚一点。", 13, HINT);
         LinearLayout.LayoutParams hintParams = new LinearLayout.LayoutParams(-1, -2);
         hintParams.topMargin = dp(3);
         copy.addView(noticeHint, hintParams);
@@ -166,30 +195,36 @@ public final class FirstConnectionForm extends Dialog {
         notifications.setThumbTintList(ColorStateList.valueOf(Color.WHITE));
         notifications.setTrackTintList(new ColorStateList(
                 new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
-                new int[]{Color.rgb(7, 135, 82), Color.rgb(119, 126, 122)}));
+                new int[]{GREEN, Color.rgb(203, 210, 218)}));
         notifications.setContentDescription("新消息提醒。登录后，去用别的 App 也能收到提醒。有时会晚一点。");
         notifications.setChecked(initialNotifications);
         notifications.setOnCheckedChangeListener((view, enabled) -> listener.notificationsChanged(enabled));
         notificationRow.setOnClickListener(view -> notifications.toggle());
         LinearLayout.LayoutParams switchParams = new LinearLayout.LayoutParams(-2, -2);
-        switchParams.leftMargin = dp(16);
+        switchParams.leftMargin = dp(14);
         notificationRow.addView(notifications, switchParams);
         notice.addView(notificationRow, new LinearLayout.LayoutParams(-1, -2));
-        notice.addView(divider(), new LinearLayout.LayoutParams(-1, dp(1)));
+        notice.addView(divider(), new LinearLayout.LayoutParams(-1, Math.max(1, dp(1))));
 
-        enter = button("进入小手机", Color.WHITE, GREEN);
+        enter = button("进入小手机", Color.WHITE, GREEN, 14);
+        enter.setMinimumHeight(dp(50));
+        enter.setMinHeight(dp(50));
+        enter.setElevation(dp(2));
         enter.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         enter.setOnClickListener(view -> submit());
-        content.addView(enter, new LinearLayout.LayoutParams(-1, -2));
-        exit = button(cancelLabel, Color.rgb(85, 95, 89), Color.TRANSPARENT);
+        card.addView(enter, new LinearLayout.LayoutParams(-1, -2));
+
+        formError = errorText();
+        formError.setGravity(Gravity.CENTER_HORIZONTAL);
+        LinearLayout.LayoutParams formErrorParams = new LinearLayout.LayoutParams(-1, -2);
+        formErrorParams.topMargin = dp(10);
+        card.addView(formError, formErrorParams);
+
+        exit = button(cancelLabel, SECONDARY, Color.TRANSPARENT, 14);
         exit.setOnClickListener(view -> cancel());
         LinearLayout.LayoutParams exitParams = new LinearLayout.LayoutParams(-1, -2);
-        exitParams.topMargin = dp(4);
+        exitParams.topMargin = dp(10);
         content.addView(exit, exitParams);
-        formError = errorText();
-        LinearLayout.LayoutParams formErrorParams = new LinearLayout.LayoutParams(-1, -2);
-        formErrorParams.topMargin = dp(6);
-        content.addView(formError, formErrorParams);
 
         clearErrorWhenEdited(address, addressError);
         clearErrorWhenEdited(password, passwordError);
@@ -209,7 +244,7 @@ public final class FirstConnectionForm extends Dialog {
 
     @Override public void show() {
         Window window = getWindow();
-        window.setBackgroundDrawableResource(android.R.color.white);
+        window.setBackgroundDrawableResource(android.R.color.transparent);
         window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
                 | WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
@@ -237,7 +272,7 @@ public final class FirstConnectionForm extends Dialog {
 
     @Override public void dismiss() {
         InputMethodManager keyboard = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
-        keyboard.hideSoftInputFromWindow(password.getWindowToken(), 0);
+        if (keyboard != null) keyboard.hideSoftInputFromWindow(password.getWindowToken(), 0);
         password.getText().clear();
         showPassword(false);
         super.dismiss();
@@ -252,10 +287,10 @@ public final class FirstConnectionForm extends Dialog {
         notificationRow.setEnabled(!value);
         enter.setEnabled(!value);
         exit.setEnabled(!value);
-        enter.setAlpha(value ? .63f : 1f);
-        exit.setAlpha(value ? .63f : 1f);
-        reveal.setAlpha(value ? .63f : 1f);
-        notifications.setAlpha(value ? .63f : 1f);
+        enter.setAlpha(value ? .65f : 1f);
+        exit.setAlpha(value ? .55f : 1f);
+        reveal.setAlpha(value ? .55f : 1f);
+        notifications.setAlpha(value ? .6f : 1f);
         enter.setText(value ? "正在打开…" : "进入小手机");
     }
 
@@ -325,13 +360,13 @@ public final class FirstConnectionForm extends Dialog {
         });
     }
 
-    private void addField(String name, String hint, View control, EditText input, TextView error, int margin) {
+    private void addField(LinearLayout parent, String name, String hint, View control, EditText input, TextView error, int margin) {
         LinearLayout field = new LinearLayout(getContext());
         field.setOrientation(LinearLayout.VERTICAL);
         TextView label = label(name);
         label.setLabelFor(input.getId());
         field.addView(label, new LinearLayout.LayoutParams(-1, -2));
-        TextView detail = text(hint, 14, HINT);
+        TextView detail = text(hint, 13, HINT);
         LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(-1, -2);
         detailParams.topMargin = dp(3);
         detailParams.bottomMargin = dp(8);
@@ -342,7 +377,7 @@ public final class FirstConnectionForm extends Dialog {
         field.addView(error, errorParams);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.topMargin = dp(margin);
-        content.addView(field, params);
+        parent.addView(field, params);
     }
 
     private EditText input(int type, String placeholder) {
@@ -350,40 +385,40 @@ public final class FirstConnectionForm extends Dialog {
         input.setId(View.generateViewId());
         input.setTextSize(16);
         input.setTextColor(TEXT);
-        input.setHintTextColor(Color.rgb(116, 124, 120));
+        input.setHintTextColor(Color.rgb(148, 156, 168));
         input.setHint(placeholder);
         input.setInputType(type);
         input.setSingleLine(true);
         input.setMinimumHeight(dp(48));
-        input.setPadding(dp(12), dp(11), dp(12), dp(11));
+        input.setPadding(dp(14), dp(12), dp(14), dp(12));
         input.setBackground(inputBackground(false));
         return input;
     }
 
-    private TextView text(String value, int size, int color) {
+    private TextView text(String value, float size, int color) {
         TextView view = new TextView(getContext());
         view.setText(value);
         view.setTextSize(size);
         view.setTextColor(color);
         view.setIncludeFontPadding(false);
-        view.setLineSpacing(0, 1.1f);
+        view.setLineSpacing(0, 1.25f);
         return view;
     }
 
     private TextView label(String value) {
-        TextView view = text(value, 16, TEXT);
+        TextView view = text(value, 14.5f, TEXT);
         view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         return view;
     }
 
     private TextView errorText() {
-        TextView view = text("", 14, ERROR);
+        TextView view = text("", 13.5f, ERROR);
         view.setVisibility(View.GONE);
         view.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_ASSERTIVE);
         return view;
     }
 
-    private Button button(String value, int textColor, int background) {
+    private Button button(String value, int textColor, int background, int radius) {
         Button view = new Button(getContext());
         view.setText(value);
         view.setTextSize(16);
@@ -393,20 +428,21 @@ public final class FirstConnectionForm extends Dialog {
         view.setMinimumHeight(dp(48));
         view.setMinWidth(0);
         view.setMinimumWidth(0);
-        view.setPadding(dp(8), dp(10), dp(8), dp(10));
+        view.setPadding(dp(12), dp(10), dp(12), dp(10));
         view.setStateListAnimator(null);
-        view.setBackground(new RippleDrawable(ColorStateList.valueOf(Color.rgb(218, 232, 223)),
-                rounded(background, 9), rounded(Color.WHITE, 9)));
+        int ripple = background == GREEN ? Color.argb(48, 0, 0, 0) : Color.argb(26, 7, 133, 68);
+        view.setBackground(new RippleDrawable(ColorStateList.valueOf(ripple),
+                rounded(background, radius), rounded(Color.WHITE, radius)));
         return view;
     }
 
     private Drawable inputBackground(boolean invalid) {
         StateListDrawable states = new StateListDrawable();
-        GradientDrawable focused = rounded(Color.WHITE, 9);
-        focused.setStroke(dp(2), invalid ? ERROR : Color.rgb(20, 128, 85));
+        GradientDrawable focused = rounded(Color.WHITE, 12);
+        focused.setStroke(dp(2), invalid ? ERROR : GREEN);
         states.addState(new int[]{android.R.attr.state_focused}, focused);
-        GradientDrawable normal = rounded(Color.WHITE, 9);
-        normal.setStroke(dp(1), invalid ? ERROR : Color.rgb(198, 206, 201));
+        GradientDrawable normal = rounded(invalid ? Color.rgb(255, 246, 246) : INPUT_FILL, 12);
+        normal.setStroke(dp(1), invalid ? ERROR : Color.rgb(224, 230, 238));
         states.addState(new int[]{}, normal);
         return states;
     }
@@ -420,7 +456,7 @@ public final class FirstConnectionForm extends Dialog {
 
     private View divider() {
         View line = new View(getContext());
-        line.setBackgroundColor(Color.rgb(229, 233, 230));
+        line.setBackgroundColor(Color.rgb(235, 239, 244));
         return line;
     }
 
@@ -451,14 +487,13 @@ public final class FirstConnectionForm extends Dialog {
         @Override protected void onMeasure(int widthSpec, int heightSpec) {
             int availableWidth = MeasureSpec.getSize(widthSpec);
             FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) content.getLayoutParams();
-            params.width = Math.min(availableWidth, dp(440));
-            int side = params.width <= dp(350) ? dp(18) : dp(24);
+            params.width = Math.min(availableWidth, dp(432));
+            int side = params.width <= dp(350) ? dp(16) : dp(22);
             int viewportHeight = root.getHeight() - root.getPaddingTop() - root.getPaddingBottom();
             if (viewportHeight == 0) viewportHeight = getResources().getDisplayMetrics().heightPixels;
-            int top = Math.max(dp(24), Math.min(dp(52), Math.round(viewportHeight * .06f)));
-            content.setPadding(side, top, side, dp(24));
+            int top = Math.max(dp(26), Math.min(dp(56), Math.round(viewportHeight * .065f)));
+            content.setPadding(side, top, side, dp(28));
             super.onMeasure(widthSpec, heightSpec);
         }
     }
-
 }

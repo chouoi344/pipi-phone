@@ -26,5 +26,7 @@
             android:permission="android.permission.BIND_JOB_SERVICE" />
         <provider android:name=".UpdateApkProvider" android:authorities="${applicationId}.update.apk"
             android:exported="false" android:grantUriPermissions="true" />
+        <provider android:name=".PickedImageProvider" android:authorities="${applicationId}.picked.image"
+            android:exported="false" android:grantUriPermissions="true" />
     </application>
 </manifest>

@@ -56,13 +56,22 @@ public final class PhoneNotificationsService extends Service {
         }
     }
 
+    private void promoteForeground() {
+        PhoneNotifications.channels(this);
+        Notification notification = connectionNotification();
+        if (Build.VERSION.SDK_INT >= 29) startForeground(PhoneNotifications.CONNECTION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+        else startForeground(PhoneNotifications.CONNECTION_ID, notification);
+    }
+
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && "stop".equals(intent.getAction())) {
+            if (Build.VERSION.SDK_INT >= 26 && !running) promoteForeground();
             PhoneNotifications.disable(this, "已关闭");
             stopSelf();
             return START_NOT_STICKY;
         }
         if (!PhoneNotifications.isEnabled(this)) {
+            if (Build.VERSION.SDK_INT >= 26 && !running) promoteForeground();
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -70,19 +79,18 @@ public final class PhoneNotificationsService extends Service {
         long generation = PhoneNotifications.prefs(this).getLong("generation", 0);
         String cookie = PhoneNotifications.cookie(serverOrigin);
         if (cookie == null) {
+            if (Build.VERSION.SDK_INT >= 26 && !running) promoteForeground();
             PhoneNotifications.disable(this, "登录已退出，后台通知已关闭");
             stopSelf();
             return START_NOT_STICKY;
         }
         if (current != null && current.matches(serverOrigin,generation,cookie)) {
+            if (Build.VERSION.SDK_INT >= 26 && !running) promoteForeground();
             current.startId=startId;
             return START_NOT_STICKY;
         }
         if (current != null) current.cancel();
-        PhoneNotifications.channels(this);
-        Notification notification = connectionNotification();
-        if (Build.VERSION.SDK_INT >= 29) startForeground(PhoneNotifications.CONNECTION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
-        else startForeground(PhoneNotifications.CONNECTION_ID, notification);
+        promoteForeground();
         running = true;
         ConnectionRun next = new ConnectionRun(serverOrigin,generation,cookie,startId);
         current=next;
@@ -137,9 +145,12 @@ public final class PhoneNotificationsService extends Service {
                     while (run.active() && (line = input.readLine()) != null) {
                         if (line.length() > 8192) throw new IOException("通知事件过大");
                         if (line.startsWith("event:")) event = line.substring(6).trim();
-                        else if (line.startsWith("data:")) data = line.substring(5).trim();
+                        else if (line.startsWith("data:")) {
+                            String part = line.substring(5).trim();
+                            data = data.isEmpty() ? part : (data + "\n" + part);
+                        }
                         else if (line.isEmpty()) {
-                            if ("revision".equals(event) && new JSONObject(data).getLong("revision") != revision) {
+                            if ("revision".equals(event) && !data.isEmpty() && new JSONObject(data).getLong("revision") != revision) {
                                 revision = PhoneNotifications.sync(this, run.origin, run.generation, run::active);
                                 if (revision < 0) break;
                             }

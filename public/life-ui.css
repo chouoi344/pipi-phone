@@ -14,7 +14,7 @@
 .life-navigation .life-moments-mark{background:currentColor;mask:url('/vendor/fake-world/icons/moment.svg') center/contain no-repeat}
 .life-navigation .life-wardrobe-mark{background:currentColor;mask:url('/vendor/native-icons/shopping.svg') center/contain no-repeat}
 .life-navigation .chat-mark{fill:none;stroke:currentColor;stroke-width:1.8}
-.life-save{position:relative;box-sizing:border-box;height:32px;margin-right:4px;border:0;border-radius:5px;background:#07c160;color:#fff;padding:0 12px;font:inherit;font-size:15px;line-height:32px;white-space:nowrap}
+.life-save{position:relative;box-sizing:border-box;height:32px;margin-right:4px;border:0;border-radius:5px;background:var(--green);color:#fff;padding:0 12px;font:inherit;font-size:15px;line-height:32px;white-space:nowrap}
 .life-save::after{content:'';position:absolute;inset:-6px -4px}
 .life-save:disabled{opacity:.55}
 .life-card{margin:8px 0;background:#fff;padding:12px 16px;border-radius:0}
@@ -28,7 +28,7 @@
 .life-check{flex-direction:row;align-items:center;justify-content:space-between;gap:16px;min-height:50px;box-sizing:border-box}
 .life-check input{appearance:none;position:relative;flex:0 0 42px;width:42px;height:26px;min-height:26px;padding:0;border:1px solid #ddd;border-radius:16px;background:#eee;cursor:pointer}
 .life-check input:before{content:"";position:absolute;left:1px;top:1px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 2px #0002;transition:transform .15s}
-.life-check input:checked{background:#07c160;border-color:#07c160}
+.life-check input:checked{background:var(--green);border-color:var(--green)}
 .life-check input:checked:before{transform:translateX(16px)}
 .life-card-heading{min-height:34px;padding:0}
 .life-card-heading h3{margin:0;color:#252525;font-weight:400}
@@ -184,7 +184,7 @@ button.life-now-outfit{cursor:pointer}
 .life-feed-image img{width:100%;height:100%;object-fit:cover;display:block}
 .life-feed-images:has(.life-feed-image:only-child){grid-template-columns:minmax(0,144px)}
 .life-content button:disabled{opacity:.5}
-.life-content input:focus-visible,.life-content textarea:focus-visible,.life-content select:focus-visible{outline:2px solid #07c160;outline-offset:2px}
+.life-content input:focus-visible,.life-content textarea:focus-visible,.life-content select:focus-visible{outline:2px solid var(--green);outline-offset:2px}
 
 .life-archive{border-top:1px solid #ededed}
 .life-archive>h4{margin:0;padding:12px 0 10px;color:#737373;font-size:14px;font-weight:400}

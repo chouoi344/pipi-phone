@@ -1,0 +1,2178 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+ * Unified Dual-Skin Design System & UI Polish Layer
+ * Elevates both Classic WeChat ("微信经典版") and Pure Waterdrop ("原图纯净水滴")
+ * with coherent tokens, native craft, crisp typography, 44x44 touch targets,
+ * tactile micro-interactions, and 1.75x max-font safety (WebView 83 compatible).
+ */
+
+/* ==========================================================================
+   1. DESIGN TOKENS — Classic & Waterdrop
+   ========================================================================== */
+body.wechat-classic,
+body.wechat-classic .phone-shell {
+  --surface: #ffffff;
+  --surface-subtle: #f7f7f7;
+  --surface-input: #f4f5f7;
+  --ink: #18191c;
+  --ink-secondary: #575e69;
+  --muted: #8c929c;
+  --green: #07c160;
+  --green-dark: #078544;
+  --green-soft: #eaf8f0;
+  --line: rgba(0, 0, 0, 0.08);
+  --line-strong: rgba(0, 0, 0, 0.12);
+  --danger: #e5484d;
+  --danger-soft: #fff0f0;
+  --blue: #576b95;
+  --icon-primary: #18191c;
+  --icon-secondary: #4e545f;
+  --icon-muted: #b0b5be;
+  --icon-inverse: #ffffff;
+  --icon-active: var(--green-dark);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.32, 1.25, 0.36, 1);
+}
+
+html[data-skin="waterdrop"] body,
+html[data-skin="waterdrop"] body.wechat-classic,
+html[data-skin="waterdrop"] .phone-shell {
+  --wd-canvas: #f1f5fb;
+  --wd-backdrop:
+    radial-gradient(ellipse 92% 46% at 14% 0%, rgba(192, 226, 255, 0.62) 0%, rgba(192, 226, 255, 0) 64%),
+    radial-gradient(ellipse 84% 44% at 88% 12%, rgba(255, 218, 236, 0.48) 0%, rgba(255, 218, 236, 0) 62%),
+    radial-gradient(ellipse 76% 48% at 50% 100%, rgba(206, 232, 255, 0.44) 0%, rgba(206, 232, 255, 0) 66%),
+    linear-gradient(180deg, #edf4fc 0%, #f3f6fb 48%, #f8f2f7 100%);
+  --wd-glass-card: linear-gradient(160deg, rgba(255, 255, 255, 0.86) 0%, rgba(251, 253, 255, 0.72) 100%);
+  --wd-glass-strong: rgba(255, 255, 255, 0.92);
+  --wd-glass-pill: linear-gradient(160deg, rgba(255, 255, 255, 0.86) 0%, rgba(244, 249, 255, 0.66) 100%);
+  --wd-rim: 1px solid rgba(255, 255, 255, 0.94);
+  --wd-card-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    inset 0 -1px 2px rgba(190, 210, 236, 0.16),
+    0 8px 24px rgba(24, 46, 78, 0.06),
+    0 1.5px 4px rgba(24, 46, 78, 0.03);
+  --wd-pill-shadow:
+    inset 0 1.5px 1.5px rgba(255, 255, 255, 0.96),
+    inset 0 -1.5px 3px rgba(210, 226, 246, 0.35),
+    0 5px 14px rgba(20, 40, 72, 0.08);
+  --wd-ink: #161a20;
+  --wd-secondary: #4f5866;
+  --wd-muted: #768091;
+  --wd-green: #1ec96b;
+  --wd-line: rgba(24, 46, 78, 0.065);
+  --ink: var(--wd-ink);
+  --ink-secondary: var(--wd-secondary);
+  --muted: var(--wd-muted);
+  --green: var(--wd-green);
+  --green-dark: #0a8244;
+  --green-soft: rgba(30, 201, 107, 0.13);
+  --line: var(--wd-line);
+  --icon-primary: var(--wd-ink);
+  --icon-secondary: #47505e;
+  --icon-muted: #939cab;
+  --icon-inverse: #ffffff;
+  --icon-active: var(--green);
+  --pt-canvas: #f1f5fb;
+  --pt-ink: var(--wd-ink);
+  --pt-secondary: var(--wd-muted);
+  --pt-accent: var(--green);
+  --pt-group-shadow: var(--wd-card-shadow);
+  --wd-panel: var(--wd-glass-card);
+  --waterdrop-sakura-wallpaper:
+    radial-gradient(ellipse 72% 38% at 82% 18%, rgba(255, 255, 255, 0.94) 0%, rgba(255, 255, 255, 0) 64%),
+    radial-gradient(circle at 18% 36%, rgba(164, 218, 255, 0.62) 0%, rgba(164, 218, 255, 0) 48%),
+    radial-gradient(circle at 78% 64%, rgba(255, 182, 214, 0.56) 0%, rgba(255, 182, 214, 0) 46%),
+    radial-gradient(circle at 26% 78%, rgba(255, 204, 226, 0.58) 0%, rgba(255, 204, 226, 0) 50%),
+    linear-gradient(180deg, #d7ecff 0%, #e7f3ff 34%, #f7e9f4 74%, #f8dce9 100%);
+}
+
+/* ==========================================================================
+   2. SHARED INTERACTION MICRO-CRAFT & ACCESSIBILITY (Skills 05, 06, 09, 10)
+   ========================================================================== */
+@keyframes ui-menu-pop {
+  from { opacity: 0; transform: scale(0.92) translateY(-6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes ui-dialog-pop {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.94); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes ui-sheet-up {
+  from { opacity: 0.7; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Default placeholder avatars: warm refined mist instead of flat dead gray */
+.avatar {
+  background: linear-gradient(150deg, #d7dde6 0%, #c3ccd8 100%);
+}
+
+/* Fix muted conversation preview text colliding with the muted bell icon */
+.conversation.is-muted .conversation-preview {
+  padding-right: 24px;
+}
+.conversation-muted {
+  bottom: 13px;
+  right: 16px;
+}
+
+/* Optical weight balance for chat "+" tool drawer mic icon */
+.compose-panel .compose-dictation .panel-icon svg rect {
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+.compose-panel .compose-dictation .panel-icon svg path {
+  stroke-width: 2.15;
+}
+
+/* Refined pagination indicator dots for chat tool drawer (preserves 44x44 tap target) */
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .panel-dots {
+  height: auto;
+  min-height: 36px;
+  gap: 0;
+  padding: 0 0 4px;
+  align-items: center;
+}
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .panel-dots button::after {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.18);
+  transition: width 0.22s var(--ease-out), background-color 0.22s ease;
+}
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .panel-dots button.active::after {
+  width: 16px;
+  background: var(--ink-secondary);
+}
+
+/* Refined floating in-app message notification pill */
+.android-chat-notice {
+  left: 12px;
+  right: 12px;
+  top: calc(var(--safe-top, 0px) + 8px);
+  padding: 12px 15px 12px 20px;
+  border: 0.5px solid rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+  color: var(--ink);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.05);
+  animation: android-notice-in 0.26s var(--ease-out);
+}
+.android-chat-notice::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 12px;
+  bottom: 12px;
+  width: 3.5px;
+  border-radius: 999px;
+  background: var(--green);
+}
+.android-chat-notice strong {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ink);
+}
+.android-chat-notice span {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-secondary);
+}
+
+/* Tactile press feedback on shared buttons */
+body.wechat-classic .primary-btn,
+body.wechat-classic .secondary-btn,
+body.wechat-classic .danger-btn,
+body.wechat-classic .classic-chat-send,
+body.wechat-classic .classic-compose-row > .icon-btn,
+body.wechat-classic .compose-row .classic-inline-more {
+  transition: transform 0.14s var(--ease-out), background-color 0.16s ease, color 0.16s ease, opacity 0.16s ease;
+}
+body.wechat-classic .primary-btn:active:not(:disabled),
+body.wechat-classic .secondary-btn:active:not(:disabled),
+body.wechat-classic .classic-chat-send:active:not(:disabled),
+body.wechat-classic .classic-compose-row > .icon-btn:active:not(:disabled),
+body.wechat-classic .compose-row .classic-inline-more:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+/* C8: guarantee >= 44x44 touch hit areas on composer controls without resizing icons */
+body.wechat-classic .compose-row > .icon-btn,
+body.wechat-classic .compose-row .classic-inline-more,
+body.wechat-classic .compose-row .classic-chat-send {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Refined toast pill */
+.toast {
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  background: rgba(24, 27, 32, 0.88);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+/* ==========================================================================
+   3. FULL-BLEED AUTH / LOGIN SCREEN (Eliminates top & bottom gray bars)
+   ========================================================================== */
+.view[data-route="auth"] {
+  padding-top: 0;
+  padding-bottom: 0;
+  background: #ffffff;
+}
+.view[data-route="auth"].phone-frame-leaf::after {
+  display: none;
+}
+.view[data-route="auth"] .auth-content {
+  padding: calc(72px + var(--safe-top, 0px)) 28px calc(28px + var(--safe-bottom, 0px));
+  background: linear-gradient(180deg, #f8fcf9 0%, #ffffff 34%, #ffffff 100%);
+}
+.view[data-route="auth"] .auth-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: linear-gradient(150deg, #16d16f 0%, var(--green) 100%);
+  box-shadow: 0 10px 24px rgba(7, 193, 96, 0.24), inset 0 1px 1px rgba(255, 255, 255, 0.45);
+  margin: 0 auto 20px;
+}
+.view[data-route="auth"] .auth-logo .icon {
+  width: 36px;
+  height: 36px;
+}
+.view[data-route="auth"] .auth-content h1 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  margin: 0 0 8px;
+}
+.view[data-route="auth"] .auth-subtitle {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0 0 36px;
+}
+.view[data-route="auth"] .auth-content form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.view[data-route="auth"] .auth-content .form-field {
+  border-bottom: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.view[data-route="auth"] .auth-content .form-field .field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  padding-left: 2px;
+}
+.view[data-route="auth"] .auth-content .form-field input {
+  width: 100%;
+  min-height: 50px;
+  padding: 12px 15px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: var(--surface-input);
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.45;
+  caret-color: var(--green);
+  transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.view[data-route="auth"] .auth-content .form-field input:focus {
+  background: #ffffff;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3.5px rgba(7, 193, 96, 0.14);
+}
+.view[data-route="auth"] .auth-content .primary-btn,
+.view[data-route="auth"] .auth-content .primary-btn.weui-btn {
+  margin-top: 8px;
+  min-height: 50px;
+  border-radius: 12px;
+  background: var(--green);
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  box-shadow: 0 6px 16px rgba(7, 193, 96, 0.22);
+}
+.view[data-route="auth"] .auth-bottom {
+  font-size: 11.5px;
+  line-height: 1.85;
+  color: #9ba2ad;
+  padding-top: 32px;
+}
+
+/* Waterdrop Auth: pure crystalline morning-sky login card */
+html[data-skin="waterdrop"] .view[data-route="auth"] {
+  background: var(--wd-backdrop);
+}
+html[data-skin="waterdrop"] .view[data-route="auth"] .auth-content {
+  background: var(--wd-backdrop);
+}
+html[data-skin="waterdrop"] .view[data-route="auth"] .auth-logo {
+  border-radius: 20px;
+  background: linear-gradient(145deg, #27d678 0%, var(--green) 100%);
+  border: 1.5px solid rgba(255, 255, 255, 0.65);
+  box-shadow: inset 0 1.5px 2px rgba(255, 255, 255, 0.6), 0 12px 26px rgba(30, 201, 107, 0.26);
+}
+html[data-skin="waterdrop"] .view[data-route="auth"] .auth-content form {
+  padding: 22px 20px 20px;
+  border: var(--wd-rim);
+  border-radius: 24px;
+  background: var(--wd-glass-card);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
+  backdrop-filter: blur(20px) saturate(155%);
+  box-shadow: var(--wd-card-shadow);
+}
+html[data-skin="waterdrop"] .view[data-route="auth"] .auth-content .form-field input {
+  border: 1px solid rgba(24, 46, 78, 0.08);
+  border-radius: 14px;
+  background: rgba(244, 248, 253, 0.85);
+}
+html[data-skin="waterdrop"] .view[data-route="auth"] .auth-content .form-field input:focus {
+  background: #ffffff;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3.5px rgba(30, 201, 107, 0.16);
+}
+html[data-skin="waterdrop"] .view[data-route="auth"] .auth-content .primary-btn,
+html[data-skin="waterdrop"] .view[data-route="auth"] .auth-content .primary-btn.weui-btn {
+  border-radius: 999px;
+  background: linear-gradient(145deg, #24d173 0%, #14b35e 100%);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.45), 0 8px 20px rgba(20, 179, 94, 0.24);
+}
+
+/* ==========================================================================
+   4. CLASSIC SKIN («微信经典版») — Native Precision & Zero Visual Clashes
+   ========================================================================== */
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) > .topbar:not(.moments-topbar) {
+  background: #ededed;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.07);
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) > .topbar h2 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) > .search-bar {
+  padding: 2px 12px 8px;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) > .search-bar .search-input-wrap {
+  min-height: 38px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 0.5px solid rgba(0, 0, 0, 0.04);
+  background: #ffffff;
+}
+html[data-skin="classic"] body.wechat-classic .classic-chat-filters {
+  padding: 0 12px 2px;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.06);
+  background: #ededed;
+}
+html[data-skin="classic"] body.wechat-classic .classic-chat-filters button {
+  min-height: 40px;
+  padding: 6px 4px;
+  font-size: 13.5px;
+  color: var(--ink-secondary);
+}
+html[data-skin="classic"] body.wechat-classic .classic-chat-filters button[aria-pressed="true"] {
+  color: var(--green-dark);
+}
+html[data-skin="classic"] body.wechat-classic .classic-chat-filters button[aria-pressed="true"]::after {
+  width: 22px;
+  height: 2.5px;
+  bottom: 0;
+  background: var(--green);
+}
+
+/* Classic conversation rows */
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .conversation {
+  min-height: 68px;
+  padding: 11px 16px;
+  gap: 12px;
+  transition: background-color 0.12s ease;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .conversation.pinned {
+  background: #f6f7f8;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .conversation:active:not(:disabled) {
+  background: #eceef1;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .conversation .avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 6px;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .conversation-name {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink);
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .conversation-preview {
+  font-size: 13px;
+  color: var(--muted);
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .conversation-time {
+  font-size: 11.5px;
+  color: #9ba1ab;
+  font-variant-numeric: tabular-nums;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .conversation::after {
+  left: 74px;
+  background: var(--line);
+}
+
+/* Classic cells, sections & settings logout */
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .cell {
+  min-height: 54px;
+  transition: background-color 0.12s ease;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .cell:active:not(:disabled) {
+  background: #eceef1;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .cell::after {
+  background: var(--line);
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .cell-title {
+  font-size: 16px;
+  color: var(--ink);
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .cell-value {
+  font-size: 14px;
+  color: var(--ink-secondary);
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="settings"] .centered-cell {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+/* Classic Contacts index rail: sleek, aligned, never noisy */
+body.wechat-classic :is(#view, .navigation-snapshot) > .contact-index-rail {
+  right: 2px;
+  width: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) .contact-index-rail button {
+  width: 22px;
+  min-height: 20px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #6b7280;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) .contact-index-rail button:active {
+  background: var(--green);
+  color: #ffffff;
+}
+
+/* Me page: refined profile card & intentional friend-status indicator button */
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .me-topspace {
+  height: 20px;
+  background: #ffffff;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .me-profile-block .profile-card {
+  padding: 8px 20px 10px;
+  gap: 16px;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .me-profile-block .profile-card .avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot) .me-status-row {
+  padding: 0 20px 18px 100px;
+  gap: 4px;
+}
+body.wechat-classic .me-status-button {
+  color: var(--ink-secondary);
+  font-weight: 500;
+}
+body.wechat-classic .me-status-button::before {
+  border-color: rgba(0, 0, 0, 0.14);
+  background: #ffffff;
+  transition: background-color 0.14s ease, border-color 0.14s ease;
+}
+body.wechat-classic .me-status-button:active::before {
+  background: #f2f4f7;
+}
+/* Replace blank confusing concentric circle with crisp subtle 3-dot friend-status glyph */
+body.wechat-classic .me-status-friends::before {
+  inset: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  background: #ffffff;
+}
+body.wechat-classic .me-status-friends::after {
+  inset: 14px;
+  border: 0;
+  border-radius: 0;
+  background-color: var(--icon-secondary);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6' cy='12' r='1.7' fill='%23000'/%3E%3Ccircle cx='12' cy='12' r='1.7' fill='%23000'/%3E%3Ccircle cx='18' cy='12' r='1.7' fill='%23000'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6' cy='12' r='1.7' fill='%23000'/%3E%3Ccircle cx='12' cy='12' r='1.7' fill='%23000'/%3E%3Ccircle cx='18' cy='12' r='1.7' fill='%23000'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+
+/* Classic Top Menu popover: refined dark charcoal with crisp elevation & spring pop */
+html[data-skin="classic"] body.wechat-classic #overlay .top-menu {
+  right: 10px;
+  width: 164px;
+  border-radius: 10px;
+  background: #3a3d42;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24), 0 2px 6px rgba(0, 0, 0, 0.12);
+  transform-origin: top right;
+  animation: ui-menu-pop 0.18s var(--ease-out);
+}
+html[data-skin="classic"] body.wechat-classic #overlay .top-menu button {
+  min-height: 50px;
+  padding: 10px 16px;
+  font-size: 15px;
+  transition: background-color 0.12s ease;
+}
+html[data-skin="classic"] body.wechat-classic #overlay .top-menu button:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Classic Chat Bubbles: authentic crisp geometry & optical polish */
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .message-bubble:not(.image-bubble):not(.payment-card):not(.forward-card) {
+  border-radius: 6px;
+  padding: 9.5px 13px;
+  border: 0.5px solid rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  line-height: 1.48;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .mine .message-bubble:not(.image-bubble):not(.payment-card):not(.forward-card) {
+  background: #95ec69;
+  border-color: rgba(0, 0, 0, 0.03);
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .message-bubble:not(.image-bubble):not(.payment-card):not(.forward-card)::before {
+  top: 14px;
+}
+
+/* Classic Chat Payment Cards: authentic native WeChat orange transfer & redpacket (zero glass clash!) */
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .payment-card.message-transfer {
+  width: 232px;
+  border: 0 !important;
+  border-radius: 6px;
+  padding: 0 !important;
+  overflow: visible;
+  background: #fa9d3b !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: 0 1.5px 4px rgba(0, 0, 0, 0.08);
+  color: #ffffff;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .payment-card.message-transfer::before {
+  display: block;
+  top: 14px;
+  width: 9px;
+  height: 9px;
+  border-radius: 1.5px;
+  background: #fa9d3b;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .message-row:not(.mine) .payment-card.message-transfer::before {
+  left: -4px;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .mine .payment-card.message-transfer::before {
+  right: -4px;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-card .payment-main {
+  padding: 12px 14px 10px;
+  gap: 11px;
+  min-height: 60px;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-card .payment-main > .payment-mark {
+  display: block;
+  width: 38px;
+  height: 38px;
+  background: transparent;
+  color: #ffffff;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] :is(.payment-crystal-mark, .payment-packet-mark) {
+  display: none;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-card .payment-title {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.38;
+  font-variant-numeric: tabular-nums;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-card .payment-note {
+  color: rgba(255, 255, 255, 0.9);
+  opacity: 1;
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 1px;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-card .payment-footer {
+  margin: 0;
+  padding: 5px 14px 6px;
+  border-top: 0.5px solid rgba(255, 255, 255, 0.24);
+  border-radius: 0 0 6px 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 1;
+}
+/* Hide "液态水晶" word in Classic skin so footer cleanly says "微信转账" */
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-footer-term:first-child {
+  display: none;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-card.payment-state-received {
+  background: #f8cfa0 !important;
+  opacity: 1;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-card.payment-state-received::before {
+  background: #f8cfa0;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-card.payment-state-returned {
+  background: #d8d4ce !important;
+  color: #5f5a54;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-card.payment-state-returned::before {
+  background: #d8d4ce;
+}
+/* Classic Redpacket Card: iconic warm red-orange + crisp white footer */
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .payment-card.payment-redpacket {
+  background: linear-gradient(155deg, #f37d4b 0%, #e95f3c 100%) !important;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .payment-card.payment-redpacket::before {
+  background: #ee6f44;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-redpacket .payment-main > .payment-mark {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-redpacket .payment-title {
+  color: #ffffff;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-redpacket .payment-note {
+  color: rgba(255, 245, 235, 0.92);
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-redpacket .payment-footer {
+  background: #ffffff;
+  border-top: 0;
+  color: var(--muted);
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-redpacket.payment-state-received {
+  background: #f6c4aa !important;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .payment-redpacket.payment-state-received::before {
+  background: #f6c4aa;
+}
+
+/* Classic Services & Wallet: iconic WeChat emerald card, clean white rows */
+html[data-skin="classic"] body.wechat-classic .services-page,
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="wallet"] .feature-content {
+  background: #ededed;
+}
+html[data-skin="classic"] body.wechat-classic .services-wallet {
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #09c664 0%, var(--green) 55%, #06ad56 100%);
+  box-shadow: 0 4px 14px rgba(7, 193, 96, 0.22);
+  color: #ffffff;
+}
+html[data-skin="classic"] body.wechat-classic .services-wallet > button,
+html[data-skin="classic"] body.wechat-classic .services-wallet .services-pay-icon {
+  color: #ffffff;
+}
+html[data-skin="classic"] body.wechat-classic .services-wallet small {
+  color: rgba(255, 255, 255, 0.85);
+}
+html[data-skin="classic"] body.wechat-classic .wallet-index-group {
+  border: 0;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+/* Classic Composer & Tool Drawer */
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] > .chat-composer {
+  background: #f7f7f7;
+  border-top: 0.5px solid rgba(0, 0, 0, 0.08);
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] :is(.compose-field, .classic-voice-field) {
+  border: 0.5px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose-panel {
+  background: #f7f7f7;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose-panel .panel-icon {
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  color: #2f343c;
+  transition: transform 0.14s var(--ease-out), background-color 0.14s ease;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose-panel button:active .panel-icon {
+  transform: scale(0.93);
+  background: #eceef1;
+}
+
+/* Classic Modals & Dialogs motion polish */
+body.wechat-classic #overlay > .alert-dialog {
+  animation: ui-dialog-pop 0.2s var(--ease-out);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+}
+body.wechat-classic #overlay > .sheet-actions,
+body.wechat-classic #overlay > .pt-settings-sheet.page-editor,
+body.wechat-classic #overlay > .usage-sheet {
+  animation: ui-sheet-up 0.24s var(--ease-out);
+}
+
+/* ==========================================================================
+   5. WATERDROP SKIN («原图纯净水滴») — True End-to-End Crystalline Pure Glass
+   ========================================================================== */
+html[data-skin="waterdrop"] body {
+  background: #dfe9f6;
+}
+/* Single continuous backdrop ONLY on .phone-shell and #view/.navigation-snapshot.
+ * Never duplicate the gradient onto inner .content wrappers (causes horizontal seams). */
+html[data-skin="waterdrop"] .phone-shell,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot):not([data-route="chat"]):not([data-route="status-picker"]):not([data-route="status-editor"]),
+html[data-skin="waterdrop"] body.wechat-classic :is(#view, .navigation-snapshot).pt-settings-view {
+  background: var(--wd-backdrop) !important;
+}
+/* Override phone-frame.css's --frame-top-bg (#ededed) on Waterdrop chat so wallpaper bleeds seamlessly from y=0 */
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] {
+  background-color: #d7ecff !important;
+  background-image: var(--waterdrop-chat-wallpaper, var(--waterdrop-sakura-wallpaper)) !important;
+  background-size: cover !important;
+  background-position: center !important;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot):not([data-route="chat"]) > .content,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot):is([data-route="chats"], [data-route="contacts"], [data-route="discover"], [data-route="me"]) > .content,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) > .topbar:not(.moments-topbar),
+html[data-skin="waterdrop"] body.wechat-classic :is(#view, .navigation-snapshot).pt-settings-view > .topbar,
+html[data-skin="waterdrop"] body.wechat-classic :is(#view, .navigation-snapshot).pt-settings-view :is(.pt-config-content, .pt-basic-root, .pt-voice-content),
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) :is(.conversation-list, .contacts, .discover, .me-content, .settings-content, .page-content, .feature-content, .services-page, .wallet-page, .ledger-page, .farm-page, .favorites-page, .moment-media-album, .skin-picker, .new-friends-search, .moments-content, .storage-content) {
+  background: transparent !important;
+}
+/* Shadow-safe top breathing room INSIDE .content so overflow:auto NEVER razor-slices the first glass card's upward glow */
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot):not([data-route="chat"]):not([data-route="moments"]):not([data-route="me"]):not([data-route="auth"]) > .content {
+  padding-top: 10px;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot):is([data-route="chats"], [data-route="contacts"], [data-route="discover"], [data-route="me"]) > .content {
+  padding-bottom: calc(114px + var(--safe-bottom, 0px));
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot):is([data-route="chats"], [data-route="contacts"], [data-route="discover"], [data-route="me"])::after {
+  height: calc(46px + var(--safe-bottom, 0px));
+  background: linear-gradient(to top, rgba(244, 241, 248, 0.94) 22%, rgba(244, 241, 248, 0.56) 62%, rgba(244, 241, 248, 0) 100%);
+}
+/* Leaf subpages flow edge-to-edge to the bottom bezel with a gentle safe-area mist (never a hard 34px horizontal shelf!) */
+body.wechat-classic .view.phone-frame-leaf {
+  padding-bottom: 0 !important;
+}
+body.wechat-classic .view.phone-frame-leaf::after {
+  height: calc(16px + var(--safe-bottom, 0px));
+  background: linear-gradient(to top, rgba(237, 237, 237, 0.92) 0%, rgba(237, 237, 237, 0) 100%) !important;
+}
+html[data-skin="waterdrop"] .view.phone-frame-leaf::after {
+  height: calc(16px + var(--safe-bottom, 0px));
+  background: linear-gradient(to top, rgba(244, 241, 248, 0.84) 0%, rgba(244, 241, 248, 0) 100%) !important;
+}
+/* Floating frosted glass Contacts index pill in dedicated right lane (never overlaps cards) */
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) > .contact-index-rail {
+  right: 4px;
+  width: 24px;
+  padding: 5px 0;
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 3px 10px rgba(24, 46, 78, 0.07);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .contacts.contacts-has-index .waterdrop-contact-group {
+  margin-right: 34px;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .contacts.contacts-has-index .cell {
+  padding-right: 16px;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .contact-index-rail button {
+  width: 20px;
+  min-height: 20px;
+  font-size: 10px;
+  color: #5a6575;
+}
+
+/* Waterdrop translucent luminous glass cards (transparent inner cells so glass breathes!) */
+html[data-skin="waterdrop"] .waterdrop-conversation-group,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot):not([data-route="chat"]) .section,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .waterdrop-contact-group,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .chat-members,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .new-friends,
+html[data-skin="waterdrop"] .usage-card,
+html[data-skin="waterdrop"] .usage-log-list,
+html[data-skin="waterdrop"] .usage-empty,
+html[data-skin="waterdrop"] .skin-option {
+  border: var(--wd-rim);
+  border-radius: 22px;
+  background: var(--wd-glass-card);
+  -webkit-backdrop-filter: blur(18px) saturate(155%);
+  backdrop-filter: blur(18px) saturate(155%);
+  box-shadow: var(--wd-card-shadow);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .conversation,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot):not([data-route="chat"]) .cell {
+  background: transparent;
+  transition: background-color 0.14s ease;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .conversation.pinned {
+  background: rgba(232, 244, 255, 0.36);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot, #overlay) :is(.cell, .conversation, .contact, .contact-row, .sheet-action):active:not(:disabled) {
+  background-color: rgba(216, 232, 252, 0.44);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .conversation::after,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot):not([data-route="chat"]) .cell::after {
+  background: var(--wd-line);
+}
+
+/* Waterdrop circular luminous avatars */
+html[data-skin="waterdrop"] .avatar {
+  border-radius: 50%;
+  background: linear-gradient(150deg, #dde9f8 0%, #c8dcf2 100%);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.75), 0 2px 8px rgba(24, 46, 78, 0.08);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .me-content .profile-card .avatar,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="role"] .role-hero > .avatar {
+  border: 2.5px solid rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 18px rgba(24, 46, 78, 0.12);
+}
+
+/* Waterdrop Topbar glass pills, Search pill & Filter pill */
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot):not([data-route="chat"]) > .topbar :is(.back-btn, .icon-btn, .nav-text)::before {
+  border: var(--wd-rim);
+  background: var(--wd-glass-pill);
+  -webkit-backdrop-filter: blur(14px) saturate(155%);
+  backdrop-filter: blur(14px) saturate(155%);
+  box-shadow: var(--wd-pill-shadow);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) > .search-bar {
+  padding: 2px 12px 2px;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chats"] > .search-bar {
+  padding-bottom: 8px;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) > .search-bar .search-input-wrap::before {
+  border: var(--wd-rim);
+  background: rgba(255, 255, 255, 0.78);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  box-shadow: inset 0 1px 0 #ffffff, 0 4px 14px rgba(24, 46, 78, 0.045);
+}
+html[data-skin="waterdrop"] .classic-chat-filters {
+  margin: 0 12px 2px;
+  min-height: 42px;
+  border: var(--wd-rim);
+  background: rgba(255, 255, 255, 0.76);
+  -webkit-backdrop-filter: blur(16px) saturate(155%);
+  backdrop-filter: blur(16px) saturate(155%);
+  box-shadow: inset 0 1px 0 #ffffff, 0 4px 14px rgba(24, 46, 78, 0.045);
+}
+html[data-skin="waterdrop"] .classic-chat-filters button {
+  min-height: 40px;
+  font-size: 13.5px;
+  color: var(--wd-secondary);
+}
+html[data-skin="waterdrop"] .classic-chat-filters button[aria-pressed="true"] {
+  color: var(--green-dark);
+}
+html[data-skin="waterdrop"] .classic-chat-filters button[aria-pressed="true"]::after {
+  width: 22px;
+  height: 2.5px;
+  bottom: 3px;
+  background: var(--green);
+}
+
+/* Waterdrop Floating Top Menu: high-clarity frosted crystal popover (no muddy bleed!) */
+html[data-skin="waterdrop"] #overlay .top-menu {
+  right: 14px;
+  width: 168px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.98);
+  border-radius: 20px;
+  background: var(--wd-glass-strong);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  box-shadow:
+    inset 0 1.5px 2px #ffffff,
+    0 18px 42px rgba(18, 36, 66, 0.16),
+    0 4px 12px rgba(18, 36, 66, 0.06);
+  transform-origin: top right;
+  animation: ui-menu-pop 0.18s var(--ease-out);
+}
+html[data-skin="waterdrop"] #overlay .top-menu button {
+  color: var(--wd-ink);
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 14px;
+  transition: background-color 0.14s ease;
+}
+html[data-skin="waterdrop"] #overlay .top-menu button:is(:hover, :active) {
+  background: rgba(214, 232, 254, 0.45);
+}
+
+/* Waterdrop Floating Bottom Dock: purest crystalline capsule */
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) > .bottom-tabs {
+  border: 1px solid rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.78);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow:
+    inset 0 1.5px 2px #ffffff,
+    0 12px 30px rgba(18, 36, 66, 0.12),
+    0 2px 8px rgba(18, 36, 66, 0.05);
+}
+html[data-skin="waterdrop"] .waterdrop-dock-slider {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(234, 243, 254, 0.78) 100%);
+  box-shadow:
+    inset 0 1.5px 2px #ffffff,
+    inset 0 -2px 4px rgba(180, 205, 238, 0.25),
+    0 4px 12px rgba(20, 40, 72, 0.1);
+}
+
+/* Waterdrop Me Status Pill & Friend-Status Glass Orb */
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .me-status-button::before {
+  border: var(--wd-rim);
+  background: var(--wd-glass-pill);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--wd-pill-shadow);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .me-status-friends::before {
+  inset: 8px;
+  border: var(--wd-rim);
+  background: var(--wd-glass-pill);
+  box-shadow: var(--wd-pill-shadow);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .me-status-friends::after {
+  background-color: var(--icon-secondary);
+}
+
+/* Waterdrop Settings logout button */
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="settings"] .centered-cell {
+  color: #dc4852;
+  font-weight: 500;
+}
+
+/* Waterdrop Chat: Pure Crystal Incoming + Luminous Mint-Dew Outgoing Bubbles */
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] {
+  --waterdrop-glass: linear-gradient(162deg, rgba(255, 255, 255, 0.56) 0%, rgba(255, 255, 255, 0.28) 48%, rgba(255, 255, 255, 0.46) 100%);
+  --waterdrop-glass-self: linear-gradient(156deg, rgba(216, 252, 234, 0.72) 0%, rgba(198, 248, 224, 0.48) 54%, rgba(232, 254, 244, 0.66) 100%);
+  --waterdrop-glass-shadow:
+    inset 0 1.5px 1.5px rgba(255, 255, 255, 0.96),
+    inset 1.5px 0 2.5px rgba(255, 255, 255, 0.56),
+    inset 0 -3px 5.5px rgba(255, 255, 255, 0.68),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.90),
+    0 6px 18px rgba(20, 40, 72, 0.09),
+    0 1.5px 4px rgba(20, 40, 72, 0.04);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"].has-custom-wallpaper {
+  --waterdrop-glass: linear-gradient(162deg, rgba(255, 255, 255, 0.84) 0%, rgba(255, 255, 255, 0.72) 52%, rgba(255, 255, 255, 0.82) 100%);
+  --waterdrop-glass-self: linear-gradient(156deg, rgba(224, 252, 238, 0.88) 0%, rgba(210, 249, 230, 0.76) 54%, rgba(234, 254, 244, 0.86) 100%);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .payment-card.message-transfer {
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.88) !important;
+  background: linear-gradient(148deg, rgba(255, 214, 194, 0.72) 0%, rgba(255, 178, 158, 0.54) 100%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+  box-shadow:
+    inset 0 1.5px 2px rgba(255, 255, 255, 0.94),
+    inset 0 -2px 5px rgba(255, 232, 222, 0.65),
+    0 10px 24px rgba(120, 50, 40, 0.12);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .payment-card.payment-redpacket:not(.payment-state-returned) {
+  background: linear-gradient(148deg, rgba(246, 166, 148, 0.84) 0%, rgba(220, 114, 98, 0.72) 100%) !important;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .payment-card .payment-title {
+  color: #241411;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .payment-redpacket .payment-title {
+  color: #4a1e16;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .composer-extras {
+  margin-bottom: calc(-1 * var(--safe-bottom, 0px));
+  padding-bottom: var(--safe-bottom, 0px);
+  background: rgba(255, 255, 255, 0.76);
+  -webkit-backdrop-filter: blur(22px) saturate(165%);
+  backdrop-filter: blur(22px) saturate(165%);
+  border-top: 1px solid rgba(255, 255, 255, 0.86);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .chat-composer.emoji-open .composer-extras {
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .compose-panel {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-top: 0;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .compose-panel button {
+  color: #2f3744;
+  font-weight: 500;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .compose-panel .panel-icon {
+  background: rgba(255, 255, 255, 0.90);
+  border: 1px solid rgba(255, 255, 255, 0.96);
+  border-radius: 18px;
+  color: #232a36;
+  box-shadow: inset 0 1.5px 2px #ffffff, 0 5px 14px rgba(20, 40, 72, 0.07);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .compose-panel button:active .panel-icon {
+  transform: scale(0.93);
+  background: rgba(240, 247, 255, 0.96);
+}
+
+/* Waterdrop Floating Notice Banner */
+html[data-skin="waterdrop"] .android-chat-notice {
+  border: 1px solid rgba(255, 255, 255, 0.96);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(24px) saturate(175%);
+  backdrop-filter: blur(24px) saturate(175%);
+  box-shadow: inset 0 1px 1px #ffffff, 0 14px 36px rgba(18, 36, 66, 0.14);
+}
+
+/* Waterdrop Overlays & Full-Screen Editors: 100% solid matching top/bottom safe areas (zero bleed!) */
+html[data-skin="waterdrop"] body.wechat-classic #overlay .overlay-mask,
+html[data-skin="waterdrop"] body.wechat-classic #overlay .classic-entry-backdrop {
+  background: rgba(18, 34, 58, 0.32);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+html[data-skin="waterdrop"] body.wechat-classic #overlay > .page-editor:not(.confirm-dialog):not(.model-sheet):not(.usage-sheet):not(.pt-settings-sheet):not(.classic-entry-sheet):not(.contact-remark-editor):not(.chat-background-editor):not(.skin-activation-sheet) {
+  background: #f4f7fb !important;
+  background-image: none !important;
+}
+html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor:not(.confirm-dialog):not(.model-sheet):not(.usage-sheet):not(.pt-settings-sheet):not(.classic-entry-sheet):not(.contact-remark-editor):not(.chat-background-editor):not(.skin-activation-sheet) .modal-header {
+  background: #f4f7fb !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-bottom: 1px solid rgba(20, 40, 72, 0.06);
+}
+html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor:not(.confirm-dialog):not(.model-sheet):not(.usage-sheet):not(.pt-settings-sheet):not(.classic-entry-sheet):not(.contact-remark-editor):not(.chat-background-editor):not(.skin-activation-sheet) .modal-body,
+html[data-skin="waterdrop"] body.wechat-classic #overlay .page-editor:not(.confirm-dialog):not(.model-sheet):not(.usage-sheet):not(.pt-settings-sheet):not(.classic-entry-sheet):not(.contact-remark-editor):not(.chat-background-editor):not(.skin-activation-sheet) .modal-error {
+  background: #f4f7fb !important;
+}
+html[data-skin="waterdrop"] body.wechat-classic #overlay :is(.moment-compose-page, .text-reader-page),
+html[data-skin="waterdrop"] body.wechat-classic #overlay :is(.moment-compose-page, .text-reader-page) .modal-header,
+html[data-skin="waterdrop"] body.wechat-classic #overlay :is(.moment-compose-page, .text-reader-page) .modal-body {
+  background: #ffffff !important;
+}
+body.wechat-classic #overlay > .page-editor.wallet-overlay-page {
+  background: #f4f4f6 !important;
+  background-image: none !important;
+}
+body.wechat-classic #overlay > .page-editor.wallet-overlay-page .modal-header,
+body.wechat-classic #overlay > .page-editor.wallet-overlay-page .modal-body,
+body.wechat-classic #overlay > .page-editor.wallet-overlay-page .modal-error {
+  background: #f4f4f6 !important;
+}
+html[data-skin="waterdrop"] body.wechat-classic #overlay > .page-editor.wallet-overlay-page,
+html[data-skin="waterdrop"] body.wechat-classic #overlay > .page-editor.wallet-overlay-page .modal-header,
+html[data-skin="waterdrop"] body.wechat-classic #overlay > .page-editor.wallet-overlay-page .modal-body,
+html[data-skin="waterdrop"] body.wechat-classic #overlay > .page-editor.wallet-overlay-page .modal-error {
+  background: #f4f5f7 !important;
+  background-image: none !important;
+}
+.wallet-bills-page .feature-empty {
+  padding: 48px 20px 14px;
+}
+.wallet-bills-page .feature-bottom-note {
+  padding: 6px 16px 24px;
+}
+
+/* ==========================================================================
+   6. SKIN PICKER PREVIEW ALIGNMENT (Matches real upgraded skins!)
+   ========================================================================== */
+.skin-option {
+  border-radius: 20px;
+  padding: 7px;
+  transition: transform 0.18s var(--ease-out), border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.skin-sample[data-preview-skin="waterdrop"] .skin-sample-row.outgoing .skin-sample-bubble {
+  background: linear-gradient(156deg, rgba(206, 250, 228, 0.78) 0%, rgba(186, 246, 218, 0.56) 54%, rgba(226, 254, 240, 0.72) 100%);
+}
+.skin-option-state,
+.skin-option-activate > span {
+  background: var(--green-soft);
+  color: var(--green-dark);
+}
+
+/* ==========================================================================
+   7. GLOBAL TYPOGRAPHY & FONT-ICON OPTICAL HARMONY (Free OFL Inter + Noto Sans SC)
+   ========================================================================== */
+html,
+body,
+body.wechat-classic,
+body.wechat-classic .phone-shell,
+html[data-skin="waterdrop"] body,
+html[data-skin="waterdrop"] body.wechat-classic,
+html[data-skin="waterdrop"] .phone-shell,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"],
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] {
+  --ui-font: -apple-system, "PingFang SC", "Inter", "Noto Sans SC", "Hiragino Sans GB", sans-serif;
+  font-family: var(--ui-font);
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv02" 1, "cv03" 1, "cv04" 1, "cv11" 1;
+}
+
+body.wechat-classic .message-bubble,
+body.wechat-classic .moment-content,
+body.wechat-classic .cell-desc,
+body.wechat-classic .alert-dialog p {
+  line-break: strict;
+}
+
+/* Normalize non-standard 550/650 weights to crisp 500/600 variable stops */
+.provider-tab.active,
+.about-intro p:first-child,
+.about-credits dt {
+  font-weight: 500;
+}
+.modal-header h3,
+.about-logo h3,
+.notice-title {
+  font-weight: 600;
+}
+
+/* Tabular numerals across all counters, badges, timestamps & metrics */
+.tab-dot,
+.unread-badge,
+.filter-badge,
+.chat-back-count,
+.conversation-time,
+.message-date,
+.image-counter,
+.contacts-count,
+#status-length,
+.status-history-row time,
+.wallet-balance,
+.wallet-detail-amount,
+.usage-total,
+.payment-amount,
+.payment-receipt-amount {
+  font-variant-numeric: tabular-nums;
+}
+
+.wallet-balance,
+.wallet-detail-amount,
+.usage-total,
+.payment-amount {
+  letter-spacing: -0.02em;
+}
+
+body.wechat-classic :is(#view, .navigation-snapshot) > .topbar h2 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+
+body.wechat-classic :is(#view, .navigation-snapshot) .section-title,
+body.wechat-classic :is(#view, .navigation-snapshot) .contacts-index,
+body.wechat-classic :is(#view, .navigation-snapshot) .settings-group-title {
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* --- Font-to-Icon Proportion Harmony: Bottom Tabs --- */
+body.wechat-classic :is(#view, .navigation-snapshot) > .bottom-tabs .tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) > .bottom-tabs .tab > .icon {
+  width: 24px;
+  height: 24px;
+  transition: transform 0.2s var(--ease-spring), color 0.16s ease;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) > .bottom-tabs .tab > .chat-mark {
+  width: 23px;
+  height: 23px;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) > .bottom-tabs .tab-label {
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) > .bottom-tabs .tab-dot {
+  position: absolute;
+  top: 2px;
+  left: calc(50% + 7px);
+  margin: 0;
+  min-width: 17px;
+  min-height: 17px;
+  padding: 0 4.5px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  font-weight: 600;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) > .bottom-tabs .tab {
+  gap: 2.5px;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) > .bottom-tabs .tab-dot {
+  top: 3px;
+  left: calc(50% + 7px);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) > .bottom-tabs .tab > .icon {
+  width: 23px;
+  height: 23px;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) > .bottom-tabs .tab > .chat-mark {
+  width: 22px;
+  height: 22px;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) > .bottom-tabs .tab-label {
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 500;
+}
+
+/* --- Font-to-Icon Proportion Harmony: Search Bar --- */
+body.wechat-classic :is(#view, .navigation-snapshot) > .search-bar .search-input-wrap {
+  gap: 6px;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) > .search-bar .search-input-wrap > .icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) > .search-bar .search-input-wrap input,
+body.wechat-classic :is(#view, .navigation-snapshot) > .search-bar .search-input-wrap > span:last-child {
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 400;
+}
+
+/* --- Font-to-Icon Proportion Harmony: Grouped List Cells --- */
+body.wechat-classic :is(#view, .navigation-snapshot) .cell {
+  gap: 14px;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) .cell-icon {
+  width: 22px;
+  height: 22px;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) .cell-icon > .icon {
+  width: 22px;
+  height: 22px;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) .cell-icon svg {
+  stroke-width: 1.65;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) .cell-title {
+  font-size: 16px;
+  line-height: 1.44;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) .cell-value {
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: var(--ink-secondary);
+}
+body.wechat-classic :is(#view, .navigation-snapshot) .cell-value.classic-empty-value,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .cell-value.waterdrop-empty-value {
+  color: var(--muted);
+}
+body.wechat-classic :is(#view, .navigation-snapshot) .cell .chevron,
+body.wechat-classic :is(#view, .navigation-snapshot) .me-content .profile-card > .chevron {
+  width: 15px;
+  height: 15px;
+  opacity: 0.68;
+}
+
+/* --- Font-to-Icon Proportion Harmony: Topbar & Composer --- */
+body.wechat-classic :is(#view, .navigation-snapshot) > .topbar [data-action="new-menu"] > .icon,
+body.wechat-classic :is(#view, .navigation-snapshot) > .topbar [data-action="add-friend"] > .icon {
+  width: 21px;
+  height: 21px;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .topbar h2 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .classic-compose-row > .icon-btn > .icon {
+  width: 24px;
+  height: 24px;
+}
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .compose-row .classic-inline-more > .icon {
+  width: 22px;
+  height: 22px;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .classic-compose-row > .icon-btn > .icon {
+  width: 22px;
+  height: 22px;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .compose-row .classic-inline-more > .icon {
+  width: 20px;
+  height: 20px;
+}
+body.wechat-classic #overlay .top-menu button {
+  gap: 10px;
+  font-size: 14.5px;
+  font-weight: 500;
+}
+body.wechat-classic #overlay .top-menu .icon {
+  width: 19px;
+  height: 19px;
+}
+
+/* ==========================================================================
+   8. NATIVE 60FPS PAGE TRANSITIONS, SWIPE-BACK & OVERLAY EXIT STAGE
+   ========================================================================== */
+.view.ui-nav-animating {
+  will-change: transform;
+  contain: layout style;
+}
+.view.ui-nav-push-top,
+.view.navigation-snapshot.ui-nav-pop-top {
+  z-index: 3 !important;
+  box-shadow: -10px 0 28px rgba(15, 25, 42, 0.14);
+}
+.view.navigation-snapshot.ui-nav-auth-out {
+  z-index: 4 !important;
+}
+.ui-nav-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: #0d131c;
+  opacity: 0;
+  pointer-events: none;
+  will-change: opacity;
+}
+.ui-exit-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+}
+/* Strictly prevent cloned snapshots, exit stages & Android predictive-back previews from re-triggering CSS entrance animations */
+.ui-exit-stage,
+.ui-exit-stage *,
+.navigation-snapshot,
+.navigation-snapshot *,
+.android-back-preview,
+.android-back-preview * {
+  animation: none !important;
+  transition: none !important;
+}
+html[data-pipi-android="true"] .android-back-moving {
+  box-shadow: -12px 0 32px rgba(15, 25, 42, 0.16);
+}
+/* Android offline read-only cache page polish (both Classic & Waterdrop skins) */
+.android-offline-page {
+  padding: calc(var(--safe-top, 0px) + 22px) 16px calc(var(--safe-bottom, 0px) + 28px);
+  background: #f4f5f7;
+}
+.android-offline-page h2 {
+  margin: 0 0 8px;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+.android-offline-page h3 {
+  margin: 20px 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+.android-offline-note {
+  margin: 0 0 14px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--ink-secondary);
+}
+.android-offline-page > .primary-btn,
+.android-offline-page > .secondary-btn {
+  min-height: 48px;
+  border-radius: 12px;
+  margin: 8px 0;
+  font-weight: 600;
+}
+.android-offline-page > .secondary-btn {
+  background: #e9edf2;
+  color: var(--ink);
+}
+.android-offline-chat {
+  margin-top: 10px;
+  padding: 15px 16px;
+  border: 0.5px solid rgba(0, 0, 0, 0.06);
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 15.5px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(15, 25, 42, 0.04);
+  transition: transform 0.14s var(--ease-out), background-color 0.14s ease;
+}
+.android-offline-chat:active {
+  transform: scale(0.985);
+  background: #f2f4f7;
+}
+.android-offline-message {
+  margin: 0 28px 10px 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.55;
+  box-shadow: 0 1px 3px rgba(15, 25, 42, 0.04);
+}
+.android-offline-message.user {
+  margin: 0 0 10px 28px;
+  background: #95ec69;
+  color: #18191c;
+}
+.android-offline-page textarea {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 15px;
+  background: #ffffff;
+  color: var(--ink);
+}
+html[data-skin="waterdrop"] .android-offline-page {
+  background: transparent;
+}
+html[data-skin="waterdrop"] .android-offline-page > .primary-btn {
+  border-radius: 999px;
+}
+html[data-skin="waterdrop"] .android-offline-page > .secondary-btn {
+  border-radius: 999px;
+  border: var(--wd-rim);
+  background: var(--wd-glass-card);
+  box-shadow: var(--wd-card-shadow);
+  color: var(--wd-ink);
+}
+html[data-skin="waterdrop"] .android-offline-chat,
+html[data-skin="waterdrop"] .android-offline-message,
+html[data-skin="waterdrop"] .android-offline-page textarea {
+  border: var(--wd-rim);
+  border-radius: 18px;
+  background: var(--wd-glass-card);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  box-shadow: var(--wd-card-shadow);
+}
+html[data-skin="waterdrop"] .android-offline-message.user {
+  background: linear-gradient(156deg, rgba(216, 252, 234, 0.78) 0%, rgba(198, 248, 224, 0.56) 54%, rgba(232, 254, 244, 0.72) 100%);
+}
+.ui-swipe-dragging {
+  will-change: transform;
+  box-shadow: -12px 0 32px rgba(15, 25, 42, 0.16);
+  transition: none !important;
+}
+.ui-swipe-indicator {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  z-index: 40;
+  width: 30px;
+  height: 50px;
+  border-radius: 0 25px 25px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-right: 4px;
+  background: rgba(24, 28, 36, 0.62);
+  color: #ffffff;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 2px 4px 16px rgba(15, 25, 42, 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(-100%, -50%, 0);
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+.ui-swipe-indicator svg {
+  width: 10px;
+  height: 16px;
+}
+.ui-swipe-indicator.ready {
+  background: var(--green);
+  color: #ffffff;
+}
+html[data-skin="waterdrop"] .ui-swipe-indicator {
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--wd-ink);
+  border: 1px solid rgba(255, 255, 255, 0.96);
+  border-left: 0;
+}
+html[data-skin="waterdrop"] .ui-swipe-indicator.ready {
+  background: var(--green);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+/* Full-screen pushed .page-editor ONLY (strictly excludes all 8 bottom-sheet classes!) */
+@keyframes ui-page-push {
+  from { transform: translate3d(100%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+body.wechat-classic #overlay > .page-editor:not(.confirm-dialog):not(.model-sheet):not(.usage-sheet):not(.pt-settings-sheet):not(.classic-entry-sheet):not(.contact-remark-editor):not(.chat-background-editor):not(.skin-activation-sheet) {
+  animation: ui-page-push 0.285s cubic-bezier(0.32, 0.72, 0, 1);
+  box-shadow: -10px 0 28px rgba(15, 25, 42, 0.14);
+}
+
+/* Unified Solid Bottom Sheets (Classic & Waterdrop): zero tab bleed-through, zero grey footer,
+ * zero two-tone header/body seam, subtle drag handle, and crisp vertical slide-up entrance. */
+body.wechat-classic #overlay > .classic-entry-sheet.page-editor,
+body.wechat-classic #overlay > .model-sheet.page-editor,
+body.wechat-classic #overlay > .usage-sheet.page-editor,
+body.wechat-classic #overlay > .pt-settings-sheet.page-editor,
+body.wechat-classic #overlay > .contact-remark-editor.page-editor,
+body.wechat-classic #overlay > .chat-background-editor.page-editor,
+body.wechat-classic #overlay > .skin-activation-sheet.page-editor {
+  background: #ffffff !important;
+  background-image: none !important;
+  border-radius: 22px 22px 0 0;
+  padding-top: 10px;
+  padding-bottom: calc(10px + var(--safe-bottom, 0px));
+  box-shadow: 0 -10px 32px rgba(15, 25, 42, 0.14);
+  animation: ui-sheet-up 0.24s cubic-bezier(0.32, 0.72, 0, 1);
+}
+body.wechat-classic #overlay > .classic-entry-sheet.page-editor::before,
+body.wechat-classic #overlay > .model-sheet.page-editor::before,
+body.wechat-classic #overlay > .usage-sheet.page-editor::before,
+body.wechat-classic #overlay > .pt-settings-sheet.page-editor::before,
+body.wechat-classic #overlay > .skin-activation-sheet.page-editor::before {
+  content: "";
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: 0 auto 4px;
+  border-radius: 999px;
+  background: rgba(15, 25, 42, 0.13);
+  flex: none;
+}
+body.wechat-classic #overlay :is(.classic-entry-sheet, .model-sheet, .usage-sheet, .pt-settings-sheet, .contact-remark-editor, .chat-background-editor, .skin-activation-sheet) .modal-header,
+body.wechat-classic #overlay :is(.classic-entry-sheet, .model-sheet, .usage-sheet, .pt-settings-sheet, .contact-remark-editor, .chat-background-editor, .skin-activation-sheet) .modal-body,
+body.wechat-classic #overlay :is(.classic-entry-sheet, .model-sheet, .usage-sheet, .pt-settings-sheet, .contact-remark-editor, .chat-background-editor, .skin-activation-sheet) .modal-error {
+  background: #ffffff !important;
+}
+html[data-skin="waterdrop"] body.wechat-classic #overlay > .classic-entry-sheet.page-editor,
+html[data-skin="waterdrop"] body.wechat-classic #overlay > .model-sheet.page-editor,
+html[data-skin="waterdrop"] body.wechat-classic #overlay > .usage-sheet.page-editor,
+html[data-skin="waterdrop"] body.wechat-classic #overlay > .pt-settings-sheet.page-editor,
+html[data-skin="waterdrop"] body.wechat-classic #overlay > .contact-remark-editor.page-editor,
+html[data-skin="waterdrop"] body.wechat-classic #overlay > .chat-background-editor.page-editor,
+html[data-skin="waterdrop"] body.wechat-classic #overlay > .skin-activation-sheet.page-editor,
+html[data-skin="waterdrop"] body.wechat-classic #overlay > .sheet-actions {
+  background: #fbfdff !important;
+  background-image: none !important;
+  border: 1px solid #ffffff;
+  border-bottom: 0;
+  border-radius: 26px 26px 0 0;
+  box-shadow: inset 0 1.5px 2px #ffffff, 0 -12px 36px rgba(20, 40, 72, 0.18);
+}
+html[data-skin="waterdrop"] body.wechat-classic #overlay :is(.classic-entry-sheet, .model-sheet, .usage-sheet, .pt-settings-sheet, .contact-remark-editor, .chat-background-editor, .skin-activation-sheet) .modal-header,
+html[data-skin="waterdrop"] body.wechat-classic #overlay :is(.classic-entry-sheet, .model-sheet, .usage-sheet, .pt-settings-sheet, .contact-remark-editor, .chat-background-editor, .skin-activation-sheet) .modal-body,
+html[data-skin="waterdrop"] body.wechat-classic #overlay :is(.classic-entry-sheet, .model-sheet, .usage-sheet, .pt-settings-sheet, .contact-remark-editor, .chat-background-editor, .skin-activation-sheet) .modal-error {
+  background: #fbfdff !important;
+}
+/* Refined coming-soon / entry sheet card composition */
+body.wechat-classic #overlay .classic-entry-sheet .modal-header {
+  min-height: 48px;
+  padding: 4px 16px 8px;
+  border-bottom: 0.5px solid rgba(15, 25, 42, 0.07);
+}
+body.wechat-classic #overlay .classic-entry-sheet .modal-body {
+  padding: 20px 20px 24px;
+}
+body.wechat-classic #overlay .classic-entry-sheet .modal-body > .classic-entry-note:only-child {
+  margin: 0;
+  padding: 18px 16px 22px;
+  border-radius: 16px;
+  background: #f5f7fa;
+  color: #555f6e;
+  font-size: 14.5px;
+  line-height: 1.65;
+  text-align: center;
+}
+html[data-skin="waterdrop"] body.wechat-classic #overlay .classic-entry-sheet .modal-body > .classic-entry-note:only-child {
+  background: #f1f5fb;
+  color: #4f5b6b;
+}
+/* Usage sheet visible circular close button */
+body.wechat-classic #overlay > .usage-sheet .modal-header {
+  min-height: 50px;
+  padding: 4px 16px 8px;
+  grid-template-columns: minmax(0, 1fr) 36px;
+}
+body.wechat-classic #overlay > .usage-sheet .modal-header .modal-close {
+  grid-column: 2;
+  grid-row: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #eef1f5;
+  color: #555e6b;
+  font-size: 20px;
+  line-height: 1;
+}
+body.wechat-classic #overlay > .usage-sheet .modal-header .modal-close:active {
+  transform: scale(0.92);
+  background: #e1e6ed;
+}
+
+/* ==========================================================================
+   9. LIGHTBOX, TOAST, SWITCHES, BOOT SCREEN & CHAT MICRO-MOTION
+   ========================================================================== */
+@keyframes ui-boot-breathe {
+  0%, 100% { transform: scale(1); box-shadow: 0 10px 26px rgba(7, 193, 96, 0.24); }
+  50% { transform: scale(1.045); box-shadow: 0 14px 32px rgba(7, 193, 96, 0.34); }
+}
+.boot-screen {
+  background: linear-gradient(180deg, #f8faf9 0%, #eff2f5 100%);
+  color: var(--muted);
+  gap: 14px;
+}
+.boot-logo {
+  width: 58px;
+  height: 58px;
+  border-radius: 17px;
+  background: linear-gradient(145deg, #19d472 0%, var(--green) 100%);
+  color: #ffffff;
+  animation: ui-boot-breathe 2.2s ease-in-out infinite;
+}
+.boot-caption {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: #7c8490;
+}
+html[data-skin="waterdrop"] .boot-screen {
+  background: var(--wd-backdrop);
+}
+html[data-skin="waterdrop"] .boot-logo {
+  border-radius: 20px;
+  box-shadow: inset 0 1.5px 2px rgba(255, 255, 255, 0.45), 0 12px 28px rgba(30, 201, 107, 0.28);
+}
+
+/* Image Viewer / Lightbox smooth zoom-fade entrance & frosted controls */
+@keyframes ui-lightbox-in {
+  from { opacity: 0; transform: scale(0.955); }
+  to { opacity: 1; transform: scale(1); }
+}
+.lightbox,
+.image-viewer {
+  animation: ui-lightbox-in 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.image-viewer .lightbox-close,
+.image-viewer .lightbox-controls button,
+.image-viewer .image-save {
+  background: rgba(30, 34, 42, 0.68);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  transition: transform 0.14s var(--ease-out), background-color 0.14s ease;
+}
+.image-viewer .lightbox-close:active,
+.image-viewer .lightbox-controls button:active:not(:disabled),
+.image-viewer .image-save:active {
+  transform: scale(0.92);
+  background: rgba(56, 62, 74, 0.85);
+}
+
+/* Elastic frosted Toast */
+.toast {
+  background: rgba(24, 27, 34, 0.88);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  border-radius: 12px;
+  padding: 11px 18px;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.55;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
+  transform: translate(-50%, -50%) scale(0.92);
+  transition: opacity 0.18s var(--ease-out), transform 0.2s var(--ease-out);
+}
+.toast.visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+html[data-skin="waterdrop"] .toast {
+  background: rgba(24, 30, 42, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+}
+
+/* Alive 3-dot staggered wave typing indicator (both Classic & Waterdrop) */
+@keyframes ui-typing-wave {
+  0%, 100% { background-position: 0 3px, 6px 3px, 12px 3px; opacity: 0.55; }
+  25% { background-position: 0 0, 6px 3px, 12px 3px; opacity: 1; }
+  50% { background-position: 0 3px, 6px 0, 12px 3px; opacity: 1; }
+  75% { background-position: 0 3px, 6px 3px, 12px 0; opacity: 1; }
+}
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .topbar h2.is-typing [data-chat-title]::after {
+  content: "";
+  display: inline-block;
+  width: 17px;
+  height: 8px;
+  margin-left: 5px;
+  vertical-align: middle;
+  background-image:
+    radial-gradient(circle, currentColor 0 1.45px, transparent 1.65px),
+    radial-gradient(circle, currentColor 0 1.45px, transparent 1.65px),
+    radial-gradient(circle, currentColor 0 1.45px, transparent 1.65px);
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+  background-position: 0 3px, 6px 3px, 12px 3px;
+  animation: ui-typing-wave 1.05s ease-in-out infinite;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .topbar h2.waterdrop-awaiting [data-chat-title]::after {
+  height: 8px;
+  background-image:
+    radial-gradient(circle, #35414d 0 1.5px, transparent 1.7px),
+    radial-gradient(circle, #35414d 0 1.5px, transparent 1.7px),
+    radial-gradient(circle, #35414d 0 1.5px, transparent 1.7px);
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+  background-position: 0 3px, 6px 3px, 12px 3px;
+  animation: ui-typing-wave 1.05s ease-in-out infinite;
+}
+
+/* Smooth new-message pill entrance */
+@keyframes ui-pill-in {
+  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.92); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+.chat-new-messages {
+  font-weight: 500;
+  color: var(--green-dark);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 6px 18px rgba(15, 25, 42, 0.12);
+  animation: ui-pill-in 0.22s var(--ease-out);
+  transition: transform 0.14s var(--ease-out), background-color 0.14s ease;
+}
+.chat-new-messages:active {
+  transform: scale(0.95);
+}
+html[data-skin="waterdrop"] .chat-new-messages {
+  border: var(--wd-rim);
+  background: rgba(255, 255, 255, 0.88);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+  box-shadow: var(--wd-pill-shadow);
+}
+
+/* Spring-damped Switches & silky swipe rows */
+.switch,
+body.wechat-classic :is(#view, .navigation-snapshot) .native-switch {
+  transition: background-color 0.2s ease;
+}
+.switch::after,
+body.wechat-classic :is(#view, .navigation-snapshot) .native-switch::after {
+  transition: transform 0.24s cubic-bezier(0.32, 1.25, 0.36, 1), width 0.16s ease;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) .native-switch:active::after {
+  width: 25px;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) .native-switch.on:active::after {
+  transform: translateX(13px);
+}
+body.wechat-classic :is(#view, .navigation-snapshot) .conversation {
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.12s ease;
+}
+
+/* Tactile feedback hierarchy across topbar buttons & chat bubbles */
+body.wechat-classic :is(#view, .navigation-snapshot) > .topbar .icon-btn,
+body.wechat-classic :is(#view, .navigation-snapshot) > .topbar .back-btn {
+  border-radius: 999px;
+  transition: transform 0.14s var(--ease-out), background-color 0.14s ease;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) > .topbar .icon-btn:active,
+body.wechat-classic :is(#view, .navigation-snapshot) > .topbar .back-btn:active {
+  transform: scale(0.92);
+  background-color: rgba(0, 0, 0, 0.055);
+}
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .message-bubble {
+  transition: transform 0.14s var(--ease-out);
+}
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .message-bubble:active {
+  transform: scale(0.982);
+}
+
+/* ==========================================================================
+   10. SCROLL-LINKED TOPBAR ELEVATION & DEEP SECONDARY PAGES POLISH
+   ========================================================================== */
+/* Classic-only seamless full-bleed safe-top scrolled topbar (strictly scoped to classic so Waterdrop NEVER gets an #ededed strip!) */
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot):not([data-route="chats"]):not([data-route="contacts"]) > .topbar:not(.moments-topbar) {
+  position: relative;
+  isolation: isolate;
+}
+html[data-skin="classic"] body.wechat-classic :is(#view, .navigation-snapshot):not([data-route="chats"]):not([data-route="contacts"]) > .topbar:not(.moments-topbar)::before {
+  content: "";
+  position: absolute;
+  top: calc(-1 * var(--safe-top, 0px));
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  background: rgba(237, 237, 237, 0.96);
+  box-shadow: 0 2px 10px rgba(15, 25, 42, 0.055), inset 0 -0.5px 0 rgba(0, 0, 0, 0.08);
+  transition: opacity 0.22s ease;
+}
+html[data-skin="classic"] body.wechat-classic #view.is-content-scrolled:not([data-route="chats"]):not([data-route="contacts"]) > .topbar:not(.moments-topbar)::before {
+  opacity: 1;
+}
+/* Waterdrop scroll-linked pure-alpha top feather: scrolling glass cards, shadows & headings
+ * dissolve smoothly into the continuous multi-color backdrop (or chat wallpaper) with ZERO flat cutoff! */
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot).is-content-scrolled:not([data-route="moments"]):not([data-route="auth"]) > :is(.content, #chat-messages) {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    rgba(0, 0, 0, 0.24) calc(var(--scroll-fade, 32px) * 0.32),
+    rgba(0, 0, 0, 0.76) calc(var(--scroll-fade, 32px) * 0.68),
+    #000 var(--scroll-fade, 32px),
+    #000 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    rgba(0, 0, 0, 0.24) calc(var(--scroll-fade, 32px) * 0.32),
+    rgba(0, 0, 0, 0.76) calc(var(--scroll-fade, 32px) * 0.68),
+    #000 var(--scroll-fade, 32px),
+    #000 100%
+  );
+}
+body.wechat-classic #overlay .is-body-scrolled .modal-header {
+  box-shadow: 0 3px 12px rgba(15, 25, 42, 0.06);
+}
+
+/* Moments smooth sticky topbar, clean name shadow & crisp photo corners */
+.moments-topbar {
+  transition: background-color 0.24s ease, color 0.24s ease, box-shadow 0.24s ease;
+}
+html[data-skin="waterdrop"] .moments-topbar.is-scrolled {
+  background: rgba(244, 248, 255, 0.92);
+  -webkit-backdrop-filter: blur(22px) saturate(165%);
+  backdrop-filter: blur(22px) saturate(165%);
+  border-bottom: 0;
+  box-shadow: 0 4px 16px rgba(20, 40, 72, 0.06);
+}
+.moments-profile > strong {
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.42) !important;
+}
+body.wechat-classic .moment-grid img,
+body.wechat-classic .moment-single img {
+  border-radius: 6px;
+  transition: transform 0.16s var(--ease-out);
+}
+body.wechat-classic .moment-grid button:active img,
+body.wechat-classic .moment-single:active img {
+  transform: scale(0.97);
+}
+html[data-skin="waterdrop"] .moment-grid img,
+html[data-skin="waterdrop"] .moment-single img {
+  border-radius: 12px;
+}
+
+/* Deep layout & P1/P2 defect fixes (both skins) */
+body.wechat-classic :is(#view, .navigation-snapshot) {
+  width: 100%;
+  overflow: hidden;
+}
+/* Comfortable internal scroll clearance so bottom cards/buttons scroll smoothly above safe-bottom */
+body.wechat-classic :is(#view, .navigation-snapshot) .settings-content,
+body.wechat-classic :is(#view, .navigation-snapshot) .storage-content,
+body.wechat-classic :is(#view, .navigation-snapshot) .usage-content,
+body.wechat-classic :is(#view, .navigation-snapshot) .pt-config-content,
+body.wechat-classic :is(#view, .navigation-snapshot) .page-content {
+  padding-bottom: calc(44px + var(--safe-bottom, 0px));
+}
+/* Flush .pt-settings-save footer cleanly to bottom bezel (zero exposed strip) */
+body.wechat-classic .pt-settings-view > .pt-settings-save {
+  margin-bottom: 0;
+  padding-bottom: calc(14px + var(--safe-bottom, 0px));
+}
+html[data-skin="waterdrop"] body.wechat-classic .pt-settings-view > .pt-settings-save {
+  margin-bottom: 0;
+  padding-bottom: calc(14px + var(--safe-bottom, 0px));
+  background: rgba(248, 251, 255, 0.94);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(255, 255, 255, 0.92);
+}
+/* Emoji drawer bottom-row clearance & feathered action backdrop */
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .emoji-scroll {
+  padding-bottom: calc(96px + var(--safe-bottom, 0px));
+}
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .emoji-action-backdrop {
+  background: linear-gradient(90deg, rgba(236, 236, 236, 0) 0%, rgba(236, 236, 236, 0.92) 28%, #ececec 48%);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .emoji-action-backdrop {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.88) 30%, rgba(255, 255, 255, 0.95) 55%);
+}
+/* Chat Info member grid: full 2-line wrap so "林见夏（演示）" renders completely without ellipsis */
+body.wechat-classic :is(#view, .navigation-snapshot) .chat-members {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px 8px;
+  padding: 18px 16px;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) .chat-members > button > span:last-child {
+  font-size: 12px;
+  line-height: 1.38;
+  color: var(--ink-secondary);
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+/* Active status row on Me: allow description to wrap cleanly onto a second line instead of clipping */
+body.wechat-classic :is(#view, .navigation-snapshot) .me-status-row {
+  flex-wrap: wrap;
+  row-gap: 8px;
+  padding-right: 16px;
+}
+body.wechat-classic :is(#view, .navigation-snapshot) .me-status-description {
+  flex: 1 1 130px;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.45;
+}
+/* Sticker library equal square tiles + centered padded caption ("待补全") */
+body.wechat-classic .semantic-library .sticker-library-item {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+body.wechat-classic .semantic-library .sticker-library-image,
+body.wechat-classic .semantic-library .add-sticker {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 25, 42, 0.08);
+}
+html[data-skin="waterdrop"] body.wechat-classic .semantic-library .sticker-library-image,
+html[data-skin="waterdrop"] body.wechat-classic .semantic-library .add-sticker {
+  border-radius: 18px;
+  border: var(--wd-rim);
+  background: var(--wd-glass-card);
+  box-shadow: var(--wd-card-shadow);
+}
+body.wechat-classic .semantic-library .sticker-library-meaning {
+  padding: 2px 6px;
+  text-align: center;
+}
+/* Empty state proportions & zero blank alert error lines */
+.feature-empty {
+  padding: 44px 20px;
+}
+.feature-empty > p {
+  margin-top: 8px;
+}
+.new-friends .empty {
+  padding: 36px 20px;
+}
+.alert-dialog .modal-error:empty {
+  display: none;
+}
+.phone-shell textarea {
+  resize: none;
+}
+/* Classic "更多信息" flush top alignment */
+html[data-skin="classic"] :is(#view, .navigation-snapshot)[data-route="contact-more"] .section:first-child {
+  margin-top: 0;
+}
+/* High-specificity unmistakably disabled + WCAG readable primary/secondary buttons (both skins) */
+body.wechat-classic .primary-btn:disabled,
+body.wechat-classic .pt-config-content .primary-btn:disabled,
+body.wechat-classic .storage-save:disabled {
+  background: #d5dbe2 !important;
+  color: #6e7885 !important;
+  border-color: transparent !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+}
+html[data-skin="waterdrop"] body.wechat-classic .primary-btn:disabled,
+html[data-skin="waterdrop"] body.wechat-classic .pt-config-content .primary-btn:disabled,
+html[data-skin="waterdrop"] body.wechat-classic .storage-save:disabled {
+  background: rgba(214, 222, 234, 0.9) !important;
+  color: #687486 !important;
+  border: 1px solid rgba(255, 255, 255, 0.8) !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+}
+body.wechat-classic .secondary-btn:disabled {
+  background: #eef1f5 !important;
+  color: #7d8796 !important;
+  opacity: 1 !important;
+}
+html[data-skin="waterdrop"] .profile-avatar-preview {
+  margin: 12px 16px 20px;
+  border-radius: 22px;
+  border: var(--wd-rim);
+  background: var(--wd-glass-card);
+  box-shadow: var(--wd-card-shadow);
+}
+html[data-skin="waterdrop"] body.wechat-classic #overlay .sheet-actions .sheet-caption {
+  color: #5b6574;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 14px 20px 12px;
+}
+
+/* Refined empty-state visuals */
+.empty .empty-icon {
+  border-radius: 18px;
+  background: linear-gradient(150deg, #eef2f6 0%, #e4eaf0 100%);
+  color: #9ba4b2;
+}
+html[data-skin="waterdrop"] .empty .empty-icon {
+  background: var(--wd-glass-card);
+  border: var(--wd-rim);
+  box-shadow: var(--wd-card-shadow);
+  color: #7c8799;
+}
+
+/* Deep secondary pages: Waterdrop unified frosted glass surfaces */
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .wallet-balance-card,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .wallet-transactions,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .usage-card,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .usage-log-list,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .usage-empty,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .chat-members,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .role-hero {
+  background: var(--wd-glass-card);
+  border: var(--wd-rim);
+  border-radius: 22px;
+  -webkit-backdrop-filter: blur(18px) saturate(155%);
+  backdrop-filter: blur(18px) saturate(155%);
+  box-shadow: var(--wd-card-shadow);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .wallet-balance-card,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .wallet-transactions,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .chat-members,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="role"] .role-hero {
+  margin: 8px 12px 12px;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .wallet-page .feature-section-label {
+  background: transparent;
+  border-top: 0;
+  padding-left: 18px;
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .usage-period,
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .usage-search {
+  background: rgba(255, 255, 255, 0.84);
+  border: var(--wd-rim);
+  border-radius: 999px;
+  box-shadow: 0 2px 10px rgba(20, 40, 72, 0.045);
+}
+html[data-skin="waterdrop"] :is(#view, .navigation-snapshot) .usage-tabs {
+  border-bottom-color: rgba(255, 255, 255, 0.65);
+}
+
+/* Subtle bar-grow animation on usage meters */
+@keyframes ui-bar-grow {
+  from { transform: scaleX(0.08); opacity: 0.4; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+.usage-model-row meter {
+  transform-origin: left center;
+  animation: ui-bar-grow 0.42s var(--ease-out);
+}
+
+/* ==========================================================================
+   11. REDUCED MOTION ACCESSIBILITY
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  body.wechat-classic #overlay .top-menu,
+  body.wechat-classic #overlay > .alert-dialog,
+  body.wechat-classic #overlay > .sheet-actions,
+  body.wechat-classic #overlay > .pt-settings-sheet.page-editor,
+  body.wechat-classic #overlay > .usage-sheet,
+  body.wechat-classic #overlay > .classic-entry-sheet.page-editor,
+  body.wechat-classic #overlay > .model-sheet.page-editor,
+  body.wechat-classic #overlay > .contact-remark-editor.page-editor,
+  body.wechat-classic #overlay > .chat-background-editor.page-editor,
+  body.wechat-classic #overlay > .skin-activation-sheet.page-editor,
+  body.wechat-classic #overlay > .page-editor,
+  .lightbox,
+  .image-viewer,
+  .boot-logo,
+  .chat-new-messages,
+  .usage-model-row meter,
+  .android-chat-notice,
+  body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .topbar h2.is-typing [data-chat-title]::after,
+  html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .topbar h2.waterdrop-awaiting [data-chat-title]::after {
+    animation: none;
+  }
+  body.wechat-classic .primary-btn,
+  body.wechat-classic .secondary-btn,
+  body.wechat-classic .classic-chat-send,
+  body.wechat-classic .classic-compose-row > .icon-btn,
+  body.wechat-classic .compose-row .classic-inline-more,
+  body.wechat-classic .compose-panel .panel-icon,
+  body.wechat-classic :is(#view, .navigation-snapshot) > .bottom-tabs .tab > .icon,
+  body.wechat-classic :is(#view, .navigation-snapshot) > .topbar:not(.moments-topbar)::before,
+  body.wechat-classic :is(#view, .navigation-snapshot) > .topbar .icon-btn,
+  body.wechat-classic :is(#view, .navigation-snapshot) > .topbar .back-btn,
+  body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .message-bubble,
+  body.wechat-classic :is(#view, .navigation-snapshot) .conversation,
+  .switch,
+  .switch::after,
+  body.wechat-classic :is(#view, .navigation-snapshot) .native-switch,
+  body.wechat-classic :is(#view, .navigation-snapshot) .native-switch::after,
+  .toast,
+  .panel-dots button::after {
+    transition: none;
+  }
+}

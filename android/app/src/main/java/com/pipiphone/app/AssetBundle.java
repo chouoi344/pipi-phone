@@ -49,7 +49,7 @@ final class AssetBundle {
         HttpURLConnection connection = null;
         try {
             connection = origin.open("/api/android-shell-manifest");
-            connection.setConnectTimeout(1800); connection.setReadTimeout(1800);
+            connection.setConnectTimeout(5000); connection.setReadTimeout(5000);
             connection.setRequestProperty("Accept", "application/json");
             if (connection.getResponseCode() != 200) {
                 invalidate(); return cachedMatch ? "服务器未提供版本清单，下次连接使用服务器资源"

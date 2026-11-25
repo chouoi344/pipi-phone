@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use strict';
+const restoreWhenIdle=require('./fixtures/restore-when-idle.cjs');
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto'),http=require('node:http');
 const {Readable}=require('node:stream'),{createApp}=require('../server.cjs'),Tar=require('../lib/tar-stream.cjs'),Media=require('../lib/media-store.cjs'),S=require('../lib/state.cjs');
 const png=fs.readFileSync(path.join(__dirname,'../scripts/demo-assets/receipt.png')),password='Streaming-backup-isolated!';
@@ -64,7 +65,7 @@ test('corrupted, truncated and unsafe TAR uploads preserve current data and rele
   const source=await fixture(t),target=await fixture(t),{bytes}=await source.archive(),before=target.read(),list=await entries(bytes);
   const broken=list.map(row=>({...row,bytes:Buffer.from(row.bytes)}));broken.find(row=>row.name.startsWith('media/')).bytes[0]^=1;
   for(const upload of [await pack(broken),bytes.subarray(0,bytes.length/2),await pack([{name:'../outside',bytes:Buffer.from('x')}])]){
-    const response=await target.request('/api/restore/tar',upload);assert.equal(response.status,400);assert.equal(target.read(),before);assert.deepEqual(pendingFiles(target),[]);
+    const response=await restoreWhenIdle(()=>target.request('/api/restore/tar',upload));assert.equal(response.status,400);assert.equal(target.read(),before);assert.deepEqual(pendingFiles(target),[]);
     const probe=await target.json('/api/backup/prepare',{includeKeys:false,includeMedia:false});const download=await target.raw('/api/backup/download?token='+probe.token);await download.arrayBuffer();
   }
   assert.equal((await target.raw('/api/restore/tar',bytes,{headers:{'X-CSRF-Token':''}})).status,403);

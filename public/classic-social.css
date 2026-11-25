@@ -1,7 +1,8 @@
 /* Classic WeChat. The wide layout frames the app; touch screens keep their full usable area. */
 body.wechat-classic, .wechat-classic .phone-shell {
   --ui-font:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
-  --ink:#191a1d; --muted:#646b74; --line:#e7e7e7; --bg:#ededed; --green:#07c160; --unread-badge-bg:#d93630;
+  --ink:#191a1d; --muted:#646b74; --line:#e7e7e7; --bg:#ededed; --green:#07c160; --green-dark:#078544; --unread-badge-bg:#d93630;
+  --icon-primary:var(--ink); --icon-secondary:#4c4c4c; --icon-muted:#b2b2b2; --icon-inverse:#fff; --icon-active:var(--green-dark);
   font-family:var(--ui-font); font-synthesis:weight style; -webkit-font-smoothing:antialiased;
 }
 body.wechat-classic {background:var(--bg); color:var(--ink);}
@@ -11,9 +12,9 @@ body.wechat-classic {background:var(--bg); color:var(--ink);}
   .wechat-classic .phone-shell.phone-desktop-preview {max-width:376px; height:min(768px,calc(var(--app-height,100dvh) - 28px)); border:8px solid #fff; border-radius:48px; box-shadow:0 24px 60px #0f192a30,0 2px 10px #0f192a14;}
 }
 .wechat-classic :is(#view,.navigation-snapshot) > .topbar:not(.moments-topbar) {
-  min-height:44px; height:44px; padding-inline:12px; background:var(--bg); border-bottom:1px solid #0000000c;
+  min-height:44px; height:auto; padding:4px 12px; background:var(--bg); border-bottom:1px solid #0000000c;
 }
-.wechat-classic :is(#view,.navigation-snapshot) > .topbar h2 {font-size:17px; line-height:24px; font-weight:600; letter-spacing:0;}
+.wechat-classic :is(#view,.navigation-snapshot) > .topbar h2 {font-size:17px; line-height:1.412; font-weight:600; letter-spacing:0;}
 .wechat-classic :is(#view,.navigation-snapshot) > .topbar .back-btn {padding-left:0;}
 .wechat-classic :is(#view,.navigation-snapshot) > .topbar .nav-text {font-size:15px;}
 .wechat-classic :is(#view,.navigation-snapshot) > .bottom-tabs {
@@ -21,22 +22,22 @@ body.wechat-classic {background:var(--bg); color:var(--ink);}
   position:relative; z-index:2; height:auto; min-height:calc(56px + var(--safe-bottom));
   margin:0; padding:5px 5px calc(5px + var(--safe-bottom)); border:0; border-top:.5px solid #dcdcdc; background:#f7f7f7;
 }
-.wechat-classic :is(#view,.navigation-snapshot) > .bottom-tabs .tab {display:grid; grid-template-columns:auto auto; justify-content:center; align-content:center; min-height:44px; gap:2px 0; color:#2b2e34;}
+.wechat-classic :is(#view,.navigation-snapshot) > .bottom-tabs .tab {display:grid; grid-template-columns:auto auto; justify-content:center; align-content:center; min-height:44px; gap:2px 0; color:var(--icon-primary);}
 .wechat-classic :is(#view,.navigation-snapshot) > .bottom-tabs .tab > .icon {grid-column:1; grid-row:1; justify-self:center;}
-.wechat-classic :is(#view,.navigation-snapshot) > .bottom-tabs .tab.active {color:#087b41;}
+.wechat-classic :is(#view,.navigation-snapshot) > .bottom-tabs .tab.active {color:var(--icon-active);}
 .wechat-classic :is(#view,.navigation-snapshot) > .bottom-tabs .tab-label {grid-column:1/-1; grid-row:2; justify-self:center; font-size:10.5px; font-weight:500; white-space:nowrap; line-height:1.35;}
 .wechat-classic :is(#view,.navigation-snapshot) > .search-bar {padding:3px 12px 8px; background:var(--bg);}
 .wechat-classic :is(#view,.navigation-snapshot) .search-input-wrap {border:0; border-radius:7px; box-shadow:none; background:#fff;}
-.wechat-classic :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap {min-height:44px; height:44px;}
-.wechat-classic :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap input {height:44px; min-height:44px; font-size:14px; line-height:21px;}
+.wechat-classic :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap {min-height:44px; height:auto; padding:6px 10px;}
+.wechat-classic :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap input {height:auto; min-height:32px; font-size:14px; line-height:1.5;}
 .wechat-classic :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap input::placeholder {color:var(--muted); opacity:1;}
 .wechat-classic :is(#view,.navigation-snapshot) > .search-bar .search-input-wrap > span:last-child {font-size:13px; color:var(--muted);}
 .wechat-classic :is(#view,.navigation-snapshot) .section {box-shadow:none; border-radius:0;}
-.wechat-classic :is(#view,.navigation-snapshot) .cell {min-height:52px; font-size:15px; line-height:22px;}
-.wechat-classic :is(#view,.navigation-snapshot) .cell-title {font-size:15px; line-height:22px; font-weight:400; color:var(--ink);}
-.wechat-classic :is(#view,.navigation-snapshot) .cell-value {font-size:13px; line-height:20px; color:var(--ink); max-width:48%;}
+.wechat-classic :is(#view,.navigation-snapshot) .cell {min-height:52px; font-size:15px; line-height:1.47;}
+.wechat-classic :is(#view,.navigation-snapshot) .cell-title {font-size:15px; line-height:1.47; font-weight:400; color:var(--ink);}
+.wechat-classic :is(#view,.navigation-snapshot) .cell-value {font-size:13px; line-height:1.54; color:var(--ink); max-width:48%;}
 .wechat-classic :is(#view,.navigation-snapshot) .cell-desc {font-size:12px; line-height:1.5; color:var(--muted);}
-.wechat-classic :is(#view,.navigation-snapshot) .cell .chevron {width:14px; height:14px; margin-left:0; background-color:#b7bac0;}
+.wechat-classic :is(#view,.navigation-snapshot) .cell .chevron,.wechat-classic :is(#view,.navigation-snapshot) .me-content .profile-card > .chevron {width:14px; height:14px; margin-left:0; color:var(--icon-muted);}
 .wechat-classic :is(#view,.navigation-snapshot) .section-title,
 .wechat-classic :is(#view,.navigation-snapshot) .page-note {font-size:12px; line-height:1.58; color:var(--muted);}
 .wechat-classic :is(#view,.navigation-snapshot) .cell-value.classic-empty-value {color:#9298a1;}
@@ -56,10 +57,10 @@ body.wechat-classic {background:var(--bg); color:var(--ink);}
 .wechat-classic .classic-chat-filters button {
   position:relative; display:inline-flex; align-items:center; justify-content:center;
   flex:1 1 auto; max-width:112px; padding:8px 2px; min-width:44px; min-height:44px;
-  border:0; color:#5a616c; background:none; font-size:14px; line-height:20px; font-weight:500;
+  border:0; color:#5a616c; background:none; font-size:14px; line-height:1.43; font-weight:500;
   transition:color .16s ease;
 }
-.wechat-classic .classic-chat-filters button[aria-pressed=true] {color:#067c3f; font-weight:600;}
+.wechat-classic .classic-chat-filters button[aria-pressed=true] {color:var(--green-dark); font-weight:600;}
 .wechat-classic .classic-chat-filters button[aria-pressed=true]::after {
   content:""; position:absolute; left:50%; bottom:2px; width:24px; height:2.5px;
   transform:translateX(-50%); border-radius:999px; background:var(--green);
@@ -75,13 +76,13 @@ body.wechat-classic {background:var(--bg); color:var(--ink);}
 }
 .wechat-classic .classic-chat-filters .filter-badge[hidden] {display:none;}
 .wechat-classic .classic-filter-empty {padding:36px 16px; text-align:center; font-size:13px; color:var(--muted);}
-.wechat-classic :is(#view,.navigation-snapshot) .conversation {height:64px; min-height:64px; padding:10px 16px; align-items:center; gap:12px; background:#fff;}
+.wechat-classic :is(#view,.navigation-snapshot) .conversation {height:auto; min-height:64px; padding:10px 16px; align-items:center; gap:12px; background:#fff;}
 .wechat-classic :is(#view,.navigation-snapshot) .conversation .avatar {width:44px; height:44px; border-radius:5px;}
 .wechat-classic :is(#view,.navigation-snapshot) .conversation-avatar {margin:0;}
 .wechat-classic :is(#view,.navigation-snapshot) .conversation-copy {align-self:center; padding:0; gap:2px;}
 .wechat-classic :is(#view,.navigation-snapshot) .conversation-line {align-items:center;}
-.wechat-classic :is(#view,.navigation-snapshot) .conversation-name {font-size:15.5px; line-height:22px; font-weight:500; color:#1b1d1f;}
-.wechat-classic :is(#view,.navigation-snapshot) .conversation-time {font-size:11.5px; line-height:18px; margin:0; color:var(--muted);}
+.wechat-classic :is(#view,.navigation-snapshot) .conversation-name {font-size:15.5px; line-height:1.42; font-weight:500; color:#1b1d1f;}
+.wechat-classic :is(#view,.navigation-snapshot) .conversation-time {font-size:11.5px; line-height:1.56; margin:0; color:var(--muted);}
 .wechat-classic :is(#view,.navigation-snapshot) .conversation-preview {font-size:13px; line-height:1.45; height:auto; color:var(--muted);}
 .wechat-classic :is(#view,.navigation-snapshot) .conversation::after {left:72px; right:0; background:#e7e7e7;}
 .wechat-classic :is(#view,.navigation-snapshot) .unread-badge {top:-4px; right:-5px; min-width:16px; min-height:16px; height:auto; padding:0 4px; border:1px solid #fff; border-radius:999px; font-size:10px; line-height:1.4; white-space:nowrap; background:var(--unread-badge-bg);}
@@ -94,7 +95,7 @@ body.wechat-classic {background:var(--bg); color:var(--ink);}
 .wechat-classic :is(#view,.navigation-snapshot) > .contact-index-rail {
   align-self:center; width:44px; height:auto; right:0; padding:0; overflow-y:auto;
 }
-.wechat-classic .contact-index-rail button {width:100%; height:24px; min-height:24px; flex:0 0 24px; font-size:11px; font-weight:600;}
+.wechat-classic .contact-index-rail button {width:100%; height:auto; min-height:24px; flex:0 0 auto; font-size:11px; font-weight:600;}
 body.wechat-classic :is(#view,.navigation-snapshot) .contacts.contacts-has-index .cell {padding-right:44px;}
 
 /* Contact, chat information and personal profile. */
@@ -103,9 +104,9 @@ body.wechat-classic :is(#view,.navigation-snapshot) .contacts.contacts-has-index
 }
 .wechat-classic :is(#view,.navigation-snapshot)[data-route=role] .role-hero > .avatar {width:64px; height:64px; border-radius:5px;}
 .wechat-classic :is(#view,.navigation-snapshot) .role-hero h3, .wechat-classic :is(#view,.navigation-snapshot) .me-content .profile-card h3 {
-  margin:0 0 5px; color:#18191b; font-size:19px; line-height:27px; font-weight:600;
+  margin:0 0 5px; color:#18191b; font-size:19px; line-height:1.42; font-weight:600;
 }
-.wechat-classic :is(#view,.navigation-snapshot) .role-hero p, .wechat-classic :is(#view,.navigation-snapshot) .me-content .profile-card p {margin:0; color:var(--muted); font-size:12px; line-height:20px;}
+.wechat-classic :is(#view,.navigation-snapshot) .role-hero p, .wechat-classic :is(#view,.navigation-snapshot) .me-content .profile-card p {margin:0; color:var(--muted); font-size:12px; line-height:1.67;}
 .wechat-classic :is(#view,.navigation-snapshot) .role-hero .classic-friend-bio {margin-top:6px; color:#6e737d; white-space:pre-wrap; overflow-wrap:anywhere;}
 .wechat-classic :is(#view,.navigation-snapshot):is([data-route=role],[data-route=friend-profile],[data-route=contact-settings],[data-route=contact-more],[data-route=chat-info]) > .page-content {padding:0 0 24px;}
 .wechat-classic :is(#view,.navigation-snapshot):is([data-route=role],[data-route=contact-settings],[data-route=friend-profile],[data-route=chat-info]) .section {margin:0 0 10px; background:#fff;}
@@ -113,18 +114,18 @@ body.wechat-classic :is(#view,.navigation-snapshot) .contacts.contacts-has-index
 .wechat-classic :is(#view,.navigation-snapshot) .chat-members {padding:20px 16px; gap:24px; margin:0 0 10px; background:#fff;}
 .wechat-classic .chat-members :is(.avatar,.member-add) {border-radius:5px;}
 .wechat-classic .chat-members button > span:last-child {font-size:12px; color:var(--muted);}
-.wechat-classic .info-line p {font-size:14px; line-height:22px;}
+.wechat-classic .info-line p {font-size:14px; line-height:1.57;}
 .wechat-classic :is(#view,.navigation-snapshot) .contact-more-info .classic-empty-value {color:#9298a1;}
 .wechat-classic .me-content .profile-card .avatar {border-radius:5px;}
 .wechat-classic :is(.global-search-results,.chat-search-filters) h3,
 .wechat-classic .chat-search-caption {font-size:13px; font-weight:500; color:#777f89;}
 .wechat-classic .search-result b {font-size:15px; font-weight:500;}
-.wechat-classic .search-result p {font-size:13px; line-height:19px;}
+.wechat-classic .search-result p {font-size:13px; line-height:1.46;}
 
 /* Secondary screens retain their media layouts and use the same reading scale. */
-.wechat-classic .moments-profile > strong {font-size:19px; line-height:26px;}
+.wechat-classic .moments-profile > strong {font-size:19px; line-height:1.37;}
 .wechat-classic .moment-card {padding:15px 16px 16px; gap:12px;}
-.wechat-classic .moment-author {font-size:15.5px; line-height:22px; font-weight:600;}
+.wechat-classic .moment-author {font-size:15.5px; line-height:1.42; font-weight:600;}
 .wechat-classic .moment-content {font-size:15px; line-height:1.48;}
 .wechat-classic .moment-compose-text {font-size:15px; line-height:1.48;}
 .wechat-classic .favorite-card {border-color:var(--line); box-shadow:none;}
@@ -148,8 +149,8 @@ body.wechat-classic :is(#view,.navigation-snapshot) .contacts.contacts-has-index
 .wechat-classic .feature-empty, .wechat-classic .empty > p {font-size:13px; line-height:1.55;}
 .wechat-classic .empty h3 {font-size:17px; font-weight:600;}
 .wechat-classic :is(.primary-btn,.modal-submit) {font-weight:500;}
-.wechat-classic .auth-content h1 {font-size:23px; line-height:32px;}
-.wechat-classic .auth-content .auth-subtitle {font-size:13px; line-height:20px; color:#777e87;}
+.wechat-classic .auth-content h1 {font-size:23px; line-height:1.4;}
+.wechat-classic .auth-content .auth-subtitle {font-size:13px; line-height:1.54; color:#777e87;}
 .wechat-classic #overlay .modal-sheet:not(.page-editor):not(.confirm-dialog) {border-radius:22px 22px 0 0;}
 .wechat-classic #overlay .page-editor:not(.confirm-dialog) .modal-header {
   height:auto; min-height:52px; padding:0 12px;
@@ -157,7 +158,7 @@ body.wechat-classic :is(#view,.navigation-snapshot) .contacts.contacts-has-index
   background:#f5f6f7; border-bottom:.5px solid #e2e4e8;
 }
 .wechat-classic #overlay .page-editor:not(.confirm-dialog) .modal-close {font-size:14.5px; font-weight:400; color:#555d68; justify-self:start; white-space:nowrap;}
-.wechat-classic #overlay .modal-header h3 {white-space:normal; overflow-wrap:break-word; font-size:16.5px; line-height:24px; font-weight:600; color:#191a1d; letter-spacing:0;}
+.wechat-classic #overlay .modal-header h3 {white-space:normal; overflow-wrap:break-word; font-size:16.5px; line-height:1.45; font-weight:600; color:#191a1d; letter-spacing:0;}
 
 /* Global refined form controls for Classic editors (Add Friend, Profile, Voice, Outreach, Memory). */
 .wechat-classic #overlay .page-editor .avatar-picker {padding:16px 0 18px; gap:10px;}
@@ -172,7 +173,7 @@ body.wechat-classic :is(#view,.navigation-snapshot) .contacts.contacts-has-index
 .wechat-classic #overlay .page-editor .avatar-picker #pick-avatar::after {
   content:""; position:absolute; top:auto; left:auto; right:-4px; bottom:-4px;
   width:26px; height:26px; border-radius:50%; border:2.5px solid #fff;
-  background-color:#07c160;
+  background-color:var(--green);
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z'/%3E%3Ccircle cx='12' cy='13' r='4'/%3E%3C/svg%3E");
   background-repeat:no-repeat; background-position:center; background-size:13px 13px;
   box-shadow:0 2px 6px rgba(7,193,96,.30);
@@ -181,7 +182,7 @@ body.wechat-classic :is(#view,.navigation-snapshot) .contacts.contacts-has-index
 .wechat-classic #overlay .page-editor .avatar-picker #remove-avatar {font-size:12.5px; color:#c83b36; padding:4px 10px; border-radius:999px;}
 .wechat-classic #overlay .page-editor .form-field {padding:8px 0; gap:7px; border-bottom:0;}
 .wechat-classic #overlay .page-editor .form-field > .field-label {
-  font-size:13.5px; font-weight:600; color:#2b3038; line-height:20px; padding-left:2px;
+  font-size:13.5px; font-weight:600; color:#2b3038; line-height:1.48; padding-left:2px;
 }
 .wechat-classic #overlay .page-editor .switch-row,
 .wechat-classic #overlay .page-editor .form-field.check-row {
@@ -206,13 +207,13 @@ body.wechat-classic :is(#view,.navigation-snapshot) .contacts.contacts-has-index
   transition:transform .22s cubic-bezier(.34,1.3,.64,1);
 }
 .wechat-classic #overlay .page-editor .check-row input[type="checkbox"]:checked,
-.wechat-classic #overlay .page-editor .form-field > input[type="checkbox"]:checked {background:#07c160;}
+.wechat-classic #overlay .page-editor .form-field > input[type="checkbox"]:checked {background:var(--green);}
 .wechat-classic #overlay .page-editor .check-row input[type="checkbox"]:checked::after,
 .wechat-classic #overlay .page-editor .form-field > input[type="checkbox"]:checked::after {transform:translateX(18px);}
 .wechat-classic #overlay .page-editor .check-row input[type="checkbox"]:disabled,
 .wechat-classic #overlay .page-editor .form-field > input[type="checkbox"]:disabled {opacity:.42; cursor:default;}
 .wechat-classic #overlay .page-editor .switch-row > input:focus {
-  outline:2px solid #077a3d; outline-offset:3px;
+  outline:2px solid var(--green-dark); outline-offset:3px;
 }
 .wechat-classic #overlay .page-editor .switch-row > input:focus:not(:focus-visible) {outline:none;}
 .wechat-classic #overlay .page-editor .engine-capabilities .check-row input[type="checkbox"] {
@@ -226,12 +227,12 @@ body.wechat-classic :is(#view,.navigation-snapshot) .contacts.contacts-has-index
 }
 .wechat-classic #overlay .page-editor .form-field :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),textarea,select) {
   min-height:44px; padding:10px 13px; border:1px solid #e2e6ec; border-radius:10px;
-  background:#f5f6f8; color:#191a1d; font-size:15.5px; line-height:22px; caret-color:#07c160;
+  background:#f5f6f8; color:#191a1d; font-size:15.5px; line-height:1.42; caret-color:var(--green);
   transition:background-color .16s ease, border-color .16s ease, box-shadow .16s ease;
 }
 .wechat-classic #overlay .page-editor .form-field textarea {min-height:92px; padding:11px 13px; line-height:1.55;}
 .wechat-classic #overlay .page-editor .form-field :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),textarea,select):focus {
-  background:#fff; border-color:#07c160; box-shadow:0 0 0 3px rgba(7,193,96,.12);
+  background:#fff; border-color:var(--green); box-shadow:0 0 0 3px rgba(7,193,96,.12);
 }
 .wechat-classic #overlay .form-field input::placeholder,
 .wechat-classic #overlay .form-field textarea::placeholder {color:#67707c; font-size:14.5px; font-weight:400; opacity:1;}
@@ -245,7 +246,7 @@ body.wechat-classic :is(#view,.navigation-snapshot) .contacts.contacts-has-index
   color:#606975; font-size:13.5px; font-weight:500;
   transition:border-color .15s ease, background-color .15s ease;
 }
-.wechat-classic #overlay .role-cover-picker #pick-role-cover:active {border-color:#07c160; background:#f0f9f4;}
+.wechat-classic #overlay .role-cover-picker #pick-role-cover:active {border-color:var(--green); background:#f0f9f4;}
 .wechat-classic #overlay .contact-remark-editor .field-label {font-size:13px; color:#545c67;}
 .wechat-classic #overlay.has-contact-remark,
 .wechat-classic #overlay.has-chat-background {pointer-events:auto; background:#10182052;}
@@ -259,9 +260,9 @@ body.wechat-classic :is(#view,.navigation-snapshot) .contacts.contacts-has-index
 .wechat-classic #overlay .contact-remark-editor .form-field {margin-top:8px; padding:0; border:0;}
 .wechat-classic #overlay .contact-remark-editor .field-label {padding:2px 0;}
 .wechat-classic #overlay .contact-remark-editor :is(input,textarea) {background:#fff; border:1px solid #e4e7ec; border-radius:10px; padding:11px 13px; min-height:44px;}
-.wechat-classic #overlay .chat-background-preview {height:clamp(120px,30dvh,220px); border:1px solid #d7dbdc; border-radius:12px; font-size:13px;}
+.wechat-classic #overlay .chat-background-preview {width:min(176px,46vw); aspect-ratio:9 / 15; height:auto; max-height:42dvh; margin:0 auto 14px; border:1px solid #d7dbdc; border-radius:14px; font-size:13px;}
 .wechat-classic #overlay .chat-background-editor .block-btn {background:#fff; color:var(--ink); border:0; border-radius:10px; font-size:15px;}
 .wechat-classic #overlay .sheet-actions button {font-size:15px;}
 .wechat-classic #overlay .alert-dialog {border-radius:16px;}
-.wechat-classic #overlay .alert-dialog h3 {font-size:17px; line-height:24px;}
-.wechat-classic #overlay .alert-dialog p {font-size:14px; line-height:21px;}
+.wechat-classic #overlay .alert-dialog h3 {font-size:17px; line-height:1.412;}
+.wechat-classic #overlay .alert-dialog p {font-size:14px; line-height:1.5;}

@@ -1,21 +1,21 @@
 /* 0.11.3: scoped to the supplied red-packet screenshots; transfer stays unchanged. */
 #overlay .page-editor [data-payment-form="redpacket"] .modal-header{position:relative;border-bottom:0}
 .redpacket-header-more{position:absolute;right:16px;top:0;display:grid;place-items:center;width:24px;height:44px;pointer-events:none}
-.redpacket-header-more .icon{width:18px;height:18px;color:#191919}
+.redpacket-header-more .icon{width:18px;height:18px;color:var(--icon-primary)}
 #overlay .wallet-pay-page.is-redpacket{position:relative;padding:12px 16px 0;overflow:hidden}
 #overlay .is-redpacket .redpacket-form{gap:12px;flex:none}
-#overlay .is-redpacket .redpacket-amount-row{height:56px;min-height:56px;padding:12px 16px;cursor:text}
+#overlay .is-redpacket .redpacket-amount-row{height:auto;min-height:56px;padding:12px 16px;cursor:text}
 #overlay .is-redpacket .redpacket-amount-row>span{font-size:17px}
 #overlay .is-redpacket .redpacket-amount-row b{color:inherit;font-size:17px}
 #overlay .is-redpacket .pay-amount.is-empty{color:#bfbfbf}
-#overlay .is-redpacket .pay-caret{background:#57be6a;margin-left:0}
+#overlay .is-redpacket .pay-caret{background:var(--green);margin-left:0}
 #overlay .is-redpacket .redpacket-blessing{position:relative;min-height:64px;padding:14px 16px;gap:12px;flex-wrap:wrap}
-#overlay .is-redpacket .redpacket-blessing>input{font-size:17px;--editable-font-size:17px;caret-color:#57be6a}
-#overlay .is-redpacket #redpacket-emoji{position:relative;flex:0 0 26px;width:26px;height:28px;color:#777}
+#overlay .is-redpacket .redpacket-blessing>input{font-size:17px;--editable-font-size:17px;caret-color:var(--green)}
+#overlay .is-redpacket #redpacket-emoji{position:relative;flex:0 0 26px;width:26px;height:28px;color:var(--icon-secondary)}
 #redpacket-emoji>.fw-feature-icon{width:22px;height:22px}
 #redpacket-emoji>span:last-child{position:absolute;right:-3px;bottom:-2px;font-size:20px;line-height:15px;background:#fff}
-#overlay .is-redpacket .redpacket-cover-row{height:64px;min-height:64px;padding:14px 16px;font-size:17px}
-#overlay .is-redpacket .redpacket-cover-row>.icon{width:24px;height:24px;color:#888}
+#overlay .is-redpacket .redpacket-cover-row{height:auto;min-height:64px;padding:14px 16px;font-size:17px}
+#overlay .is-redpacket .redpacket-cover-row>.icon{width:24px;height:24px;color:var(--icon-muted)}
 #overlay .is-redpacket .redpacket-total{margin:78px 0 0;flex:none}
 #overlay .keypad-open .is-redpacket:has(.redpacket-selected-sticker:not([hidden])) .redpacket-total{margin-top:16px}
 #overlay .is-redpacket .redpacket-total>span{font-size:34px;font-weight:600}

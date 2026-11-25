@@ -136,8 +136,8 @@
   const afterOverlayBack=()=>overlayBackPending?new Promise(resolve=>overlayBackWaiters.push(resolve)):Promise.resolve();
   const featureNames = new Set(['moments','moment-album','ledger','wallet','farm','favorites','services']);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const safeImage = value => typeof value === 'string' && ((/^data:image\/(?:png|jpeg|webp|gif);base64,[a-zA-Z0-9+/=\s]+$/.test(value) && value.length < 28*1024*1024) || /^\/api\/media\/[a-f0-9]{32,64}\.(?:png|jpg|jpeg|webp|gif)$/i.test(value.trim()));
-  const safeAudio = value => typeof value === 'string' && (/^\/api\/media\/[a-f0-9]{32,64}\.(?:webm|ogg|mp3|m4a|mp4|wav|aac|flac)$/i.test(value)||/^data:audio\/(?:mpeg|mp3|wav|x-wav|ogg|webm|mp4|aac|flac)(?:;codecs=[a-zA-Z0-9.,-]+)?;base64,[a-zA-Z0-9+/=\s]+$/.test(value));
+  const safeImage = value => typeof value === 'string' && ((/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[a-zA-Z0-9+/=\s]+$/i.test(value.trim()) && value.length < 28*1024*1024) || /^\/api\/media\/[a-f0-9]{32,64}\.(?:png|jpg|jpeg|webp|gif)$/i.test(value.trim()));
+  const safeAudio = value => typeof value === 'string' && (/^\/api\/media\/[a-f0-9]{32,64}\.(?:webm|ogg|mp3|m4a|mp4|wav|aac|flac)$/i.test(value.trim())||/^data:audio\/(?:mpeg|mp3|wav|x-wav|ogg|webm|mp4|m4a|x-m4a|aac|flac|x-flac)(?:\s*;\s*codecs=[^;]+)?;base64,[a-zA-Z0-9+/=\s]+$/i.test(value.trim()));
   function emojiSprite(item,inline=false){const x=Number(item.x),y=Number(item.y);if(!Number.isFinite(x)||!Number.isFinite(y))return esc(item.token);return `<span class="wechat-emoji ${inline?'inline-emoji':''}" style="background-position:${x}px ${y}px;${item.row===3&&item.col===4?`transform:scale(${inline?.95:1.05})`:''}" aria-label="${esc(item.label||item.token)}" role="img"></span>`;}
   let emojiSource,emojiLookup;
   function compiledEmoji(){
@@ -184,7 +184,7 @@
       const key=img.dataset.avatarKey,src=avatarSources.get(key);if(!src)continue;
       if(img.loading==='eager'&&!img.closest('.navigation-snapshot')){
         const previous=profileAvatarImages.get(key);
-        if(previous&&previous!==img){previous.width=img.width;previous.height=img.height;previous.alt=img.alt;img.replaceWith(previous);}
+        if(previous&&previous!==img&&!previous.isConnected){previous.width=img.width;previous.height=img.height;previous.alt=img.alt;img.replaceWith(previous);}
         else profileAvatarImages.set(key,img);
         if(profileAvatarImages.size>4)profileAvatarImages.delete(profileAvatarImages.keys().next().value);
       }
@@ -208,7 +208,7 @@
     toastEl.classList.add('visible');
     toastTimer = setTimeout(() => toastEl.classList.remove('visible'), subtle ? 1800 : 3200);
   }
-  function setState(next) { if (next && typeof next === 'object') {if(state&&next.revision<state.revision)return;const foreign=state&&next.revision>state.revision+1;globalThis.window?.WaterdropChat?.observeState(state,next,view);globalThis.window?.PipiChatNotice?.observeState(state,next);trackNewChatMessages(state,next);state = next;globalThis.window?.PipiMessageLimit?.check(state);globalThis.window?.PipiStickers?.syncDetail();globalThis.window?.PipiExpiry?.sync();syncVisibleChatRead();globalThis.window?.PipiEngine?.start();if(foreign)scheduleRender();} }
+  function setState(next) { if (next && typeof next === 'object') {if(state&&next.revision<state.revision)return;const foreign=state&&next.revision>state.revision+1;globalThis.window?.WaterdropChat?.observeState(state,next,view);globalThis.window?.PipiMotion?.observeChatState(state,next,view);globalThis.window?.PipiChatNotice?.observeState(state,next);trackNewChatMessages(state,next);state = next;globalThis.window?.PipiMessageLimit?.check(state);globalThis.window?.PipiStickers?.syncDetail();globalThis.window?.PipiExpiry?.sync();syncVisibleChatRead();globalThis.window?.PipiEngine?.start();if(foreign)scheduleRender();} }
   function receiveState(next) {
     if(!state||next.revision<=state.revision)return;
     setState(next);pendingRender=true;flushRender(true);
@@ -232,8 +232,9 @@
     if(route.name!=='chat'||route.arg!==roleId)return;
     chatProgressSequence++;
     slowReplyRole=slow?roleId:'';
-    const title=view.querySelector('[data-chat-title]'),status=view.querySelector('.chat-retry-status');
-    if(title)title.textContent=window.PipiEngine?.isTyping(roleId)?'对方正在输入…':roleName(roleById(roleId));
+    const title=view.querySelector('[data-chat-title]'),status=view.querySelector('.chat-retry-status'),typing=Boolean(window.PipiEngine?.isTyping(roleId));
+    if(title)title.textContent=typing?'对方正在输入':roleName(roleById(roleId));
+    view.querySelector(':scope > .topbar h2')?.classList.toggle('is-typing',typing);
     if(status)status.hidden=!slow;
     window.WaterdropChat?.updateTyping(view);
   }
@@ -281,12 +282,17 @@
   async function apiRaw(path, body, contentType='application/octet-stream', method='POST') {
     const requestEpoch=authEpoch;
     let response;try{response=await fetch(path, {method,credentials:'same-origin',headers:{'Content-Type':contentType,...(csrf?{'X-CSRF-Token':csrf}:{})},body});}catch(cause){throw new Error('网络连接失败，请检查网络后重试',{cause});}
-    let result; try { result = await response.json(); } catch { throw new Error('服务器返回了无法读取的响应，请稍后重试'); }
+    let result;
+    try { result = await response.json(); }
+    catch {
+      if (response.status === 413) throw Object.assign(new Error('上传文件超过服务器或反向代理大小限制（HTTP 413），请缩小文件或调大代理体积上限'), {status: 413});
+      throw new Error('服务器返回了无法读取的响应，请稍后重试');
+    }
     if(requestEpoch!==authEpoch){const error=new Error('登录状态已变化，请重新操作');error.stale=true;throw error;}
     if (result.csrfToken) csrf = result.csrfToken;
     if (!response.ok) {
       if (result.state) setState(result.state);
-      if(response.status===401&&window.PipiAndroidPage){csrf='';closeModal(false);renderAuth(false);}
+      if (response.status === 401) { csrf = ''; state = null; window.PipiEngine?.stop(); closeModal(false); renderAuth(false); }
       const error = new Error(result.error || `请求失败（${response.status}）`); error.status = response.status; throw error;
     }
     return result;
@@ -327,7 +333,10 @@
     }
     // A transparent first frame or a blank black raster is better served by the original.
     if(!visible||(!hasAlpha&&!hasColor))return null;
-    return hasAlpha?'image/webp':'image/jpeg';
+    if(!hasAlpha)return 'image/jpeg';
+    let webp=true;
+    try{const probe=document.createElement('canvas');probe.width=probe.height=1;if(typeof probe.toDataURL==='function')webp=probe.toDataURL('image/webp').startsWith('data:image/webp');}catch{webp=false;}
+    return webp?'image/webp':'image/png';
   }
   function checkStoredThumbnail(img){
     const sample=document.createElement('canvas');sample.width=sample.height=16;
@@ -457,7 +466,7 @@
   // the parent's existing DOM and consumes only the top layer.
   function closeModal(notifyClose=true,fromHistory=false) {
     if(modalSaveInProgress&&notifyClose!==false){if(fromHistory)trackModalHistory();return;}
-    const hadModal=modalOpen,callback=modalCloseCallback,childDepth=childDialog&&history.state?.childDialog===childDialog.id?1:0;closeChildDialog(true);modalCloseCallback=null;overlay.classList.remove('has-contact-remark','has-chat-background');overlay.replaceChildren(); modalOpen = false; if(modalReturnFocus?.isConnected)modalReturnFocus.focus({preventScroll:true}); modalReturnFocus=null;if(hadModal&&!fromHistory&&history.state?.overlay){if(overlayBackPending)overlayCloseQueued=notifyClose===false?'all':true;else{overlayBackPending=true;const depth=(notifyClose===false?(history.state.overlayDepth||1):1)+childDepth;if(depth>1)history.go(-depth);else history.back();}}if(notifyClose!==false&&typeof callback==='function')callback();if(hadModal&&state)scheduleRender();globalThis.window?.PipiExpiry?.sync();
+    const hadModal=modalOpen,callback=modalCloseCallback,childDepth=childDialog&&history.state?.childDialog===childDialog.id?1:0;closeChildDialog(true);modalCloseCallback=null;if(hadModal)globalThis.window?.PipiMotion?.captureOverlayExit(overlay);overlay.classList.remove('has-contact-remark','has-chat-background');overlay.replaceChildren(); modalOpen = false; if(modalReturnFocus?.isConnected)modalReturnFocus.focus({preventScroll:true}); modalReturnFocus=null;if(hadModal&&!fromHistory&&history.state?.overlay){if(overlayBackPending)overlayCloseQueued=notifyClose===false?'all':true;else{overlayBackPending=true;const depth=(notifyClose===false?(history.state.overlayDepth||1):1)+childDepth;if(depth>1)history.go(-depth);else history.back();}}if(notifyClose!==false&&typeof callback==='function')callback();if(hadModal&&state)scheduleRender();globalThis.window?.PipiExpiry?.sync();
   }
   function bindSheetBackdrop() {
     let pressedSheet=null;
@@ -568,11 +577,12 @@
   const iconButton = (icon, action, label) => `<button class="icon-btn" data-action="${esc(action)}" aria-label="${esc(label)}">${icons[icon] || ''}</button>`;
   function tabbar(active) {
     const unread = visibleUnreadCount();
-    return `<nav class="bottom-tabs" aria-label="主要导航">${[['chats','chat','微信'],['contacts','contacts','通讯录'],['discover','discover','发现'],['me','me','我']].map(([name,icon,label]) => `<button class="tab ${active===name?'active':''}" data-nav="${name}" ${active===name?'aria-current="page"':''}>${name==='chats'?icons.chat:assetIcon(({contacts:'address-book',discover:'discover',me:'people'})[name]+(active===name?'-filled':'-outlined'))}${name==='chats'&&unread ? `<span class="tab-dot">${unread>99?'99+':unread}</span>`:''}<span class="tab-label">${label}</span></button>`).join('')}</nav>`;
+    return `<nav class="bottom-tabs" aria-label="主要导航">${[['chats','chat','消息'],['contacts','contacts','通讯录'],['discover','discover','发现'],['me','me','我']].map(([name,icon,label]) => `<button class="tab ${active===name?'active':''}" data-nav="${name}" ${active===name?'aria-current="page"':''}>${name==='chats'?icons.chat:assetIcon(({contacts:'address-book',discover:'discover',me:'people'})[name]+(active===name?'-filled':'-outlined'))}${name==='chats'&&unread ? `<span class="tab-dot">${unread>99?'99+':unread}</span>`:''}<span class="tab-label">${label}</span></button>`).join('')}</nav>`;
   }
   const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)');
   let navigationAnimation,navigationCleanup;
   function startPageTransition(name,arg,fromBack){
+    if(globalThis.window?.PipiMotion?.preparePageTransition)return globalThis.window.PipiMotion.preparePageTransition(view,route,name,arg,fromBack);
     const primaryTabs=['chats','contacts','discover','me'];
     navigationAnimation?.cancel();
     navigationCleanup?.();
@@ -783,7 +793,7 @@
       position.modelAdvanced=content.querySelector('.inline-provider-options')?.open;
     }
     if(route.name==='engine-usage')position.usage=window.PipiUsage.getView();
-    sessionStorage.setItem(browserPositionKey,JSON.stringify({route:[route.name,route.arg],position,modelDrafts:window.PipiModels?.captureDrafts()}));
+    try{sessionStorage.setItem(browserPositionKey,JSON.stringify({route:[route.name,route.arg],position,modelDrafts:window.PipiModels?.captureDrafts()}));}catch{}
   }
   function persistChatDrafts(){if(!state)return;const saved={};for(const [roleId,draft] of drafts)if(draft.text||draft.quote)saved[roleId]={text:draft.text||'',quote:draft.quote||''};if(route.name==='chat'){delete saved[route.arg];if(composeText||quoteId)saved[route.arg]={text:composeText,quote:quoteId};}try{if(Object.keys(saved).length)sessionStorage.setItem(chatDraftKey,JSON.stringify(saved));else sessionStorage.removeItem(chatDraftKey);}catch{}}
   function restoreChatDrafts(){let saved;try{saved=JSON.parse(sessionStorage.getItem(chatDraftKey)||'{}');}catch{return;}for(const [roleId,draft] of Object.entries(saved||{}))if(roleById(roleId)&&typeof draft?.text==='string'&&!drafts.has(roleId))drafts.set(roleId,{text:draft.text,quote:typeof draft.quote==='string'?draft.quote:''});const draft=route.name==='chat'?drafts.get(route.arg):null;if(draft&&!composeText&&!quoteId){composeText=draft.text;quoteId=draft.quote;composerSelection={start:composeText.length,end:composeText.length};}}
@@ -830,9 +840,9 @@
     restoreChatDrafts();
     if(route.name==='account-security'){if(accountSecurity)window.PipiAccount.enter();else route={name:'settings',arg:null};}
     if(route.name==='storage'){if(storageMaintenance)window.PipiStorage.enter();else route={name:'settings',arg:null};}
-    const saved=sessionStorage.getItem(browserPositionKey);
-    sessionStorage.removeItem(browserPositionKey);
-    const snapshot=saved?JSON.parse(saved):null;
+    let saved=null,snapshot=null;
+    try{saved=sessionStorage.getItem(browserPositionKey);sessionStorage.removeItem(browserPositionKey);}catch{}
+    try{snapshot=saved?JSON.parse(saved):null;}catch{snapshot=null;}
     const position=restoredPage&&JSON.stringify(snapshot?.route)===JSON.stringify([route.name,route.arg])?snapshot.position:null;
     if(snapshot?.modelDrafts)window.PipiModels?.restoreDrafts(snapshot.modelDrafts);
     if(['engine-home','providers','engine-functions','engine-module'].includes(route.name))await window.PipiEngine.refreshConfig();
@@ -1162,11 +1172,31 @@
     const p=state.profile||{};return header('个人信息',{back:true})+`<div class="content page-content"><section class="section"><button class="cell plain-cell profile-avatar-row" data-action="profile-avatar"><span class="cell-body cell-title">头像</span>${avatar(p,60)}${icons.chevron}</button>${plainCell('名字','profile-name',p.name)}${plainCell('拍一拍','profile-pat',p.patText||'')}${plainCell('微信号','profile-wechatId',p.wechatId)}<button class="cell plain-cell" data-action="coming-profile-qr"><span class="cell-body cell-title">二维码名片</span><span class="profile-qr">${icons.qrcode}</span>${icons.chevron}</button>${plainCell('更多信息','profile-more')}</section><section class="section">${plainCell('微信豆','coming-beans')}${plainCell('我的地址','coming-address')}</section></div>`;
   }
   function renderProfileMore(){const p=state.profile||{};return header('更多信息',{back:true})+`<div class="content page-content"><section class="section">${plainCell('性别','profile-gender',({male:'男',female:'女'})[p.gender]||'未填写')}${plainCell('地区','profile-region',p.region||'未填写')}${plainCell('个性签名','profile-bio',p.bio||'未填写')}</section></div>`;}
+  let savingProfileAvatar=false;
   function previewProfileAvatar(){
     openPage('个人头像',`<div class="profile-avatar-preview">${safeImage(state.profile?.avatar)?`<img src="${esc(state.profile.avatar)}" alt="我的头像">`:avatar(state.profile,100)}</div><button type="button" class="secondary-btn block-btn" data-avatar-choose>选择头像</button><button type="button" class="secondary-btn block-btn" data-avatar-remove ${safeImage(state.profile?.avatar)?'':'disabled'}>移除头像</button><input type="file" accept="${profileImageAccept}" data-avatar-file hidden>`,null);
-    const form=overlay.querySelector('form'),file=form.querySelector('[data-avatar-file]');
-    form.querySelector('[data-avatar-choose]').onclick=()=>file.click();
-    file.onchange=async()=>{if(!file.files[0])return;try{const avatar=await uploadProfileImage(file.files[0]);if(!form.isConnected)return;await act('profile.save',{avatar});if(form.isConnected){closeModal();refresh();}}catch(err){toast('头像：'+err.message);}finally{file.value='';}};
+    const form=overlay.querySelector('form'),file=form.querySelector('[data-avatar-file]'),choose=form.querySelector('[data-avatar-choose]');
+    let selection=0;
+    choose.onclick=()=>{if(savingProfileAvatar){toast('正在保存头像，请稍候');return;}file.click();};
+    file.onchange=async()=>{
+      const chosen=file.files[0];file.value='';
+      if(!chosen||savingProfileAvatar)return;
+      const current=++selection;
+      const isCurrent=()=>form.isConnected&&!form.closest('[inert]')&&selection===current;
+      try{
+        const cropped=window.PipiLifeCrop
+          ?await window.PipiLifeCrop.pick(chosen,'avatar',{isCurrent,parent:form.closest('.page-editor')||form})
+          :await readProfileImage(chosen);
+        if(!cropped||!isCurrent())return;
+        savingProfileAvatar=true;choose.disabled=true;
+        const avatar=await uploadImageData(cropped);
+        if(!isCurrent())return;
+        await act('profile.save',{avatar});
+        await afterOverlayBack();
+        if(isCurrent()){closeModal();refresh();}
+      }catch(err){if(form.isConnected)toast('头像：'+err.message);}
+      finally{savingProfileAvatar=false;if(choose.isConnected)choose.disabled=false;}
+    };
     form.querySelector('[data-avatar-remove]').onclick=()=>confirmDialog('移除头像？','移除后显示默认头像。',async isCurrent=>{await act('profile.save',{avatar:''});if(isCurrent()){closeModal(false);await afterOverlayBack();refresh();}},'移除');
   }
   function editProfileField(key){const labels={name:'名字',wechatId:'微信号',region:'地区',bio:'个性签名',patText:'拍一拍'},p=state.profile||{};openModal(labels[key],field(labels[key],key,p[key]||'','',key==='bio'?'textarea':'text',key==='patText'?'填写“拍了拍自己的”后面的内容。留空可恢复默认。':''),async form=>{const raw=formValues(form)[key],value=key==='wechatId'&&raw===p[key]?raw:raw.trim();if(key==='name'&&!value)throw new Error('名字不能为空');if(key==='wechatId')checkWechatId(value,p.wechatId);await act('profile.save',{[key]:value});if(form.isConnected){closeModal();refresh();}});if(key==='patText')overlay.querySelector('[name=patText]').maxLength=100;}
@@ -1439,7 +1469,7 @@
     const tools=[['toolImage','upload-chat-image','照片'],['toolCamera','coming-camera','拍摄'],['toolVideo','coming-video',['视频','通话']],['toolLocation','coming-location','位置'],['toolRedpacket','chat-redpacket','红包'],['mic','dictation',['语音','转文字']],['toolTransfer','chat-transfer','转账'],['toolFavorites','favorites','收藏'],['toolGift','coming-gift','礼物'],['toolContact','coming-contact-card',['个人','名片']],['toolFile','coming-file','文件'],['toolCards','coming-cards','卡券'],['toolMusic','coming-music','音乐']];
     const more=panel==='more'?'<div class="more-pages"><div class="compose-panel">'+tools.slice(morePage*8,morePage*8+8).map(([icon,action,label])=>'<button type="button" data-action="'+action+'"'+(action==='dictation'?' class="compose-dictation" aria-label="语音转文字" aria-pressed="false"':'')+'><span class="panel-icon">'+(action==='dictation'?micMark:icons[icon]||'')+'</span><span>'+(Array.isArray(label)?label.map(word=>'<span class="tool-word">'+word+'</span>').join('<wbr>'):label)+'</span></button>').join('')+'</div></div><div class="panel-dots">'+[0,1].map(i=>'<button type="button" class="'+(morePage===i?'active':'')+'" data-action="more-'+(i?'next':'prev')+'" aria-label="第'+(i+1)+'页" aria-current="'+(morePage===i?'page':'false')+'"></button>').join('')+'</div>':'';
     const textField=panel==='voice'?'<button type="button" class="voice-record" data-record aria-label="按住说话；左上滑取消，右上滑转文字">按住 说话</button>':'<div class="compose-field"><div id="compose-text" class="compose-input" contenteditable="true" role="textbox" enterkeyhint="send" aria-multiline="true" aria-disabled="false" inputmode="'+(panel==='emoji'?'none':'text')+'" aria-label="输入消息" spellcheck="false">'+richText(composeText,true)+'</div></div>';
-    return '<footer class="chat-composer '+(panel==='emoji'?'emoji-open':'')+'">'+(quote?'<div class="composer-quote"><span>引用 '+esc(quote.sender==='user'?state.profile?.name:roleName(roleById(route.arg)))+'：'+esc(preview(quote))+'</span><button type="button" data-action="clear-quote" aria-label="取消引用">×</button></div>':'')+(composeImage?'<div class="compose-image-preview"><img src="'+esc(composeImage)+'" alt="待发送的图片"><span>'+(composeStickerId?'表情已选择':'图片已选择')+'</span><button type="button" data-action="clear-image">移除</button></div>':'')+'<div class="dictation-status" role="status" aria-live="polite" hidden><span></span><div class="dictation-actions"><button type="button" data-action="finish-dictation">完成</button><button type="button" data-action="cancel-dictation">取消</button></div></div><form id="compose-form" class="compose-row">'+iconButton(panel==='voice'?'keyboard':'voice','toggle-voice',panel==='voice'?'切换到键盘输入':'切换到按住说话')+textField+iconButton(panel==='emoji'?'keyboard':'smile','toggle-emoji',panel==='emoji'?'切换到键盘输入':'选择表情')+'<span class="compose-trailing" data-mode="'+composeTrailingMode()+'">'+renderComposeTrailing()+'</span></form>'+(panel==='emoji'||panel==='more'?'<div class="composer-extras">'+(panel==='emoji'?renderEmojiBoard():more)+'</div>':'')+'<input type="file" id="chat-image-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden><input type="file" id="sticker-file" multiple accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/avif,.bmp,.avif" hidden></footer>';
+    return '<footer class="chat-composer '+(panel==='emoji'?'emoji-open':'')+'">'+(quote?'<div class="composer-quote"><span>引用 '+esc(quote.sender==='user'?state.profile?.name:roleName(roleById(route.arg)))+'：'+esc(preview(quote))+'</span><button type="button" data-action="clear-quote" aria-label="取消引用">×</button></div>':'')+(composeImage?'<div class="compose-image-preview"><img src="'+esc(composeImage)+'" alt="待发送的图片"><span>'+(composeStickerId?'表情已选择':'图片已选择')+'</span><button type="button" data-action="clear-image">移除</button></div>':'')+'<div class="dictation-status" role="status" aria-live="polite" hidden><span></span><div class="dictation-actions"><button type="button" data-action="finish-dictation">完成</button><button type="button" data-action="cancel-dictation">取消</button></div></div><form id="compose-form" class="compose-row">'+iconButton(panel==='voice'?'keyboard':'voice','toggle-voice',panel==='voice'?'切换到键盘输入':'切换到按住说话')+textField+iconButton(panel==='emoji'?'keyboard':'smile','toggle-emoji',panel==='emoji'?'切换到键盘输入':'选择表情')+'<span class="compose-trailing" data-mode="'+composeTrailingMode()+'">'+renderComposeTrailing()+'</span></form>'+(panel==='emoji'||panel==='more'?'<div class="composer-extras">'+(panel==='emoji'?renderEmojiBoard():more)+'</div>':'')+'<input type="file" id="chat-image-file" accept="image/*" hidden><input type="file" id="sticker-file" multiple accept="image/*" hidden></footer>';
   }
   function composerPointerBusy(){return composerPointers.size>0||composerPointerSettling;}
   function resetComposerPointerState(){composerPointers.clear();composerPointerSettling=false;pointerComposerUpdatePending=false;pointerViewRefreshPending=false;if(composerPointerFrame)cancelAnimationFrame(composerPointerFrame);composerPointerFrame=0;}
@@ -1479,6 +1509,7 @@
     old.outerHTML=renderComposer();bindComposer();bindActionButtons(view.querySelector('.chat-composer'));
     const from=composerPanelFrom;composerPanelFrom=null;
     if(from!==null)animateComposerPanel(from,anchor);
+    globalThis.window?.PipiMotion?.decorateView(view,route);
     const input=view.querySelector('#compose-text');if(input&&wasInput){input.focus({preventScroll:true});setComposerSelection(input,composerSelection.start,composerSelection.end);}
     if(input)input.scrollTop=composerScroll.input;
     if(wasSearch){const search=view.querySelector('#emoji-search');search?.focus({preventScroll:true});search?.setSelectionRange(searchCursor,searchCursor);}
@@ -1489,7 +1520,7 @@
     if(!extras||reduceMotion.matches||typeof extras.animate!=='function')return;
     const height=extras.getBoundingClientRect().height;
     if(Math.abs(height-from)<1)return;
-    const animation=extras.animate([{height:from+'px'},{height:height+'px'}],{duration:200,easing:'ease-out'});
+    const animation=extras.animate([{height:from+'px'},{height:height+'px'}],{duration:240,easing:'cubic-bezier(0.32,0.72,0,1)'});
     if(!anchor?.bottom)return;
     const pin=()=>{
       if(extras.isConnected&&anchor.list.isConnected){
@@ -1539,6 +1570,7 @@
       if (route.name === 'chat') window.ClassicChat.decorate(view);
     }
     window.WaterdropChat?.decorate(view);
+    globalThis.window?.PipiMotion?.decorateView(view,route);
     bindActionButtons(view);
     if (route.name === 'skins') {
       view.querySelector('.skin-picker').onchange = event => {
@@ -1668,7 +1700,7 @@
       case 'chat-transfer': window.PipiFeatures.transfer('transfer',r?.id,{fromChat:true}); break;
       case 'chat-redpacket': window.PipiFeatures.transfer('redpacket',r?.id,{fromChat:true}); break;
       case 'chat-pat': if(r)await patChat(r.id,'contact');break;
-      case 'logout': confirmDialog('退出登录？','数据会保留在服务器，输入密码即可重新登录。',async()=>{await api('/api/logout',{}); csrf=''; state=null;drafts.clear();composerHistories.clear();failedSends.clear();composeText='';composeImage='';composeImageMeta=null;composeStickerId='';quoteId='';sessionStorage.removeItem(chatDraftKey);renderAuth(false);},'退出登录'); break;
+      case 'logout': confirmDialog('退出登录？','数据会保留在服务器，输入密码即可重新登录。',async()=>{await api('/api/logout',{}); csrf=''; state=null;window.PipiEngine?.stop();drafts.clear();composerHistories.clear();failedSends.clear();composeText='';composeImage='';composeImageMeta=null;composeStickerId='';quoteId='';try{sessionStorage.removeItem(chatDraftKey);}catch{}closeModal(false);renderAuth(false);},'退出登录'); break;
       case 'download-backup': downloadBackup(); break;
       case 'restore-backup': pickBackup(); break;
     }
@@ -1765,7 +1797,7 @@
   }
   function editChatBackground(r){
     let draft=r.chatBackground||'', selection=0, loading=false;
-    openModal('设置聊天背景','<div class="chat-background-preview"></div><button type="button" class="secondary-btn block-btn" id="pick-chat-background">从相册选择</button><button type="button" class="secondary-btn block-btn" id="clear-chat-background">恢复默认背景</button><input id="chat-background-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>',async form=>{
+    openModal('设置聊天背景','<div class="chat-background-preview"></div><button type="button" class="secondary-btn block-btn" id="pick-chat-background">从相册选择</button><button type="button" class="secondary-btn block-btn" id="clear-chat-background">恢复默认背景</button><input id="chat-background-file" type="file" accept="image/*" hidden>',async form=>{
       if(loading)throw new Error('图片正在处理，请稍候');
       await act('role.save',{id:r.id,chatBackground:draft});
       if(form.isConnected){closeModal(false);refresh();}
@@ -1786,8 +1818,18 @@
     overlay.querySelector('#clear-chat-background').onclick=()=>{selection++;setLoading(false);draft='';file.value='';paint();};
     file.onchange=async()=>{
       const chosen=file.files[0];if(!chosen)return;
-      const current=++selection;file.value='';setLoading(true);
-      try{const image=await uploadImage(chosen);if(file.isConnected&&selection===current){draft=image;paint();}}
+      const current=++selection;file.value='';
+      const isCurrent=()=>file.isConnected&&!file.closest('[inert]')&&selection===current;
+      try{
+        const cropped=window.PipiLifeCrop
+          ?await window.PipiLifeCrop.pick(chosen,'chatBackground',{isCurrent,parent:overlay.querySelector('.page-editor')})
+          :null;
+        if(window.PipiLifeCrop&&!cropped)return;
+        if(!isCurrent())return;
+        setLoading(true);
+        const image=cropped?await uploadImageData(cropped):await uploadImage(chosen);
+        if(isCurrent()){draft=image;paint();}
+      }
       catch(error){if(file.isConnected&&selection===current)toast(error.message);}
       finally{if(file.isConnected&&selection===current)setLoading(false);}
     };
@@ -2254,79 +2296,160 @@
   }
   async function readImage(file,convertSticker=false,asBlob=false) {
     if(!file)throw new Error('请选择一张图片');
-    const native=['image/png','image/jpeg','image/webp','image/gif'].includes(file.type);
-    if(!native&&!(convertSticker&&['image/bmp','image/x-ms-bmp','image/avif'].includes(file.type)))throw new Error(convertSticker?'支持 PNG、JPG、WebP、GIF、BMP 和 AVIF 图片':'支持 PNG、JPEG、WebP 和 GIF 图片，不支持 SVG');
     const inputLimit=convertSticker||binaryMedia?20:5;
     if(file.size>inputLimit*1024*1024)throw new Error('图片不能超过 '+inputLimit+' MB');
-    let result=file,animated=file.type==='image/gif';
-    if(['image/png','image/webp','image/avif'].includes(file.type)){
-      const bytes=await file.arrayBuffer(),data=new DataView(bytes),tag=at=>String.fromCharCode(...new Uint8Array(bytes,at,4));
-      if(file.type==='image/avif'){
-        if(data.byteLength>=8&&tag(4)==='ftyp')for(let at=8;at+4<=Math.min(data.byteLength,data.getUint32(0));at+=4)if(tag(at)==='avis')animated=true;
-      }else{
-        const webp=file.type==='image/webp';
-        for(let at=webp?12:8;at+8<=data.byteLength;){
-          if(tag(at+(webp?0:4))===(webp?'ANIM':'acTL')){animated=true;break;}
-          const size=data.getUint32(at+(webp?4:0),webp);at+=size+(webp?8+(size%2):12);
+    const mime=await sniffImageMime(file);
+    if(mime==='image/svg+xml')throw new Error('不支持 SVG 图片，请换用 PNG、JPG、WebP 或 GIF');
+    const native=['image/png','image/jpeg','image/webp','image/gif'].includes(mime);
+    if(!native&&!['image/bmp','image/avif','image/heic','image/x-icon','image/tiff'].includes(mime))throw new Error('支持 PNG、JPG、WebP、GIF、BMP、AVIF 等常见图片格式，不支持 SVG');
+    let result=file,animated=await detectAnimatedImage(file,mime);
+    const animationLimit=binaryMedia?10:5;
+    if(animated&&file.size>animationLimit*1024*1024)throw new Error('动图不能超过 '+animationLimit+' MB');
+    if(animated&&!native)throw new Error('动态 AVIF 暂不支持，请换用 GIF 或动态 WebP');
+    if(mime==='image/jpeg'&&file.size>=4){
+      const head=new Uint8Array(await file.slice(0,3).arrayBuffer());
+      if(head[0]===255&&head[1]===216&&head[2]===255){
+        const tail=new Uint8Array(await file.slice(-2).arrayBuffer());
+        if(!(tail[0]===255&&tail[1]===217)){
+          const trimmed=await repairJpegTrailer(file);
+          if(trimmed)result=trimmed;
         }
       }
     }
-    const animationLimit=binaryMedia?10:5;
-    if(animated&&file.size>animationLimit*1024*1024)throw new Error('动图不能超过 '+animationLimit+' MB');
-    if(convertSticker&&!animated){
-      let bitmap;
-      try{bitmap=await createImageBitmap(file);}catch{throw new Error('无法读取 '+file.name+'，请换用 PNG、JPG、WebP 或 GIF');}
+    if(native&&result===file&&file.type!==mime)result=new Blob([file],{type:mime});
+    if(!native||(convertSticker&&!animated)){
+      const maxEdge=convertSticker?1024:2048;
+      const decoded=await decodeImageSource(result).catch(()=>{
+        if(mime==='image/heic')throw new Error('当前浏览器无法直接解析 HEIC/HEIF 照片，请在手机相册转为 JPG/PNG，或在 iPhone「设置 → 相机 → 格式」选「兼容性最佳」后重试');
+        throw new Error('无法读取 '+(file.name||'这张图片')+'，请换用 PNG、JPG、WebP 或 GIF');
+      });
       try{
-        const ratio=Math.min(1,1024/Math.max(bitmap.width,bitmap.height)),canvas=document.createElement('canvas');
-        canvas.width=Math.max(1,Math.round(bitmap.width*ratio));canvas.height=Math.max(1,Math.round(bitmap.height*ratio));
-        canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);
-        const compressed=await new Promise(resolve=>canvas.toBlob(resolve,'image/webp',.9));
-        if(!compressed)throw new Error(file.name+' 压缩失败，请重新选择图片');
-        if(!native||compressed.size<file.size)result=compressed;
-      }finally{bitmap.close();}
+        const ratio=Math.min(1,maxEdge/Math.max(decoded.width,decoded.height)),canvas=document.createElement('canvas');
+        canvas.width=Math.max(1,Math.round(decoded.width*ratio));canvas.height=Math.max(1,Math.round(decoded.height*ratio));
+        canvas.getContext('2d').drawImage(decoded.source,0,0,canvas.width,canvas.height);
+        const alpha=convertSticker||mime==='image/png'||mime==='image/webp'||mime==='image/x-icon';
+        const compressed=await encodeCanvas(canvas,{quality:convertSticker?.9:.92,preferWebp:true,alpha});
+        if(!compressed)throw new Error((file.name||'图片')+' 压缩失败，请重新选择图片');
+        if(!native||compressed.size<result.size)result=compressed;
+      }finally{decoded.close();}
     }
-    if(animated&&!native)throw new Error('动态 AVIF 暂不支持，请换用 GIF 或动态 WebP');
     const outputLimit=binaryMedia?(animated?10:20):5;
     if(result.size>outputLimit*1024*1024)throw new Error((animated?'动图':'图片')+'不能超过 '+outputLimit+' MB');
     if(asBlob)return result;
     const source=await readBlobData(result);if(!safeImage(source))throw new Error('图片格式无法读取');return source;
   }
-  const profileImageAccept='image/png,image/jpeg,image/webp,image/gif,image/bmp,image/avif,.bmp,.avif';
-  async function readProfileImage(file,asBlob=false){
-    if(!file)throw new Error('请选择一张图片');
-    const limit=binaryMedia?20:5;
-    if(file.size>limit*1024*1024)throw new Error('图片不能超过 '+limit+' MB');
-    const header=new Uint8Array(await file.slice(0,32).arrayBuffer());
-    const tag=(start,end)=>String.fromCharCode(...header.subarray(start,end));
-    let mime;
-    if(header.length>=24&&tag(0,8)==='\x89PNG\r\n\x1a\n'&&tag(12,16)==='IHDR')mime='image/png';
-    else if(header[0]===255&&header[1]===216)mime='image/jpeg';
-    else if(header.length>=13&&['GIF87a','GIF89a'].includes(tag(0,6)))mime='image/gif';
-    else if(header.length>=16&&tag(0,4)==='RIFF'&&tag(8,12)==='WEBP')mime='image/webp';
-    else if(tag(0,2)==='BM')mime='image/bmp';
-    else if(tag(4,8)==='ftyp'&&(/^(avif|avis)$/.test(tag(8,12))||file.type==='image/avif'))mime='image/avif';
-    else throw new Error('无法识别这张图片，请选择 PNG、JPG、WebP、GIF、BMP 或 AVIF');
-    const typed=new File([file],file.name,{type:mime});
-    if(mime==='image/avif'||mime==='image/bmp')return readImage(typed,true,asBlob);
-    if(mime!=='image/jpeg'||new DataView(await file.slice(-2).arrayBuffer()).getUint16(0)===0xffd9){
-      const blob=await readImage(typed,false,true),source=await readBlobData(blob),preview=new Image();
-      preview.src=source;
-      try{await preview.decode();}catch{throw new Error('无法读取这张 '+mime.slice(6).toUpperCase()+' 图片，请重新选图');}
-      return asBlob?blob:source;
-    }
-
-    // A browser may preview a JPEG with extra bytes after its end marker.
-    let bitmap;
-    try{bitmap=await createImageBitmap(typed);}catch{throw new Error('这张图片无法读取，请重新选图');}
+  let cachedWebpEncode;
+  function supportsWebpEncode(){
+    if(cachedWebpEncode!==undefined)return cachedWebpEncode;
     try{
-      const ratio=Math.min(1,1600/Math.max(bitmap.width,bitmap.height)),canvas=document.createElement('canvas');
-      canvas.width=Math.max(1,Math.round(bitmap.width*ratio));
-      canvas.height=Math.max(1,Math.round(bitmap.height*ratio));
-      canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);
-      const converted=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.94));
-      if(!converted)throw new Error('图片转换失败，请重新选图');
-      return await readImage(converted,false,asBlob);
-    }finally{bitmap.close();}
+      const canvas=document.createElement('canvas');
+      canvas.width=canvas.height=1;
+      cachedWebpEncode=typeof canvas.toDataURL==='function'?canvas.toDataURL('image/webp').startsWith('data:image/webp'):true;
+    }catch{cachedWebpEncode=false;}
+    return cachedWebpEncode;
+  }
+  async function encodeCanvas(canvas,{quality=.9,preferWebp=true,alpha=false}={}){
+    const mime=preferWebp&&supportsWebpEncode()?'image/webp':alpha?'image/png':'image/jpeg';
+    const encode=type=>new Promise(resolve=>canvas.toBlob(resolve,type,quality));
+    let blob=await encode(mime);
+    if(blob&&mime==='image/webp'&&blob.type&&blob.type!=='image/webp'){
+      cachedWebpEncode=false;
+      blob=await encode(alpha?'image/png':'image/jpeg');
+    }
+    return blob;
+  }
+  async function decodeImageSource(blob){
+    if(typeof createImageBitmap==='function'){
+      try{
+        const bitmap=await createImageBitmap(blob);
+        return {source:bitmap,width:bitmap.width,height:bitmap.height,close(){bitmap.close();}};
+      }catch{}
+    }
+    const url=await readBlobData(blob);
+    const img=new Image();
+    img.src=url;
+    await img.decode();
+    return {source:img,width:img.naturalWidth||img.width||1,height:img.naturalHeight||img.height||1,close(){}};
+  }
+  async function sniffImageMime(file){
+    const rawType=String(file.type||'').split(';')[0].trim().toLowerCase();
+    if(rawType==='image/svg+xml'||rawType==='text/html'||rawType==='application/xhtml+xml')return 'image/svg+xml';
+    const header=new Uint8Array(await file.slice(0,64).arrayBuffer());
+    const tag=(start,end)=>String.fromCharCode(...header.subarray(start,Math.min(end,header.length)));
+    const headText=tag(0,64).replace(/^\uFEFF/,'').trimStart().toLowerCase();
+    if(headText.startsWith('<svg')||headText.startsWith('<!doctype')||headText.startsWith('<html')||headText.startsWith('<?xml'))return 'image/svg+xml';
+    if(header.length>=24&&tag(0,8)==='\x89PNG\r\n\x1a\n'&&tag(12,16)==='IHDR')return 'image/png';
+    if(header.length>=3&&header[0]===255&&header[1]===216&&header[2]===255)return 'image/jpeg';
+    if(header.length>=13&&['GIF87a','GIF89a'].includes(tag(0,6)))return 'image/gif';
+    if(header.length>=16&&tag(0,4)==='RIFF'&&tag(8,12)==='WEBP')return 'image/webp';
+    if(header.length>=2&&tag(0,2)==='BM')return 'image/bmp';
+    if(header.length>=4&&header[0]===0&&header[1]===0&&header[2]===1&&header[3]===0)return 'image/x-icon';
+    if(header.length>=4&&(tag(0,4)==='II*\x00'||tag(0,4)==='MM\x00*'))return 'image/tiff';
+    if(header.length>=12&&tag(4,8)==='ftyp'){
+      const boxSize=Math.min(header.length,new DataView(header.buffer,header.byteOffset,header.byteLength).getUint32(0)||header.length);
+      let isHeic=false;
+      for(let off=8;off+4<=boxSize;off+=4){
+        if(off===12)continue;
+        const brand=tag(off,off+4);
+        if(brand==='avif'||brand==='avis')return 'image/avif';
+        if(['heic','heix','hevc','hevx','mif1','msf1'].includes(brand))isHeic=true;
+      }
+      if(isHeic)return 'image/heic';
+    }
+    const aliases={'image/jpg':'image/jpeg','image/pjpeg':'image/jpeg','image/x-png':'image/png','image/x-ms-bmp':'image/bmp','image/heif':'image/heic','image/heic-sequence':'image/heic','image/heif-sequence':'image/heic'};
+    if(aliases[rawType])return aliases[rawType];
+    if(['image/png','image/jpeg','image/webp','image/gif','image/bmp','image/avif','image/heic','image/x-icon','image/tiff'].includes(rawType))return rawType;
+    const ext=(String(file.name||'').match(/\.([a-z0-9]+)$/i)||[])[1]?.toLowerCase()||'';
+    if(ext==='heic'||ext==='heif')return 'image/heic';
+    if(ext==='avif')return 'image/avif';
+    if(ext==='bmp')return 'image/bmp';
+    if(ext==='svg')return 'image/svg+xml';
+    return '';
+  }
+  async function detectAnimatedImage(file,mime){
+    if(mime==='image/gif')return true;
+    if(!['image/png','image/webp','image/avif'].includes(mime))return false;
+    const bytes=await file.arrayBuffer(),data=new DataView(bytes),tag=at=>String.fromCharCode(...new Uint8Array(bytes,at,4));
+    if(mime==='image/avif'){
+      if(data.byteLength>=12&&tag(4)==='ftyp'){
+        const end=Math.min(data.byteLength,data.getUint32(0)||data.byteLength);
+        for(let at=8;at+4<=end;at+=4){if(at!==12&&tag(at)==='avis')return true;}
+      }
+      return false;
+    }
+    const webp=mime==='image/webp';
+    for(let at=webp?12:8;at+8<=data.byteLength;){
+      const chunk=tag(at+(webp?0:4));
+      if(webp?(chunk==='ANIM'||chunk==='ANMF'):chunk==='acTL')return true;
+      if(!webp&&chunk==='IDAT')return false;
+      const size=data.getUint32(at+(webp?4:0),webp);
+      at+=size+(webp?8+(size%2):12);
+    }
+    return false;
+  }
+  async function repairJpegTrailer(file){
+    const bytes=new Uint8Array(await file.arrayBuffer());
+    for(let i=bytes.length-2;i>=2;i--){
+      if(bytes[i]===255&&bytes[i+1]===217)return new Blob([bytes.subarray(0,i+2)],{type:'image/jpeg'});
+    }
+    const decoded=await decodeImageSource(new Blob([bytes],{type:'image/jpeg'})).catch(()=>null);
+    if(!decoded)return null;
+    try{
+      const ratio=Math.min(1,2048/Math.max(decoded.width,decoded.height)),canvas=document.createElement('canvas');
+      canvas.width=Math.max(1,Math.round(decoded.width*ratio));canvas.height=Math.max(1,Math.round(decoded.height*ratio));
+      canvas.getContext('2d').drawImage(decoded.source,0,0,canvas.width,canvas.height);
+      return await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.94));
+    }finally{decoded.close();}
+  }
+  const profileImageAccept='image/*';
+  async function readProfileImage(file,asBlob=false){
+    const blob=await readImage(file,false,true);
+    const decoded=await decodeImageSource(blob).catch(()=>{throw new Error('无法读取这张图片，请重新选图');});
+    decoded.close();
+    if(asBlob)return blob;
+    const source=await readBlobData(blob);
+    if(!safeImage(source))throw new Error('图片格式无法读取');
+    return source;
   }
   async function uploadStickers(files,origin,epoch){
     if(!files.length)return;
@@ -2369,20 +2492,40 @@
     speechSession=null;
     session.audio?.pause();
     session.audio?.remove();
+    if(session.objectUrl){try{URL.revokeObjectURL(session.objectUrl);}catch{}session.objectUrl='';}
     paintSpeech(session.id);
   }
   async function startSpeechAudio(session){
     if(!safeAudio(session.data)){stopSpeech();toast('没有可播放的安全音频');return;}
     const audio=session.audio??(session.audio=new Audio(session.data));
     if(!audio.isConnected){audio.hidden=true;document.body.append(audio);}
+    const tryBlobFallback=async()=>{
+      if(speechSession!==session||session.blobTried||!String(session.data||'').trim().startsWith('/api/media/'))return false;
+      session.blobTried=true;
+      try{
+        const res=await fetch(session.data.trim(),{credentials:'same-origin'});
+        if(!res.ok||speechSession!==session)return false;
+        const blob=await res.blob();
+        if(speechSession!==session)return false;
+        session.objectUrl=URL.createObjectURL(blob);
+        audio.src=session.objectUrl;
+        await audio.play();
+        return true;
+      }catch{return false;}
+    };
     audio.onended=()=>{if(speechSession===session)stopSpeech();};
     audio.onplaying=()=>{if(speechSession===session){session.phase='playing';paintSpeech(session.id);}};
-    audio.onerror=()=>{if(speechSession===session){stopSpeech();toast('这条音频无法解码，可能已损坏或格式不受支持');}};
+    audio.onerror=async()=>{
+      if(speechSession!==session)return;
+      if(await tryBlobFallback())return;
+      if(speechSession===session){stopSpeech();toast('这条音频无法解码，可能已损坏或格式不受支持');}
+    };
     try{await audio.play();}
     catch(error){
       if(speechSession!==session)return;
       if(error.name==='NotAllowedError'&&!session.voice){session.phase='ready';paintSpeech(session.id);return;}
-      stopSpeech();toast(error.name==='NotAllowedError'?'浏览器阻止了播放，请允许此网页播放声音':'音频播放失败，请重试');
+      if(error.name!=='NotAllowedError'&&await tryBlobFallback())return;
+      if(speechSession===session){stopSpeech();toast(error.name==='NotAllowedError'?'浏览器阻止了播放，请允许此网页播放声音':'音频播放失败，请重试');}
     }
   }
   async function speakMessage(id) {
@@ -2416,7 +2559,7 @@
     if(hold){
       hold.disabled=!!(sending||(recordingSession&&recordingSession.mode!=='hold'));
       hold.classList.toggle('recording',recordingSession?.mode==='hold'&&recordingSession.phase==='recording');
-      hold.textContent=recordingSession?.mode==='text'?'正在转文字…':'按住 说话';
+      hold.textContent=recordingSession?.mode==='voice'?'正在发送…':recordingSession?.mode==='text'?'正在转文字…':'按住 说话';
     }
     if(button){button.classList.toggle('recording',phase==='recording');button.classList.toggle('transcribing',!!dictationBusy);button.classList.toggle('requesting',phase==='requesting');button.setAttribute('aria-pressed',String(phase==='recording'));button.disabled=!!(sending||dictationBusy);button.setAttribute('aria-label',phase==='recording'?'停止录音并转换为文字':phase==='requesting'?'取消语音输入':dictationBusy?'正在转换为文字':'语音转文字');}
     if(status){status.hidden=!session;const text=status.querySelector('span');if(text)text.textContent=phase==='requesting'?'正在请求麦克风…':phase==='recording'?'正在听，点完成转换为文字':phase==='awaiting-composition'?'识别完成，结束文字输入后加入草稿':'正在转换为文字…';status.querySelector('[data-action=finish-dictation]').disabled=phase!=='recording';}
@@ -2425,7 +2568,7 @@
     clearTimeout(session.timer);
     session.stream?.getTracks().forEach(track=>track.stop());
     session.stream=null;
-    if(session.volumeContext){void session.volumeContext.close();session.volumeContext=null;}
+    if(session.volumeContext){session.volumeContext.close?.().catch(()=>{});session.volumeContext=null;}
   }
   function releaseRecordingSession(session){
     releaseMicrophone(session);
@@ -2445,14 +2588,16 @@
   async function finishRecording(session){
     if(session.cancelled||recordingSession!==session)return;
     const durationMs=session.durationMs,chunks=session.chunks;
-    if(!chunks.length){releaseRecordingSession(session);return;}
+    if(!chunks.length){toast('没有录到声音，请按住稍久一点再试');releaseRecordingSession(session);return;}
     if(durationMs<500){toast('说话时间太短');releaseRecordingSession(session);return;}
-    const blob=new Blob(chunks,{type:session.recorder.mimeType.split(';')[0]});
+    const mime=String(session.recorder?.mimeType||chunks[0]?.type||'').split(';')[0].trim();
+    const blob=new Blob(chunks,mime?{type:mime}:undefined);
     if(blob.size>8*1024*1024){toast('录音过大，请缩短后重试');releaseRecordingSession(session);return;}
     session.phase=session.mode==='voice'?'sending':'transcribing';dictationBusy=session.mode==='dictation';
     syncComposerControls();
     try{
       const wav=await window.PipiAudio.recordingWav(blob);
+      if(wav.size>8*1024*1024)throw new Error('录音过大，请缩短后重试');
       if(session.cancelled||recordingSession!==session)return;
       const audio=await uploadMedia(wav);
       if(session.cancelled||recordingSession!==session)return;
@@ -2475,7 +2620,7 @@
       }
       receiveState(result.state);
       if(result.notice&&recordingSession===session)toast(result.notice);
-    }catch(err){if(!session.cancelled&&recordingSession===session){toast(err.message);if(err.state)receiveState(err.state);}}
+    }catch(err){if(!session.cancelled&&recordingSession===session){toast((err&&err.message)||'录音处理失败，请重试');if(err?.state)receiveState(err.state);}}
     finally{
       if(recordingSession===session&&session.phase!=='awaiting-composition'){
         releaseRecordingSession(session);
@@ -2486,7 +2631,7 @@
   function androidVoiceRecorder(token){
     const command=action=>window.prompt('pipi-recording:'+token,action);
     return {
-      state:'inactive',mimeType:'audio/mp4',
+      state:'inactive',mimeType:'audio/wav',
       start(){
         const reply=command('start');
         if(reply==='permission')return false;
@@ -2498,10 +2643,30 @@
         this.state='inactive';
         if(!this.onstop){command('cancel');return;}
         const reply=command('finish');
-        if(!reply?.startsWith('audio:')){this.onerror();return;}
+        if(reply?.startsWith('url:')){
+          const mediaUrl=reply.slice(4);
+          fetch(mediaUrl,{credentials:'same-origin'}).then(r=>{
+            if(!r.ok)throw new Error('录音读取失败');
+            return r.blob();
+          }).then(blob=>{
+            this.mimeType=blob.type||'audio/wav';
+            this.ondataavailable?.({data:blob});
+            this.onstop?.();
+          }).catch(()=>this.onerror?.());
+          return;
+        }
+        if(reply?.startsWith('wav:')){
+          this.mimeType='audio/wav';
+          const bytes=Uint8Array.from(atob(reply.slice(4)),c=>c.charCodeAt(0));
+          this.ondataavailable?.({data:new Blob([bytes],{type:'audio/wav'})});
+          this.onstop?.();
+          return;
+        }
+        if(!reply?.startsWith('audio:')){this.onerror?.();return;}
+        this.mimeType='audio/mp4';
         const bytes=Uint8Array.from(atob(reply.slice(6)),c=>c.charCodeAt(0));
-        this.ondataavailable({data:new Blob([bytes],{type:this.mimeType})});
-        this.onstop();
+        this.ondataavailable?.({data:new Blob([bytes],{type:'audio/mp4'})});
+        this.onstop?.();
       },
     };
   }
@@ -2511,25 +2676,43 @@
   async function startRecording(mode,hold) {
     if(recordingSession||dictationBusy||sending)return;
     const nativeToken=document.querySelector('meta[name="pipi-recording"]')?.content;
-    if(!nativeToken&&(!window.MediaRecorder||!navigator.mediaDevices?.getUserMedia)){
+    const AudioCtx=window.AudioContext||window.webkitAudioContext;
+    const canWebRecord=Boolean(navigator.mediaDevices?.getUserMedia&&(window.MediaRecorder||AudioCtx));
+    if(!nativeToken&&!canWebRecord){
       toast(window.isSecureContext===false?'这个网址无法使用麦克风，请用 HTTPS 网址再试。':'当前设备暂时无法录音，你仍然可以发文字和图片。');
       return;
     }
     if(mode==='dictation'&&!window.PipiEngine?.serviceReady('stt')){toast('请先在模型设置中选择录音转文字模型');return;}
     const input=view.querySelector('#compose-text');if(input){composerSelection=readComposerSelection(input);}
-    const session={mode,hold,roleId:route.arg,quoteId:quotedMessage(quoteId)?.id||'',phase:'requesting',cancelled:false,chunks:[]};
+    // Create AudioContext synchronously inside user gesture so iOS Safari unlocks WebAudio cleanly.
+    let gestureCtx=null;
+    if(!nativeToken&&AudioCtx){
+      try{gestureCtx=new AudioCtx();if(gestureCtx.state==='suspended')gestureCtx.resume?.().catch(()=>{});}catch{gestureCtx=null;}
+    }
+    const session={mode,hold,roleId:route.arg,quoteId:quotedMessage(quoteId)?.id||'',phase:'requesting',cancelled:false,chunks:[],volumeContext:gestureCtx};
     recordingSession=session;syncComposerControls();
     hold?.signal.addEventListener('abort',()=>{if(recordingSession===session)stopRecording(true);},{once:true});
     try{
+      const isIOSWebKit=/iP(?:hone|ad|od)|Macintosh/i.test(navigator.userAgent)&&('ontouchend' in document)||/AppleWebKit/i.test(navigator.userAgent)&&!/Chrome|Chromium|Edg|Firefox/i.test(navigator.userAgent);
+      let usePcmDirect=false;
       if(nativeToken){
+        // Yield once so pointerdown finishes and ACKs mobile touch before synchronous native bridge runs.
+        await new Promise(resolve=>setTimeout(resolve,0));
+        if(session.cancelled||recordingSession!==session||route.name!=='chat'||route.arg!==session.roleId||document.hidden){releaseRecordingSession(session);return;}
         session.recorder=androidVoiceRecorder(nativeToken);
       }else{
         session.stream=await navigator.mediaDevices.getUserMedia({audio:true});
         if(session.cancelled||recordingSession!==session||route.name!=='chat'||route.arg!==session.roleId||document.hidden){releaseRecordingSession(session);return;}
-        const mime=['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus'].find(t=>MediaRecorder.isTypeSupported(t));
-        session.recorder=new MediaRecorder(session.stream,mime?{mimeType:mime}:undefined);
+        if((isIOSWebKit||!window.MediaRecorder)&&window.PipiAudio?.createPcmRecorder&&AudioCtx){
+          usePcmDirect=true;
+          session.recorder=window.PipiAudio.createPcmRecorder(session.stream,gestureCtx);
+        }else{
+          const canCheck=typeof MediaRecorder.isTypeSupported==='function';
+          const mime=canCheck?['audio/webm;codecs=opus','audio/mp4;codecs=mp4a.40.2','audio/mp4','audio/webm','audio/ogg;codecs=opus'].find(t=>MediaRecorder.isTypeSupported(t)):'';
+          session.recorder=new MediaRecorder(session.stream,mime?{mimeType:mime}:undefined);
+        }
       }
-      session.recorder.ondataavailable=event=>{if(!session.cancelled&&event.data.size)session.chunks.push(event.data);};
+      session.recorder.ondataavailable=event=>{if(!session.cancelled&&event?.data?.size)session.chunks.push(event.data);};
       session.recorder.onerror=()=>{if(recordingSession===session){stopRecording(true);toast('录音中断，请重新按住说话');}};
       session.recorder.onstop=()=>{
         releaseMicrophone(session);
@@ -2538,24 +2721,28 @@
         session.phase='recorded';
         if(session.mode==='hold')session.hold.capped();else void finishRecording(session);
       };
-      const started=session.recorder.start();
+      const started=nativeToken||usePcmDirect?session.recorder.start():session.recorder.start(250);
       if(started===false){releaseRecordingSession(session);if(hold)toast('第一次录音，请松手后允许使用麦克风');return;}
       session.startedAt=Date.now();session.phase='recording';
       session.timer=setTimeout(()=>{if(recordingSession===session)stopRecording(false);},60000);
       syncComposerControls();
       if(!hold)return;
       let level;
-      if(session.stream&&window.AudioContext){
-        const context=new AudioContext(),analyser=context.createAnalyser();
-        session.volumeContext=context;analyser.fftSize=512;
-        context.createMediaStreamSource(session.stream).connect(analyser);
-        const samples=new Float32Array(analyser.fftSize);
-        level=()=>{
-          if(!session.volumeContext)return 0;
-          analyser.getFloatTimeDomainData(samples);
-          let power=0;for(const sample of samples)power+=sample*sample;
-          return Math.min(1,Math.sqrt(power/samples.length)*6);
-        };
+      if(usePcmDirect&&typeof session.recorder.level==='function'){
+        level=session.recorder.level;
+      }else if(session.stream&&!isIOSWebKit&&AudioCtx){
+        try{
+          const context=gestureCtx&&gestureCtx.state!=='closed'?gestureCtx:new AudioCtx(),analyser=context.createAnalyser();
+          session.volumeContext=context;analyser.fftSize=512;
+          context.createMediaStreamSource(session.stream).connect(analyser);
+          const samples=new Uint8Array(analyser.fftSize);
+          level=()=>{
+            if(!session.volumeContext)return 0;
+            analyser.getByteTimeDomainData(samples);
+            let power=0;for(let i=0;i<samples.length;i++){const v=(samples[i]-128)/128;power+=v*v;}
+            return Math.min(1,Math.sqrt(power/samples.length)*6);
+          };
+        }catch{level=undefined;}
       }
       return {level,stop(choice){
         if(recordingSession!==session)return;
@@ -2565,33 +2752,69 @@
         session.mode=choice;
         if(session.phase==='recorded')void finishRecording(session);else stopRecording(false);
       }};
-    }catch(err){if(recordingSession===session&&!session.cancelled){releaseRecordingSession(session);toast(err.name==='NotAllowedError'?/\bPipiPhoneAndroid\//.test(navigator.userAgent)?'麦克风权限未开启，请在系统设置中允许小手机录音':'麦克风权限未开启，请在浏览器设置中允许录音':'无法开始录音：'+err.message);}else session.stream?.getTracks().forEach(track=>track.stop());}
+    }catch(err){
+      const errName=err&&err.name,errMsg=(err&&err.message)||'请检查麦克风权限后重试';
+      const permError=['NotAllowedError','PermissionDeniedError','NotFoundError','NotReadableError'].includes(errName);
+      if((recordingSession===session&&!session.cancelled)||permError){
+        if(recordingSession===session)releaseRecordingSession(session);
+        else releaseMicrophone(session);
+        toast(errName==='NotAllowedError'||errName==='PermissionDeniedError'
+          ?(/\bPipiPhoneAndroid\//.test(navigator.userAgent)?'麦克风权限未开启，请在系统设置中允许小手机录音':'麦克风权限未开启，请在浏览器设置中允许录音')
+          :errName==='NotFoundError'?'没有检测到可用的麦克风'
+          :errName==='NotReadableError'?'麦克风正被其他应用占用，请稍后再试'
+          :'无法开始录音：'+errMsg);
+      }else{
+        releaseMicrophone(session);
+      }
+    }
   }
   function stopRecording(cancel=false) {
     const session=recordingSession;
     if(!session)return;
     if(cancel||session.phase==='requesting'){
       session.cancelled=true;session.chunks=[];
-      if(session.recorder&&session.recorder.state!=='inactive'){session.recorder.ondataavailable=null;session.recorder.onstop=null;session.recorder.stop();}
+      if(session.recorder&&session.recorder.state!=='inactive'){
+        session.recorder.ondataavailable=null;session.recorder.onstop=null;
+        try{session.recorder.stop();}catch{}
+      }
       releaseRecordingSession(session);
     }else if(session.recorder&&session.recorder.state!=='inactive'){
       session.durationMs=Math.min(60000,Date.now()-session.startedAt);
-      session.phase='stopping';if(session.mode==='dictation')dictationBusy=true;session.recorder.stop();syncComposerControls();
+      if(session.durationMs<500){
+        session.cancelled=true;session.chunks=[];
+        session.recorder.ondataavailable=null;session.recorder.onstop=null;
+        try{session.recorder.stop();}catch{}
+        releaseRecordingSession(session);
+        toast('说话时间太短');
+        return;
+      }
+      session.phase='stopping';if(session.mode==='dictation')dictationBusy=true;
+      try{session.recorder.stop();syncComposerControls();}
+      catch{releaseRecordingSession(session);toast('录音中断，请重新按住说话');}
     }
   }
   function avatarForm(entity) {
     avatarDraft=safeImage(entity?.avatar)?entity.avatar:'';
     return `<div class="avatar-picker"><button type="button" id="pick-avatar" aria-label="上传头像">${avatar({...entity,avatar:avatarDraft},72)}</button><small>点击上传头像</small><input type="file" id="avatar-file" accept="${profileImageAccept}" hidden>${avatarDraft?'<button type="button" id="remove-avatar" class="text-btn">移除头像</button>':''}</div>`;
   }
-  function bindProfileImage(pick,file,label,render){
+  function bindProfileImage(pick,file,label,render,cropOptions){
     const form=file.form,submit=form.querySelector('.modal-submit');
     pick.onclick=()=>file.click();
     file.onchange=async()=>{
       if(!file.files.length)return;
+      const chosen=file.files[0];
       file.disabled=pick.disabled=submit.disabled=true;
       try{
-        const image=await uploadProfileImage(file.files[0]);
-        if(file.isConnected){render(image);form.querySelector('.modal-error').textContent='';}
+        const cropper=cropOptions&&typeof window!=='undefined'&&window.PipiLifeCrop;
+        let image;
+        if(cropper){
+          const isCurrent=()=>file.isConnected&&!file.closest?.('[inert]');
+          const cropped=await cropper.pick(chosen,cropOptions.key,{isCurrent,parent:form.closest?.('.page-editor,.modal-sheet')||undefined,cardGuide:cropOptions.cardGuide!==false});
+          image=cropped&&isCurrent()?await uploadImageData(cropped):null;
+        }else{
+          image=await uploadProfileImage(chosen);
+        }
+        if(image&&file.isConnected){render(image);form.querySelector('.modal-error').textContent='';}
       }catch(err){if(file.isConnected)toast(`${label}：${err.message}`);}
       finally{
         file.value='';file.disabled=pick.disabled=false;
@@ -2608,7 +2831,7 @@
       if(!remove){remove=document.createElement('button');remove.type='button';remove.id='remove-avatar';remove.className='text-btn';remove.textContent='移除头像';file.after(remove);}
       remove.onclick=()=>{if(!file.disabled)renderDraft('');};
     };
-    renderDraft(avatarDraft);bindProfileImage(pick,file,'头像',renderDraft);
+    renderDraft(avatarDraft);bindProfileImage(pick,file,'头像',renderDraft,{key:'avatar'});
   }
   function editProfile() {
     const profile=state.profile||{};
@@ -2651,7 +2874,7 @@
     bindAvatar(r);
     const pat=overlay.querySelector('[name=patText]'),patPreview=overlay.querySelector('#role-pat-preview'),roleNameInput=overlay.querySelector('[name=name]');pat.maxLength=100;const previewPat=()=>{patPreview.textContent='我拍了拍“'+(overlay.querySelector('[name=remark]').value||roleNameInput.value||'朋友')+'”'+(pat.value?'的'+pat.value:'');};pat.oninput=previewPat;roleNameInput.oninput=previewPat;overlay.querySelector('[name=remark]').oninput=previewPat;previewPat();
     const pick=overlay.querySelector('#pick-role-cover'),file=overlay.querySelector('#role-cover-file'),value=overlay.querySelector('[name=cover]');
-    bindProfileImage(pick,file,'朋友圈背景图',image=>{value.value=image;pick.innerHTML=`<img src="${esc(image)}" alt="朋友圈背景图预览">`;});
+    bindProfileImage(pick,file,'朋友圈背景图',image=>{value.value=image;pick.innerHTML=`<img src="${esc(image)}" alt="朋友圈背景图预览">`;},{key:'cover',cardGuide:true});
   }
   function checkWechatId(value,previous){
     if(value!==previous&&/\p{Script=Han}/u.test(value))throw new Error('微信号不能包含中文');
@@ -2810,10 +3033,10 @@
     openChat:openIncomingChat
   });
   window.PipiExpiry={sync:syncExpiredMedia};
-  window.Pipi={getState:()=>state,supportsMomentExclusions:()=>momentExclusions,api,apiRaw,act,receiveState,updateTyping,syncChatProgress,readImage,readProfileImage,uploadMedia,uploadImage,uploadImageData,uploadProfileImage,showView,goBack,openChatMessage:(roleId,messageId)=>{focusMessageId=messageId;showView('chat',roleId);},preserveChatLayout:callback=>{const snapshot=captureChatLayout();callback();restoreChatLayout(snapshot);},scrollChatToBottom:(roleId)=>{forceBottomRole=roleId;chatScrolls.delete(roleId);if(route.name==='chat'&&route.arg===roleId)scrollChat();},openModal,closeModal,openPage,openNestedPage,openChildDialog,closeChildDialog,closePage:closeModal,openPhoto:lightbox,actionSheet,confirmDialog,toast,esc,avatar,icons,refresh,setState,registerRoute:(name,renderer)=>routes.set(name,renderer)};
+  window.Pipi={getState:()=>state,supportsMomentExclusions:()=>momentExclusions,api,apiRaw,act,receiveState,updateTyping,syncChatProgress,readImage,readProfileImage,sniffImageMime,detectAnimatedImage,decodeImageSource,encodeCanvas,supportsWebpEncode,readBlobData,uploadMedia,uploadImage,uploadImageData,uploadProfileImage,showView,goBack,afterOverlayBack,openChatMessage:(roleId,messageId)=>{focusMessageId=messageId;showView('chat',roleId);},preserveChatLayout:callback=>{const snapshot=captureChatLayout();callback();restoreChatLayout(snapshot);},scrollChatToBottom:(roleId)=>{forceBottomRole=roleId;chatScrolls.delete(roleId);if(route.name==='chat'&&route.arg===roleId)scrollChat();},openModal,closeModal,openPage,openNestedPage,openChildDialog,closeChildDialog,closePage:closeModal,openPhoto:lightbox,actionSheet,confirmDialog,toast,esc,avatar,icons,refresh,setState,registerRoute:(name,renderer)=>routes.set(name,renderer)};
   window.PipiAndroidPage?.connect({
     ready:()=>Boolean(state)&&view.dataset.route!=='auth',route:()=>route,capture:captureAndroidPage,warn:toast,retry:boot,visibleChat:roleId=>route.name==='chat'&&route.arg===roleId&&!modalOpen&&!childDialog,
-    clear:()=>{drafts.clear();chatScrolls.clear();androidReadings.clear();composeText='';quoteId='';sessionStorage.removeItem(chatDraftKey);sessionStorage.removeItem(browserPositionKey);},
+    clear:()=>{drafts.clear();chatScrolls.clear();androidReadings.clear();composeText='';quoteId='';try{sessionStorage.removeItem(chatDraftKey);sessionStorage.removeItem(browserPositionKey);}catch{}},
     canBack:()=>Boolean(overlayBackPending||childDialog||modalOpen||chatSelection||history.state?.featureSelection||state&&(navStack.length||route.name!=='chats')),
     back:()=>{if(!modalSaveInProgress)goBack();},previous:()=>navStack.at(-1)||{name:'chats',arg:null},
     previewTarget:()=>childDialog?.dialog|| (modalOpen?overlay:view),

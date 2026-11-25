@@ -31,8 +31,8 @@
   const field = (name, title, input) => `<label class="feature-field"><span>${esc(title)}</span>${input}</label>`;
   const selected = (a, b) => a === b ? ' selected' : '';
   const requestId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const safeImage = value => (/^data:image\/(png|jpeg|webp|gif);base64,[a-z\d+/=\r\n]+$/i.test(String(value || '')) || /^\/api\/media\/[a-f\d]{32,64}\.(png|jpg|jpeg|webp|gif)$/i.test(String(value || '').trim())) ? String(value).trim() : '';
-  const safeAudio = value => /^\/api\/media\/[a-f\d]{32,64}\.(webm|ogg|mp3|m4a|mp4|wav|aac|flac)$/i.test(String(value||''))?String(value):/^data:audio\/(mpeg|mp3|wav|x-wav|ogg|webm|mp4|aac|flac)(;codecs=[a-z\d.,-]+)?;base64,[a-z\d+/=\s]+$/i.test(String(value || '')) ? String(value) : '';
+  const safeImage = value => (/^data:image\/(png|jpeg|jpg|webp|gif);base64,[a-z\d+/=\r\n]+$/i.test(String(value || '').trim()) || /^\/api\/media\/[a-f\d]{32,64}\.(png|jpg|jpeg|webp|gif)$/i.test(String(value || '').trim())) ? String(value).trim() : '';
+  const safeAudio = value => { const s = String(value || '').trim(); return /^\/api\/media\/[a-f\d]{32,64}\.(webm|ogg|mp3|m4a|mp4|wav|aac|flac)$/i.test(s) ? s : /^data:audio\/(mpeg|mp3|wav|x-wav|ogg|webm|mp4|m4a|x-m4a|aac|flac|x-flac)(?:\s*;\s*codecs=[^;]+)?;base64,[a-z\d+/=\s]+$/i.test(s) ? s : ''; };
   const page = (title, html, submit, action) => P().openPage(title, html, submit, action);
   const closePage = notify => P().closePage(notify);
   // Navigation is declared by the page API, never patched into a Cancel button.
@@ -166,15 +166,24 @@
       { label: '从手机相册中选择', run: () => chooseMomentPhoto(false) }
     ]);
   }
+  let momentPhotoInput;
   function chooseMomentPhoto(camera) {
-    const input = document.createElement('input');
-    input.type = 'file'; input.accept = 'image/png,image/jpeg,image/webp,image/gif'; input.multiple = !camera;
+    if (!momentPhotoInput) {
+      momentPhotoInput = Object.assign(document.createElement('input'), { id: 'moment-camera-file', type: 'file', accept: 'image/*', hidden: true });
+      document.body.append(momentPhotoInput);
+    }
+    const input = momentPhotoInput;
+    input.value = ''; input.multiple = !camera;
     if (camera) input.setAttribute('capture', 'environment');
-    input.addEventListener('change', () => run(async () => {
-      if (!input.files.length) return;
-      if (input.files.length > 9) throw new Error('每条朋友圈最多 9 张照片');
-      composeMoment({ images: await Promise.all([...input.files].map(file => fileData(file))) });
-    }), { once: true });
+    else input.removeAttribute('capture');
+    input.onchange = () => run(async () => {
+      const files = [...input.files];
+      input.value = '';
+      if (!files.length) return;
+      if (files.length > 9) throw new Error('每条朋友圈最多 9 张照片');
+      const images = await Promise.all(files.map(file => fileData(file)));
+      if (document.querySelector('#view .moments-page')) composeMoment({ images });
+    });
     input.click();
   }
   const momentPrivacyOptions = [
@@ -281,7 +290,7 @@
     let imagesLoading = false;
     let privacy = { mode: options.visibility === 'self' ? 'self' : 'all', some: [], exclude: [] }, mentions = [];
     const privatePost = options.visibility === 'self';
-    P().openModal(privatePost ? '私密发表' : '发表朋友圈', `<div class="moment-compose"><textarea name="content" class="moment-compose-text" rows="4" maxlength="3000" placeholder="这一刻的想法…" aria-label="动态内容"></textarea><div class="moment-compose-photos"${options.textOnly ? ' hidden' : ''}><div id="moment-photo-items" class="compose-photo-grid"></div><label class="moment-add-photo" aria-label="添加照片"><span aria-hidden="true">＋</span><input id="moment-image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple></label></div><div class="moment-compose-cells"><label class="moment-compose-cell">${icon('location')}<span>所在位置</span><input name="location" id="moment-location" maxlength="120" placeholder="不显示" aria-label="所在位置文字标签"></label><button type="button" class="moment-compose-cell" id="moment-visibility" aria-haspopup="dialog">${momentPrivacyIcon(privacy.mode)}<span>谁可以看</span><small>${privacy.mode === 'all' ? '公开' : '私密'}</small>${icon('chevron')}</button><button type="button" id="moment-mention" class="moment-compose-cell" aria-haspopup="dialog"><span class="moment-mention-mark" aria-hidden="true">@</span><span>提醒谁看</span><small>未选择</small>${icon('chevron')}</button></div></div>`, async form => {
+    P().openModal(privatePost ? '私密发表' : '发表朋友圈', `<div class="moment-compose"><textarea name="content" class="moment-compose-text" rows="4" maxlength="3000" placeholder="这一刻的想法…" aria-label="动态内容"></textarea><div class="moment-compose-photos"${options.textOnly ? ' hidden' : ''}><div id="moment-photo-items" class="compose-photo-grid"></div><label class="moment-add-photo" aria-label="添加照片"><span aria-hidden="true">＋</span><input id="moment-image-input" type="file" accept="image/*" multiple></label></div><div class="moment-compose-cells"><label class="moment-compose-cell">${icon('location')}<span>所在位置</span><input name="location" id="moment-location" maxlength="120" placeholder="不显示" aria-label="所在位置文字标签"></label><button type="button" class="moment-compose-cell" id="moment-visibility" aria-haspopup="dialog">${momentPrivacyIcon(privacy.mode)}<span>谁可以看</span><small>${privacy.mode === 'all' ? '公开' : '私密'}</small>${icon('chevron')}</button><button type="button" id="moment-mention" class="moment-compose-cell" aria-haspopup="dialog"><span class="moment-mention-mark" aria-hidden="true">@</span><span>提醒谁看</span><small>未选择</small>${icon('chevron')}</button></div></div>`, async form => {
       if (imagesLoading) throw new Error('图片正在处理，请稍候再发表');
       const data = new FormData(form), content = String(data.get('content') || '').trim();
       if (!content && !images.length) throw new Error('写点什么，或添加照片');
@@ -365,10 +374,11 @@
   }
   const savingMomentCovers = new Set();
   function previewCover(ownerId = 'me', pickImmediately = false) {
-    detailPage('朋友圈封面', '<div class="moment-cover-detail"><div class="moment-cover-display"></div><button type="button" id="moment-cover-change">更换相册封面</button></div>');
+    detailPage('朋友圈封面', '<div class="moment-cover-detail"><div class="moment-cover-display"></div><button type="button" id="moment-cover-change">更换相册封面</button><input type="file" id="moment-cover-file" accept="image/*" hidden></div>');
     const detail = document.querySelector('.moment-cover-detail');
     const display = detail.querySelector('.moment-cover-display');
     const change = detail.querySelector('#moment-cover-change');
+    const input = detail.querySelector('#moment-cover-file');
     let selection = 0;
     function updatePreview() {
       const cover = safeImage(person(ownerId).cover);
@@ -376,30 +386,30 @@
       on('#moment-cover-full', 'click', () => P().openPhoto(cover, '朋友圈封面'), display);
     }
     updatePreview();
-    change.onclick = () => {
-      if (savingMomentCovers.has(ownerId)) return P().toast('正在保存朋友圈封面，请稍候');
+    input.onchange = () => run(async () => {
+      const file = input.files[0];
+      input.value = '';
       const current = ++selection;
       const isCurrent = () => detail.isConnected && !detail.closest('[inert]') && current === selection;
-      const input = document.createElement('input');
-      input.type = 'file'; input.accept = 'image/png,image/jpeg,image/webp,image/gif,image/bmp,image/avif,.bmp,.avif';
-      input.addEventListener('change', () => run(async () => {
-        const file = input.files[0];
-        if (!file || !isCurrent()) return;
-        const cropped = await window.PipiLifeCrop.pick(file, 'cover', {isCurrent, parent:detail, cardGuide:false});
-        if(!cropped||!isCurrent())return;
-        const cover=await P().uploadImageData(cropped);
-        if (!isCurrent() || savingMomentCovers.has(ownerId)) return;
-        savingMomentCovers.add(ownerId);
-        change.disabled = true;
-        try {
-          await mutation(ownerId === 'me' ? 'profile.save' : 'role.save', ownerId === 'me' ? { cover } : { id: ownerId, cover });
-          if (isCurrent()) updatePreview();
-          P().toast('朋友圈封面已更换');
-        } finally {
-          savingMomentCovers.delete(ownerId);
-          change.disabled = false;
-        }
-      }), { once: true });
+      if (!file || !isCurrent()) return;
+      const cropped = await window.PipiLifeCrop.pick(file, 'cover', {isCurrent, parent:detail, cardGuide:false});
+      if(!cropped||!isCurrent())return;
+      const cover=await P().uploadImageData(cropped);
+      if (!isCurrent() || savingMomentCovers.has(ownerId)) return;
+      savingMomentCovers.add(ownerId);
+      change.disabled = true;
+      try {
+        await mutation(ownerId === 'me' ? 'profile.save' : 'role.save', ownerId === 'me' ? { cover } : { id: ownerId, cover });
+        if (isCurrent()) updatePreview();
+        P().toast('朋友圈封面已更换');
+      } finally {
+        savingMomentCovers.delete(ownerId);
+        change.disabled = false;
+      }
+    });
+    change.onclick = () => {
+      if (savingMomentCovers.has(ownerId)) return P().toast('正在保存朋友圈封面，请稍候');
+      input.value = '';
       input.click();
     };
     if (pickImmediately) change.click();
@@ -624,7 +634,7 @@
   function recognizeLedger() {
     let drafts = [];
     let saving = false;
-    P().openModal('拍照记账', `<div id="receipt-upload-stage"><div class="receipt-upload-illustration">${icon('camera')}</div><p class="feature-modal-copy">上传小票、账单或支付截图</p><p class="feature-note">将把所选图片发送给当前视觉模型，可能产生模型用量。识别结果只生成草稿，确认后才会入账。</p><label class="receipt-file-label">选择一张图片<input id="receipt-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label><div id="receipt-status" role="status"></div></div><div id="receipt-drafts"></div>`, async form => {
+    P().openModal('拍照记账', `<div id="receipt-upload-stage"><div class="receipt-upload-illustration">${icon('camera')}</div><p class="feature-modal-copy">上传小票、账单或支付截图</p><p class="feature-note">将把所选图片发送给当前视觉模型，可能产生模型用量。识别结果只生成草稿，确认后才会入账。</p><label class="receipt-file-label">选择一张图片<input id="receipt-file" type="file" accept="image/*"></label><div id="receipt-status" role="status"></div></div><div id="receipt-drafts"></div>`, async form => {
       if (saving) return;
       if (!drafts.length) throw new Error('请先选择图片并完成识别');
       const data = new FormData(form);
@@ -779,7 +789,7 @@
     // Youzan cover manual (2021), the accepted Android simulator and the public
     // 2025 transfer-note crop. See docs/PAYMENTS-VISUAL-REVIEW.md.
     const content = isRedpacket
-      ? `<div class="wallet-pay-page is-redpacket" aria-label="发红包给${esc(label(recipient.id))}"><div class="redpacket-form"><div class="redpacket-amount-row" data-pay-focus role="button" tabindex="0" aria-label="输入红包金额"><span>金额</span><div class="pay-amount"><b>¥</b>${amount}</div></div><div class="redpacket-blessing"><input name="note" maxlength="100" placeholder="恭喜发财，大吉大利" aria-label="红包祝福语"><button type="button" id="redpacket-emoji" aria-label="选择红包表情">${nativeIcon('sticker-outlined')}<span aria-hidden="true">＋</span></button><div class="redpacket-selected-sticker" hidden><img alt="红包表情"><button type="button" aria-label="移除红包表情">×</button></div></div><button type="button" class="redpacket-cover-row" id="redpacket-cover"><span>红包封面</span>${icon('chevron')}</button></div><div class="redpacket-total" aria-label="红包金额汇总"><span>¥</span><strong id="redpacket-total">0.00</strong></div><button type="submit" class="wallet-pay-confirm" disabled>塞钱进红包</button>${keypad}<section class="redpacket-sticker-panel" aria-label="红包表情面板" hidden><div class="redpacket-sticker-tabs" role="tablist" aria-label="红包表情分类"><button type="button" role="tab" data-packet-tab="search" aria-selected="false" aria-label="搜索表情">${icon('search')}</button><button type="button" role="tab" data-packet-tab="favorites" aria-selected="true" aria-label="收藏表情">${icon('heart')}</button><button type="button" role="tab" data-packet-tab="selfie" aria-selected="false" aria-label="自拍表情"><img src="/vendor/fake-world/selfie-expression.png" alt=""></button><button type="button" data-packet-collapse aria-label="收起表情面板">${icon('chevron')}</button></div><div class="redpacket-sticker-content"></div><input type="file" data-packet-upload multiple accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/avif,.bmp,.avif" hidden></section></div>`
+      ? `<div class="wallet-pay-page is-redpacket" aria-label="发红包给${esc(label(recipient.id))}"><div class="redpacket-form"><div class="redpacket-amount-row" data-pay-focus role="button" tabindex="0" aria-label="输入红包金额"><span>金额</span><div class="pay-amount"><b>¥</b>${amount}</div></div><div class="redpacket-blessing"><input name="note" maxlength="100" placeholder="恭喜发财，大吉大利" aria-label="红包祝福语"><button type="button" id="redpacket-emoji" aria-label="选择红包表情">${nativeIcon('sticker-outlined')}<span aria-hidden="true">＋</span></button><div class="redpacket-selected-sticker" hidden><img alt="红包表情"><button type="button" aria-label="移除红包表情">×</button></div></div><button type="button" class="redpacket-cover-row" id="redpacket-cover"><span>红包封面</span>${icon('chevron')}</button></div><div class="redpacket-total" aria-label="红包金额汇总"><span>¥</span><strong id="redpacket-total">0.00</strong></div><button type="submit" class="wallet-pay-confirm" disabled>塞钱进红包</button>${keypad}<section class="redpacket-sticker-panel" aria-label="红包表情面板" hidden><div class="redpacket-sticker-tabs" role="tablist" aria-label="红包表情分类"><button type="button" role="tab" data-packet-tab="search" aria-selected="false" aria-label="搜索表情">${icon('search')}</button><button type="button" role="tab" data-packet-tab="favorites" aria-selected="true" aria-label="收藏表情">${icon('heart')}</button><button type="button" role="tab" data-packet-tab="selfie" aria-selected="false" aria-label="自拍表情"><img src="/vendor/fake-world/selfie-expression.png" alt=""></button><button type="button" data-packet-collapse aria-label="收起表情面板">${icon('chevron')}</button></div><div class="redpacket-sticker-content"></div><input type="file" data-packet-upload multiple accept="image/*" hidden></section></div>`
       : `<div class="wallet-pay-page is-transfer"><div class="transfer-head"><div class="transfer-to"><strong>转账给 ${esc(label(recipient.id))}</strong><span>微信号：${esc(recipient.wechatId || '未设置')}</span></div>${P().avatar(recipient, 44)}</div><div class="transfer-sheet"><span class="transfer-label">转账金额</span><div class="pay-amount"><b>¥</b>${amount}</div>${transferNote}</div>${keypad}</div>`;
     P().openPage(isRedpacket ? '发红包' : '转账', content, async form => {
       if (sending) return;
@@ -999,7 +1009,20 @@
       if (!audio.paused) { audio.pause(); audio.currentTime = 0; return; }
       stopFavoriteAudio(document, audio);
       try { await audio.play(); }
-      catch { throw new Error('语音暂时无法播放，请检查音频格式或稍后重试'); }
+      catch {
+        const src = audio.getAttribute('src') || '';
+        if (!audio.dataset.blobTried && src.startsWith('/api/media/')) {
+          audio.dataset.blobTried = '1';
+          const res = await fetch(src, { credentials: 'same-origin' });
+          if (res.ok) {
+            const url = URL.createObjectURL(await res.blob());
+            audio.dataset.blobUrl = url;
+            audio.src = url;
+            try { await audio.play(); return; } catch {}
+          }
+        }
+        throw new Error('语音暂时无法播放，请检查音频格式或稍后重试');
+      }
     }), root);
     root.querySelectorAll('.favorite-audio').forEach(audio => {
       const button = audio.previousElementSibling;
@@ -1045,7 +1068,7 @@
     const images = [...(item?.meta?.images || [])];
     let imagesLoading = false;
     const open = document.querySelector('.page-editor') ? P().openNestedPage : P().openModal;
-    open(id ? '编辑笔记' : '新建笔记', `<div class="favorite-note-editor"><textarea name="content" maxlength="10000" rows="8" placeholder="记录此刻的想法" aria-label="笔记正文">${esc(item?.content || '')}</textarea><div id="note-images" class="note-image-editor"></div><div class="note-todo-editor" id="note-todos">${(item?.meta?.todos || []).map(todo => `<div data-note-todo="${esc(todo.id)}"><input type="checkbox" aria-label="已完成"${todo.done ? ' checked' : ''}><input type="text" value="${esc(todo.text)}" maxlength="500" aria-label="待办内容"><button type="button" data-remove-todo aria-label="移除待办">×</button></div>`).join('')}</div><div class="note-editor-tools"><label>添加图片<input id="note-image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple></label><button type="button" id="note-add-todo">添加待办</button></div></div>`, async form => {
+    open(id ? '编辑笔记' : '新建笔记', `<div class="favorite-note-editor"><textarea name="content" maxlength="10000" rows="8" placeholder="记录此刻的想法" aria-label="笔记正文">${esc(item?.content || '')}</textarea><div id="note-images" class="note-image-editor"></div><div class="note-todo-editor" id="note-todos">${(item?.meta?.todos || []).map(todo => `<div data-note-todo="${esc(todo.id)}"><input type="checkbox" aria-label="已完成"${todo.done ? ' checked' : ''}><input type="text" value="${esc(todo.text)}" maxlength="500" aria-label="待办内容"><button type="button" data-remove-todo aria-label="移除待办">×</button></div>`).join('')}</div><div class="note-editor-tools"><label>添加图片<input id="note-image-input" type="file" accept="image/*" multiple></label><button type="button" id="note-add-todo">添加待办</button></div></div>`, async form => {
       if (imagesLoading) throw new Error('图片正在处理，请稍候再保存');
       const content = String(new FormData(form).get('content') || '').trim();
       const todos = [...form.querySelectorAll('[data-note-todo]')].map(row => ({ id: row.dataset.noteTodo, text: row.querySelector('input[type=text]').value.trim(), done: row.querySelector('input[type=checkbox]').checked }));

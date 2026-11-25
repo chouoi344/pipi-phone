@@ -7,7 +7,7 @@
 .me-status-row{display:flex;align-items:center;gap:10px;min-width:0;padding:0 24px 24px 104px}
 .me-status-button{display:inline-flex;align-items:center;gap:4px;border:1px solid #dedede;border-radius:13px;min-height:27px;padding:2px 9px;color:#888;font-size:12px;line-height:1.6;flex-shrink:0}
 .me-status-button .icon{width:15px;height:15px}
-.me-status-button .chevron{width:10px;height:10px;color:#b2b2b2}
+.me-status-button .chevron{width:10px;height:10px;color:var(--icon-muted)}
 .me-status-button.has-status{color:#656565}
 .status-plus{font-size:17px;line-height:1}
 .me-status-description{color:#646b74;font-size:12px;line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
@@ -15,7 +15,7 @@
 .status-current>.avatar{margin:auto}
 .status-owner{margin:10px 0 28px;color:#888;font-size:14px;overflow-wrap:anywhere}
 .status-current h3{display:flex;align-items:center;justify-content:center;gap:8px;font-size:22px;font-weight:500;margin:0}
-.status-current h3 .icon{width:26px;height:26px;color:#666}
+.status-current h3 .icon{width:26px;height:26px;color:var(--icon-secondary)}
 .status-description{font-size:17px;line-height:1.6;margin:18px auto 0;max-width:320px;overflow-wrap:anywhere;white-space:pre-wrap}
 .status-validity,.status-ended{font-size:13px;color:#999;margin:24px 0 0}
 .status-page .section{margin-top:8px}
@@ -44,17 +44,17 @@
 .status-selected .chevron{width:16px;height:16px}
 .status-description-field{display:block;margin-top:clamp(36px,18vh,155px)}
 .status-description-field .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.status-description-field textarea{display:block;width:100%;min-height:106px;padding:0;border:0;border-radius:0;background:transparent;color:#fff;caret-color:#07c160;font-size:25px;--editable-font-size:25px;font-weight:600;line-height:1.5;resize:none;overflow:auto}
+.status-description-field textarea{display:block;width:100%;min-height:106px;padding:0;border:0;border-radius:0;background:transparent;color:#fff;caret-color:var(--green);font-size:25px;--editable-font-size:25px;font-weight:600;line-height:1.5;resize:none;overflow:auto}
 .status-description-field textarea::placeholder{color:rgba(255,255,255,.72)}
 .status-description-field:focus-within{box-shadow:none}
 .status-length{margin:6px 0 0;text-align:right;color:rgba(255,255,255,.65);font-size:12px;line-height:1.5}
 .status-editor-footer{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-top:auto;padding-top:45px}
 .status-note{margin:0;font-size:12px;line-height:1.6;color:rgba(255,255,255,.8)}
-.status-save{background:#07c160;color:#fff;border-radius:6px;padding:11px 17px;min-height:44px;flex-shrink:0;font-size:17px;font-weight:500;line-height:1.4}
+.status-save{background:var(--green);color:#fff;border-radius:6px;padding:11px 17px;min-height:44px;flex-shrink:0;font-size:17px;font-weight:500;line-height:1.4}
 .status-error{margin:12px 0 0;color:#fff;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
 .status-error:not(:empty){background:rgba(93,30,30,.55);padding:8px;border-radius:4px}
 @media(max-width:350px){.me-profile-block .profile-card{padding-left:20px;padding-right:20px}.me-status-row{padding-left:96px;padding-right:20px;gap:7px}.status-current{padding-left:20px;padding-right:20px}.status-picker{padding-left:20px;padding-right:20px}.status-grid{gap:12px}.status-editor{padding-left:20px;padding-right:20px}}
 @media(max-height:560px){.status-description-field{margin-top:30px}.status-editor-footer{padding-top:24px}.status-description-field textarea{min-height:90px}}
-.status-history-icon{display:flex;align-items:center;justify-content:center;color:#666;flex-shrink:0}
-.status-history-icon .icon,.status-history-detail h3 .icon{width:22px;height:22px;color:#666}
+.status-history-icon{display:flex;align-items:center;justify-content:center;color:var(--icon-secondary);flex-shrink:0}
+.status-history-icon .icon,.status-history-detail h3 .icon{width:22px;height:22px;color:var(--icon-secondary)}
 .status-history-detail h3{display:flex;align-items:center;gap:8px;margin:16px 0 10px}

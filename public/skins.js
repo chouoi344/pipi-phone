@@ -26,7 +26,7 @@
 
   function restore() {
     try {
-      apply(localStorage.getItem(key));
+      apply((()=>{try{return localStorage.getItem(key);}catch{return null;}})());
     } catch (error) {
       if (error.name !== 'SecurityError') throw error;
       apply('classic');
@@ -43,7 +43,7 @@
   function select(id) {
     if (id === 'waterdrop' && !appearance?.waterdropActivated) return;
     apply(id);
-    localStorage.setItem(key, id);
+    try { localStorage.setItem(key, id); } catch {}
   }
 
   restore();

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use strict';
+const restoreWhenIdle=require('./fixtures/restore-when-idle.cjs');
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto');
 const {createApp}=require('../server.cjs'),S=require('../lib/state.cjs'),Media=require('../lib/media-store.cjs');
 const png=fs.readFileSync(path.join(__dirname,'../scripts/demo-assets/receipt.png'));
@@ -166,7 +167,7 @@ test('a legacy SQLite near 64MB migrates and its real old JSON restores without 
   const filename=path.join(sourceDir,'backups',migration.backupName);assert.ok(fs.statSync(filename).size<88*1024**2);
   backup=JSON.parse(fs.readFileSync(filename,'utf8'));assert.equal(backup.format,'pipi-phone');assert.equal(backup.version,1);
   assert.deepEqual(JSON.parse(otherData(backup.state)),JSON.parse(backupOther),'backup must preserve the normal backup representation of all non-media fields');assert.match(backup.state.messages[0].content,/^data:image\/png;base64,/);assert.match(backup.state.messages.at(-1).meta.audio,/^data:audio\/wav;base64,/);
-  target=await launch(targetDir);await target.json('/api/setup',{password});await target.json('/api/restore',{confirm:true,backup});backup=undefined;
+  target=await launch(targetDir);await target.json('/api/setup',{password});const restoreResult=await restoreWhenIdle(()=>target.request('/api/restore',{confirm:true,backup}));assert.equal(restoreResult.status,200,JSON.stringify(restoreResult.value.error));backup=undefined;
   function restoreMetadata(value){
     // Restore renews credential edit tokens and supplies the legacy zero persona revision.
     const result=JSON.parse(value);for(const source of result.settings.ai.sources)delete source.keyRevision;

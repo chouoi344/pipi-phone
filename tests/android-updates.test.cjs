@@ -49,6 +49,21 @@ test('metadata cache joins concurrent checks, expires in five minutes and retrie
   offline=false;const retry=f.service.latest();await tick();finish();assert.equal((await retry).release.versionCode,2);assert.equal(f.calls.length,3);
 });
 
+test('official combined and Android-only release tags preserve upgrades while preview and unrelated tags are ignored',async t=>{
+  const tagged=(code,tag)=>{
+    const value=release(code);value.tag_name=tag;
+    value.assets[0].browser_download_url=value.assets[0].browser_download_url.replace('android-v0.1.'+code,tag);
+    return value;
+  };
+  const f=fixture(t);
+  f.releases=[tagged(20,'notes-only'),tagged(19,'v0.13.20-beta'),tagged(18,'android-v0.1.18-preview'),
+    {...tagged(17,'v0.13.17'),prerelease:true},tagged(12,'v0.13.15'),tagged(10,'android-v0.1.9')];
+  assert.equal((await f.service.latest()).release.versionCode,12);
+  assert.deepEqual(await read(await f.service.open('12')),bytes);
+  f.expire();f.releases=[tagged(13,'android-v0.1.11'),tagged(12,'v0.13.15')];
+  assert.equal((await f.service.latest()).release.versionCode,13);
+});
+
 test('server-only releases return a cacheable null Android release',async t=>{
   const f=fixture(t);f.releases=[{tag_name:'v0.13.9',draft:false,prerelease:false,assets:[]}];
   assert.deepEqual(await f.service.latest(),{release:null});

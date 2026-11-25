@@ -9,8 +9,16 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.ImageDecoder;
+import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Build;
@@ -18,11 +26,13 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
@@ -40,6 +50,7 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -49,13 +60,21 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-import java.io.IOException;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -65,13 +84,16 @@ public final class MainActivity extends Activity {
     private static final int PICK_FILE = 101, MICROPHONE = 102, NOTIFICATIONS = 103, SAVE_FILE = 104, NATIVE_MICROPHONE = 105;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService network = Executors.newSingleThreadExecutor();
+    private final ExecutorService downloads = Executors.newSingleThreadExecutor();
+    private final Map<String, byte[]> pendingRecordings = new ConcurrentHashMap<>();
+    private volatile String nativeRecordingToken;
     private SharedPreferences prefs;
     private TrustedOrigin origin;
     private AssetBundle assets;
     private WebView web;
     private FrameLayout surface;
     private LinearLayout errorPanel;
-    private ProgressBar loading;
+    private View loading;
     private AlertDialog settingsDialog;
     private FirstConnectionForm connectionForm;
     private Switch notificationsSwitch;
@@ -107,7 +129,7 @@ public final class MainActivity extends Activity {
         origin = TrustedOrigin.parse(prefs.getString("server_origin", TrustedOrigin.isEmulator()
                 ? TrustedOrigin.DEVELOPMENT : "https://phone.example.com"));
         configureWindow();
-        surface = new FrameLayout(this); surface.setBackgroundColor(Color.rgb(237,237,237));
+        surface = new FrameLayout(this); surface.setBackgroundColor(Color.rgb(244,246,249));
         setContentView(surface);
         appUpdater = new AppUpdater(this,new AppUpdater.Host() {
             @Override public String currentOrigin() { return origin.value; }
@@ -125,8 +147,12 @@ public final class MainActivity extends Activity {
             updateEntryScript = new String(script.toByteArray(),StandardCharsets.UTF_8);
         } catch (IOException error) { throw new IllegalStateException("Cannot read app update entry",error); }
         createWebView();
-        voiceCapture = new VoiceCapture(getCacheDir(), handler, () ->
-                web.evaluateJavascript("window.dispatchEvent(new Event('pipi-recording-interrupted'))", null));
+        PickedImageProvider.clearCache(this);
+        voiceCapture = new VoiceCapture(this, handler, () -> {
+            if (!isDestroyed() && web != null && origin.isAppPage(web.getUrl())) {
+                web.evaluateJavascript("window.dispatchEvent(new Event('pipi-recording-interrupted'))", null);
+            }
+        });
         installInsets();
         if (Build.VERSION.SDK_INT >= 25) Api25Shortcuts.install(this);
         if (Build.VERSION.SDK_INT >= 34) systemBackCallback = Api34Back.register(this);
@@ -159,7 +185,7 @@ public final class MainActivity extends Activity {
     }
 
     @SuppressWarnings("deprecation") private void createWebView() {
-        web = new WebView(this); web.setBackgroundColor(Color.rgb(237,237,237));
+        web = new WebView(this); web.setBackgroundColor(Color.rgb(244,246,249));
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         WebSettings settings = web.getSettings();
         settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
@@ -179,12 +205,13 @@ public final class MainActivity extends Activity {
         web.setWebChromeClient(new PhoneChromeClient());
         web.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
-            if (action == MotionEvent.ACTION_DOWN) {
+            if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
                 recordTouchDown = true;
-                recordGestureDeadline = SystemClock.uptimeMillis() + 1500;
+                recordGestureDeadline = SystemClock.uptimeMillis() + 2500;
             } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                 recordTouchDown = false;
-                if (microphonePermissionOnRelease && action == MotionEvent.ACTION_UP) askForVoicePermission();
+                if (action == MotionEvent.ACTION_UP) recordGestureDeadline = SystemClock.uptimeMillis() + 1500;
+                if (microphonePermissionOnRelease) askForVoicePermission();
                 microphonePermissionOnRelease = false;
             }
             return false;
@@ -202,9 +229,27 @@ public final class MainActivity extends Activity {
         });
         web.setDownloadListener((url, ua, disposition, mime, length) -> beginDownload(url, disposition, mime));
         surface.addView(web, new FrameLayout.LayoutParams(-1,-1));
-        loading = new ProgressBar(this);
-        FrameLayout.LayoutParams spinner = new FrameLayout.LayoutParams(dp(40),dp(40),Gravity.CENTER);
-        surface.addView(loading,spinner); loading.setVisibility(View.GONE);
+        LinearLayout loadingCard = new LinearLayout(this);
+        loadingCard.setOrientation(LinearLayout.VERTICAL);
+        loadingCard.setGravity(Gravity.CENTER);
+        loadingCard.setPadding(dp(22), dp(18), dp(22), dp(16));
+        GradientDrawable loadingBg = roundedRect(Color.argb(245, 255, 255, 255), 18);
+        loadingBg.setStroke(dp(1), Color.rgb(230, 236, 242));
+        loadingCard.setBackground(loadingBg);
+        loadingCard.setElevation(dp(6));
+        ProgressBar spinner = new ProgressBar(this);
+        spinner.setIndeterminateTintList(ColorStateList.valueOf(Color.rgb(7, 193, 96)));
+        loadingCard.addView(spinner, new LinearLayout.LayoutParams(dp(34), dp(34)));
+        TextView loadingCaption = new TextView(this);
+        loadingCaption.setText("正在连接…");
+        loadingCaption.setTextSize(13);
+        loadingCaption.setTextColor(Color.rgb(112, 120, 132));
+        LinearLayout.LayoutParams capParams = new LinearLayout.LayoutParams(-2, -2);
+        capParams.topMargin = dp(10);
+        loadingCard.addView(loadingCaption, capParams);
+        loading = loadingCard;
+        surface.addView(loading, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+        loading.setVisibility(View.GONE);
     }
 
     private void connect(Bundle savedState) { connect(savedState, false); }
@@ -245,6 +290,21 @@ public final class MainActivity extends Activity {
 
     private final class PhoneWebClient extends WebViewClient {
         @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+            Uri uri = request.getUrl();
+            if ("GET".equals(request.getMethod()) && origin.owns(uri)) {
+                String path = uri.getPath();
+                if (path != null && path.startsWith("/__android/recording/")) {
+                    String id = path.substring("/__android/recording/".length());
+                    byte[] wav = pendingRecordings.remove(id);
+                    if (wav != null) {
+                        Map<String, String> headers = new HashMap<>();
+                        headers.put("Cache-Control", "no-store");
+                        headers.put("X-Content-Type-Options", "nosniff");
+                        return new WebResourceResponse("audio/wav", null, 200, "OK", headers, new ByteArrayInputStream(wav));
+                    }
+                    return new WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", new HashMap<>(), new ByteArrayInputStream(new byte[0]));
+                }
+            }
             return assets == null ? null : assets.intercept(request);
         }
         @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -255,6 +315,8 @@ public final class MainActivity extends Activity {
         }
         @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap favicon) {
             voiceCapture.cancel();
+            pendingRecordings.clear();
+            nativeRecordingToken = null;
             recordGestureDeadline = 0;
             recordTouchDown = microphonePermissionOnRelease = false;
             if (!origin.owns(Uri.parse(url))) {
@@ -265,7 +327,10 @@ public final class MainActivity extends Activity {
             if (recordingRequest != null) { recordingRequest.deny(); recordingRequest = null; }
             if (fileCallback != null) { fileCallback.onReceiveValue(null); fileCallback = null; }
         }
-        @Override public void onPageCommitVisible(WebView view,String url) { applyInsets(); }
+        @Override public void onPageCommitVisible(WebView view,String url) {
+            applyInsets();
+            installNativeRecordingToken(view, url);
+        }
         @Override public void onPageFinished(WebView view,String url) {
             loading.setVisibility(View.GONE);
             if (!origin.isAppPage(url)) return;
@@ -279,7 +344,7 @@ public final class MainActivity extends Activity {
                             : "服务器提供的页面可能与当前系统网页组件不兼容，或页面脚本没有加载成功。请更新服务器网页程序或系统网页组件后重新连接。"));
                     return;
                 }
-                pageReady = true; applyInsets(); PhoneNotifications.onPageFinished(MainActivity.this);
+                pageReady = true; applyInsets(); installNativeRecordingToken(view, url); PhoneNotifications.onPageFinished(MainActivity.this);
                 web.evaluateJavascript(updateEntryScript,null);
                 appUpdater.onPageReady();
                 blobDownloads.install();
@@ -310,7 +375,8 @@ public final class MainActivity extends Activity {
                 if(origin.isAppPage(web.getUrl())) {
                     String target=url.getQueryParameter("url"),name=url.getQueryParameter("name");
                     if(target!=null&&name!=null&&target.length()<=4096&&name.length()<=200) {
-                        String extension=android.webkit.MimeTypeMap.getFileExtensionFromUrl(name);
+                        int dot=name.lastIndexOf('.');
+                        String extension=dot>=0&&dot+1<name.length()?name.substring(dot+1).toLowerCase(Locale.ROOT):"";
                         requestDownload(target,name,android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension));
                     }
                 }
@@ -333,13 +399,50 @@ public final class MainActivity extends Activity {
         return true;
     }
 
+    private boolean ownsRecordingToken(String token) {
+        if (token == null || token.isEmpty()) return false;
+        if (assets != null && assets.ownsMicrophoneToken(token)) return true;
+        return token.equals(nativeRecordingToken);
+    }
+
+    private void installNativeRecordingToken(WebView view, String url) {
+        if (isDestroyed() || view == null || !origin.isAppPage(url)) return;
+        String token = nativeRecordingToken;
+        if (token == null) {
+            token = UUID.randomUUID().toString();
+            nativeRecordingToken = token;
+        }
+        String script = "(function(){if(!document.head||document.querySelector('meta[name=\"pipi-recording\"]'))return;"
+                + "var m=document.createElement('meta');m.name='pipi-recording';m.content="
+                + JSONObject.quote(token) + ";document.head.appendChild(m);})()";
+        view.evaluateJavascript(script, null);
+    }
+
     private final class PhoneChromeClient extends WebChromeClient {
         @Override public boolean onJsPrompt(WebView view, String url, String message, String command, JsPromptResult result) {
             if (!message.startsWith("pipi-recording:")) return super.onJsPrompt(view, url, message, command, result);
+            String token = message.substring("pipi-recording:".length());
+            boolean trustedToken = origin.isAppPage(url) && origin.isAppPage(view.getUrl()) && ownsRecordingToken(token);
             String reply;
-            if (!pageReady || paused || !view.hasWindowFocus() || !origin.isAppPage(url)
-                    || !origin.isAppPage(view.getUrl()) || assets == null
-                    || !assets.ownsMicrophoneToken(message.substring("pipi-recording:".length()))) {
+            if ("cancel".equals(command) && trustedToken) {
+                voiceCapture.cancel();
+                reply = "ok";
+            } else if ("finish".equals(command) && trustedToken && voiceCapture.isRecording()) {
+                try {
+                    byte[] wav = voiceCapture.finishWav();
+                    pendingRecordings.clear();
+                    String id = UUID.randomUUID().toString();
+                    pendingRecordings.put(id, wav);
+                    reply = "url:/__android/recording/" + id;
+                } catch (IOException | RuntimeException failure) {
+                    voiceCapture.cancel();
+                    android.util.Log.w("PipiVoice", "Microphone finish failed", failure);
+                    reply = failure.getMessage() != null && !failure.getMessage().isEmpty()
+                            ? failure.getMessage() : "录音未完成，请重新按住说话";
+                }
+            } else if (!trustedToken || paused || (!pageReady && !voiceCapture.isRecording())
+                    || ("start".equals(command) && !view.hasWindowFocus())) {
+                if ("finish".equals(command) || "cancel".equals(command)) voiceCapture.cancel();
                 reply = "请在小手机聊天页重新按住说话";
             } else try {
                 switch (command) {
@@ -354,13 +457,16 @@ public final class MainActivity extends Activity {
                             reply = "permission"; break;
                         }
                         voiceCapture.start(); reply = "ok"; break;
-                    case "finish": reply = "audio:" + voiceCapture.finish(); break;
-                    case "cancel": voiceCapture.cancel(); reply = "ok"; break;
+                    case "finish":
+                        voiceCapture.cancel();
+                        reply = "录音已中断，请重新按住说话"; break;
                     default: reply = "未知录音操作";
                 }
             } catch (IOException | RuntimeException failure) {
+                voiceCapture.cancel();
                 android.util.Log.w("PipiVoice", "Microphone operation failed", failure);
-                reply = "录音未完成，请重新按住说话";
+                reply = failure.getMessage() != null && !failure.getMessage().isEmpty()
+                        ? failure.getMessage() : "录音未完成，请重新按住说话";
             }
             result.confirm(reply);
             return true;
@@ -396,29 +502,29 @@ public final class MainActivity extends Activity {
     }
 
     private static void configureImagePicker(Intent choose, WebChromeClient.FileChooserParams params) {
-        ArrayList<String> images = new ArrayList<>();
+        boolean hasImage = false;
         for (String group : params.getAcceptTypes()) {
             for (String entry : group.split(",")) {
-                String type = entry.trim();
-                // Image inputs also list extensions alongside their MIME types.
-                if (type.startsWith(".")) continue;
+                String type = entry.trim().toLowerCase(Locale.ROOT);
+                if (type.isEmpty() || type.startsWith(".")) continue;
                 if (!type.startsWith("image/")) return;
-                if (!images.contains(type)) images.add(type);
+                hasImage = true;
             }
         }
-        // Older WebViews put only the first accepted image type in their intent.
-        if (images.size() > 1) {
+        // Use image/* without restrictive EXTRA_MIME_TYPES so Chinese OEM galleries and Photo Picker
+        // stay available and do not grey out image/jpg or HEIC/HEIF photos.
+        if (hasImage) {
             choose.setType("image/*");
-            choose.putExtra(Intent.EXTRA_MIME_TYPES, images.toArray(new String[0]));
+            choose.removeExtra(Intent.EXTRA_MIME_TYPES);
+            if (params.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE)
+                choose.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         }
-        if (!images.isEmpty() && params.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE)
-            choose.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
     }
 
     private void askForVoicePermission() {
         // Allow WebView to finish dispatching this touch and its JS callback before Android takes focus.
         handler.post(() -> {
-            if (!isDestroyed() && !paused && pageReady && web.hasWindowFocus())
+            if (!isDestroyed() && !paused)
                 requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, NATIVE_MICROPHONE);
         });
     }
@@ -579,21 +685,55 @@ public final class MainActivity extends Activity {
         if (connectionForm != null && connectionForm.isShowing()) return;
         if (initialConnect) { showFirstConnection(origin, true); return; }
         if (settingsDialog != null && settingsDialog.isShowing()) return;
-        LinearLayout form=new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL); form.setPadding(dp(24),dp(12),dp(24),dp(8));
-        TextView label=text("服务器地址",16); form.addView(label);
+        LinearLayout form=new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL); form.setPadding(dp(22),dp(16),dp(22),dp(10));
+        TextView label=new TextView(this); label.setText("服务器地址"); label.setTextSize(14.5f); label.setTextColor(Color.rgb(24,25,28));
+        label.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL)); form.addView(label);
         EditText address=new EditText(this); address.setSingleLine(true); address.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
         address.setHint("HTTPS 网址或 IP:端口");
         address.setText(origin.value);
-        address.setSelectAllOnFocus(true); form.addView(address,new LinearLayout.LayoutParams(-1,-2));
-        form.addView(text("填写这部小手机的网址。聊天记录和设置保存在服务器上。",13));
+        address.setTextSize(15.5f); address.setTextColor(Color.rgb(24,25,28)); address.setHintTextColor(Color.rgb(148,156,168));
+        address.setMinimumHeight(dp(46)); address.setPadding(dp(13),dp(10),dp(13),dp(10));
+        address.setBackground(settingsInputBackground());
+        address.setSelectAllOnFocus(true);
+        LinearLayout.LayoutParams addrParams=new LinearLayout.LayoutParams(-1,-2); addrParams.topMargin=dp(8);
+        form.addView(address,addrParams);
+        TextView addrHint=text("填写这部小手机的网址。聊天记录和设置保存在服务器上。",12.5f);
+        addrHint.setTextColor(Color.rgb(122,130,142));
+        form.addView(addrHint);
+
+        LinearLayout statusCard=new LinearLayout(this); statusCard.setOrientation(LinearLayout.VERTICAL);
+        statusCard.setPadding(dp(14),dp(12),dp(14),dp(12));
+        GradientDrawable statusBg=roundedRect(Color.rgb(245,247,250),14);
+        statusBg.setStroke(dp(1),Color.rgb(232,237,243));
+        statusCard.setBackground(statusBg);
+        LinearLayout.LayoutParams cardParams=new LinearLayout.LayoutParams(-1,-2); cardParams.topMargin=dp(12);
+        form.addView(statusCard,cardParams);
+
         notificationsSwitch=new Switch(this); notificationsSwitch.setText("新消息提醒");
-        notificationsSwitch.setPadding(0,dp(20),0,dp(12)); notificationsSwitch.setChecked(PhoneNotifications.isEnabled(this));
-        form.addView(notificationsSwitch,new LinearLayout.LayoutParams(-1,-2));
-        TextView notificationInfo=text("离开 App 也能收到提醒。有时会晚一点。",13);
-        form.addView(notificationInfo); notificationStatus=text(PhoneNotifications.status(this),13);form.addView(notificationStatus);
-        FcmTransport.addSettings(this,form);
-        resourceStatus=text(bundleStatus,13);form.addView(resourceStatus);
-        form.addView(text("下次可在「我 → 设置 → App 连接设置」打开；也可在手机桌面长按屁屁机图标，选择「服务器设置」。",13));
+        notificationsSwitch.setTextSize(15); notificationsSwitch.setTextColor(Color.rgb(24,25,28));
+        notificationsSwitch.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+        notificationsSwitch.setPadding(0,dp(4),0,dp(6)); notificationsSwitch.setChecked(PhoneNotifications.isEnabled(this));
+        notificationsSwitch.setThumbTintList(ColorStateList.valueOf(Color.WHITE));
+        notificationsSwitch.setTrackTintList(new ColorStateList(
+                new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},
+                new int[]{Color.rgb(7,193,96),Color.rgb(203,210,218)}));
+        statusCard.addView(notificationsSwitch,new LinearLayout.LayoutParams(-1,-2));
+        TextView notificationInfo=text("离开 App 也能收到提醒。有时会晚一点。",12.5f);
+        notificationInfo.setTextColor(Color.rgb(122,130,142)); notificationInfo.setPadding(0,dp(2),0,dp(4));
+        statusCard.addView(notificationInfo);
+        notificationStatus=text(PhoneNotifications.status(this),12.5f);
+        notificationStatus.setTextColor(Color.rgb(74,84,96)); notificationStatus.setPadding(0,dp(2),0,dp(4));
+        statusCard.addView(notificationStatus);
+        FcmTransport.addSettings(this,statusCard);
+        View sep=new View(this); sep.setBackgroundColor(Color.rgb(230,235,241));
+        LinearLayout.LayoutParams sepParams=new LinearLayout.LayoutParams(-1,Math.max(1,dp(1))); sepParams.topMargin=dp(6); sepParams.bottomMargin=dp(6);
+        statusCard.addView(sep,sepParams);
+        resourceStatus=text(bundleStatus,12.5f); resourceStatus.setTextColor(Color.rgb(102,112,126)); resourceStatus.setPadding(0,dp(2),0,dp(2));
+        statusCard.addView(resourceStatus);
+
+        TextView foot=text("下次可在「我 → 设置 → App 连接设置」打开；也可在手机桌面长按屁屁机图标，选择「服务器设置」。",12.5f);
+        foot.setTextColor(Color.rgb(138,146,158)); foot.setPadding(0,dp(12),0,dp(4));
+        form.addView(foot);
         notificationsSwitch.setOnCheckedChangeListener((button,checked)->{
             if(changingNotificationSwitch)return;
             PhoneNotifications.rememberPreference(this,checked);
@@ -607,15 +747,30 @@ public final class MainActivity extends Activity {
         settingsDialog=builder.create(); settingsDialog.setCanceledOnTouchOutside(true);
         settingsDialog.setOnDismissListener(dialog->handler.removeCallbacks(refreshSettings));
         settingsDialog.setOnShowListener(dialog->{
+            Window window=settingsDialog.getWindow();
+            if(window!=null)window.setBackgroundDrawable(roundedRect(Color.WHITE,22));
+            Button positive=settingsDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            Button negative=settingsDialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            if(positive!=null){positive.setTextColor(Color.rgb(7,133,68));positive.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));}
+            if(negative!=null)negative.setTextColor(Color.rgb(102,110,122));
             handler.removeCallbacks(refreshSettings);handler.post(refreshSettings);
-            settingsDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view->{
+            positive.setOnClickListener(view->{
             final TrustedOrigin next;
             try { next=TrustedOrigin.parse(address.getText().toString()); }
             catch(IllegalArgumentException invalid) {address.setError(invalid.getMessage());return;}
             if(!origin.value.equals(next.value)) {
-                new AlertDialog.Builder(this).setTitle("更换服务器？")
+                AlertDialog confirmDialog=new AlertDialog.Builder(this).setTitle("更换服务器？")
                         .setMessage("新服务器登录成功后，会清除这台设备保存的聊天副本和文字草稿，原服务器上的资料保留。登录失败或取消时，继续使用原连接。")
-                        .setNegativeButton("取消",null).setPositiveButton("更换服务器",(confirm,which)->showFirstConnection(next,false)).show();
+                        .setNegativeButton("取消",null).setPositiveButton("更换服务器",(confirm,which)->showFirstConnection(next,false)).create();
+                confirmDialog.setOnShowListener(ignored->{
+                    Window cw=confirmDialog.getWindow();
+                    if(cw!=null)cw.setBackgroundDrawable(roundedRect(Color.WHITE,20));
+                    Button ok=confirmDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+                    Button cancel=confirmDialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+                    if(ok!=null)ok.setTextColor(Color.rgb(7,133,68));
+                    if(cancel!=null)cancel.setTextColor(Color.rgb(102,110,122));
+                });
+                confirmDialog.show();
             } else {
                 settingsDialog.dismiss();
                 if(!pageReady)connect(null);
@@ -792,8 +947,9 @@ public final class MainActivity extends Activity {
     @Override public boolean onKeyUp(int key,KeyEvent event) {if(key==KeyEvent.KEYCODE_MENU){showSettings();return true;}return super.onKeyUp(key,event);}
     @Override protected void onDestroy() {
         voiceCapture.cancel();
+        pendingRecordings.clear();
         appUpdater.close();
-        connectionGeneration++;loginGeneration++;blobDownloads.cancel();network.shutdown();handler.removeCallbacksAndMessages(null);
+        connectionGeneration++;loginGeneration++;blobDownloads.cancel();network.shutdown();downloads.shutdown();handler.removeCallbacksAndMessages(null);
         if(connectionForm!=null)connectionForm.dismiss();
         if(fileCallback!=null)fileCallback.onReceiveValue(null);
         if(recordingRequest!=null)recordingRequest.deny();
@@ -806,7 +962,28 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(request,permissions,grants);
         boolean allowed=grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED;
         if(request==NATIVE_MICROPHONE) {
-            toast(allowed ? "麦克风已开启，可以按住说话了" : "麦克风未开启，可在系统应用设置中允许录音");
+            if (allowed) {
+                toast("麦克风已开启，可以按住说话了");
+            } else if (!shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)) {
+                AlertDialog permDialog = new AlertDialog.Builder(this)
+                        .setTitle("需要开启麦克风权限")
+                        .setMessage("系统已记住拒绝麦克风权限。请前往应用设置中允许「麦克风」权限后，再回来按住说话。")
+                        .setNegativeButton("取消", null)
+                        .setPositiveButton("去设置", (d, w) -> {
+                            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.parse("package:" + getPackageName()));
+                            try { startActivity(intent); } catch (ActivityNotFoundException ignored) {}
+                        }).create();
+                permDialog.setOnShowListener(ignored -> {
+                    Window w = permDialog.getWindow();
+                    if (w != null) w.setBackgroundDrawable(roundedRect(Color.WHITE, 20));
+                    Button pos = permDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+                    if (pos != null) pos.setTextColor(Color.rgb(7, 133, 68));
+                });
+                permDialog.show();
+            } else {
+                toast("麦克风未开启，可在系统应用设置中允许录音");
+            }
         } else if(request==MICROPHONE && recordingRequest!=null) {
             if(allowed && origin.isAppPage(web.getUrl()) && origin.owns(recordingRequest.getOrigin())) recordingRequest.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
             else {recordingRequest.deny();toast("录音权限未开启，可在系统应用设置中允许麦克风");}
@@ -824,13 +1001,31 @@ public final class MainActivity extends Activity {
         super.onActivityResult(request,result,data);
         if (appUpdater.result(request,result)) return;
         if(request==PICK_FILE && fileCallback!=null) {
+            final ValueCallback<Uri[]> callback = fileCallback;
+            fileCallback = null;
             ArrayList<Uri> selected=new ArrayList<>();
             if(result==RESULT_OK && data!=null) {
                 ClipData clips=data.getClipData();
                 if(clips!=null)for(int i=0;i<clips.getItemCount();i++)addSelectedUri(selected,clips.getItemAt(i).getUri());
                 else addSelectedUri(selected,data.getData());
             }
-            fileCallback.onReceiveValue(selected.isEmpty()?null:selected.toArray(new Uri[0]));fileCallback=null;
+            if (selected.isEmpty()) {
+                callback.onReceiveValue(null);
+            } else if (Build.VERSION.SDK_INT >= 28) {
+                downloads.execute(() -> {
+                    PickedImageProvider.clearCache(this);
+                    Uri[] resolved = new Uri[selected.size()];
+                    for (int i = 0; i < selected.size(); i++) {
+                        resolved[i] = normalizePickedImageUri(selected.get(i));
+                    }
+                    handler.post(() -> {
+                        if (!isDestroyed()) callback.onReceiveValue(resolved);
+                        else callback.onReceiveValue(null);
+                    });
+                });
+            } else {
+                callback.onReceiveValue(selected.toArray(new Uri[0]));
+            }
         } else if(request==SAVE_FILE) {
             Uri destination=result==RESULT_OK&&data!=null?data.getData():null;
             if(blobDownloads.pending())blobDownloads.save(destination);
@@ -842,6 +1037,64 @@ public final class MainActivity extends Activity {
 
     private void addSelectedUri(ArrayList<Uri> files,Uri selected) {
         if(selected!=null && "content".equals(selected.getScheme()) && !getPackageName().equals(selected.getAuthority())) files.add(selected);
+    }
+
+    private boolean isHeicUri(Uri uri) {
+        String mime = getContentResolver().getType(uri);
+        if (mime != null) {
+            String lower = mime.toLowerCase(Locale.ROOT);
+            if (lower.contains("heic") || lower.contains("heif")) return true;
+        }
+        try (InputStream in = getContentResolver().openInputStream(uri)) {
+            if (in == null) return false;
+            byte[] head = new byte[64];
+            int len = 0;
+            while (len < head.length) {
+                int r = in.read(head, len, head.length - len);
+                if (r <= 0) break;
+                len += r;
+            }
+            if (len < 12) return false;
+            if (head[4] != 'f' || head[5] != 't' || head[6] != 'y' || head[7] != 'p') return false;
+            String brands = new String(head, 8, len - 8, StandardCharsets.US_ASCII).toLowerCase(Locale.ROOT);
+            if (brands.contains("avif") || brands.contains("avis")) return false;
+            return brands.contains("heic") || brands.contains("heix") || brands.contains("hevc")
+                    || brands.contains("hevx") || brands.contains("mif1") || brands.contains("msf1")
+                    || brands.contains("heim") || brands.contains("heis");
+        } catch (IOException | RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    @android.annotation.TargetApi(28)
+    private Uri normalizePickedImageUri(Uri uri) {
+        if (!isHeicUri(uri)) return uri;
+        try {
+            ImageDecoder.Source source = ImageDecoder.createSource(getContentResolver(), uri);
+            Bitmap bitmap = ImageDecoder.decodeBitmap(source, (decoder, info, src) -> {
+                decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+                int w = info.getSize().getWidth(), h = info.getSize().getHeight();
+                int max = Math.max(w, h);
+                if (max > 2560) {
+                    float scale = 2560f / max;
+                    decoder.setTargetSize(Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale)));
+                }
+            });
+            String fileName = UUID.randomUUID().toString() + ".jpg";
+            File outFile = new File(PickedImageProvider.directory(this), fileName);
+            try (FileOutputStream fos = new FileOutputStream(outFile)) {
+                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 92, fos)) {
+                    outFile.delete();
+                    return uri;
+                }
+            } finally {
+                bitmap.recycle();
+            }
+            return PickedImageProvider.uriFor(this, fileName);
+        } catch (IOException | RuntimeException failure) {
+            android.util.Log.w("PipiImage", "HEIC transcode fallback to original URI", failure);
+            return uri;
+        }
     }
 
     private void beginDownload(String url,String disposition,String mime) {
@@ -866,11 +1119,11 @@ public final class MainActivity extends Activity {
     }
 
     private void saveDownload(Uri target,String url,String cookie) {
-        network.execute(()->{
+        downloads.execute(()->{
             HttpURLConnection connection=null;
             try {
                 connection=origin.open(url);
-                connection.setConnectTimeout(15000);connection.setReadTimeout(30000);
+                connection.setConnectTimeout(15000);connection.setReadTimeout(120000);
                 if(cookie!=null)connection.setRequestProperty("Cookie",cookie);
                 if(connection.getResponseCode()!=200)throw new IOException("服务器返回 "+connection.getResponseCode());
                 try(InputStream in=connection.getInputStream();OutputStream out=getContentResolver().openOutputStream(target,"w")) {
@@ -886,14 +1139,63 @@ public final class MainActivity extends Activity {
     private void showError(String message) {
         loading.setVisibility(View.GONE);hideError();
         errorPanel=new LinearLayout(this);errorPanel.setOrientation(LinearLayout.VERTICAL);errorPanel.setGravity(Gravity.CENTER);
-        errorPanel.setBackgroundColor(Color.rgb(237,237,237));errorPanel.setPadding(dp(28),dp(28),dp(28),dp(28));
-        errorPanel.addView(text(message,16));errorPanel.addView(text(origin.value,13));
-        Button retry=new Button(this);retry.setText("重新连接");retry.setOnClickListener(view->connect(null));errorPanel.addView(retry);
-        Button settings=new Button(this);settings.setText("App 连接设置");settings.setOnClickListener(view->showSettings());errorPanel.addView(settings);
+        errorPanel.setBackground(new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Color.rgb(244,250,247),Color.rgb(245,247,251)}));
+        errorPanel.setPadding(dp(24),Math.max(dp(28),topInset+dp(20)),dp(24),Math.max(dp(28),bottomInset+dp(20)));
+        LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setGravity(Gravity.CENTER_HORIZONTAL);
+        card.setPadding(dp(22),dp(26),dp(22),dp(22));
+        GradientDrawable cardBg=roundedRect(Color.WHITE,22);
+        cardBg.setStroke(dp(1),Color.rgb(230,236,242));
+        card.setBackground(cardBg);card.setElevation(dp(3));
+        ImageView emblem=new ImageView(this);emblem.setImageResource(R.drawable.ic_first_connection_chat);
+        emblem.setAlpha(0.92f);emblem.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        card.addView(emblem,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        TextView heading=new TextView(this);heading.setText("暂时无法连接小手机");heading.setTextSize(18.5f);
+        heading.setTextColor(Color.rgb(24,25,28));heading.setGravity(Gravity.CENTER_HORIZONTAL);
+        heading.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+        LinearLayout.LayoutParams hParams=new LinearLayout.LayoutParams(-1,-2);hParams.topMargin=dp(14);
+        card.addView(heading,hParams);
+        TextView detail=text(message,14);detail.setGravity(Gravity.CENTER_HORIZONTAL);detail.setTextColor(Color.rgb(87,94,105));
+        detail.setLineSpacing(0,1.35f);detail.setPadding(0,dp(8),0,dp(12));
+        card.addView(detail,new LinearLayout.LayoutParams(-1,-2));
+        TextView chip=new TextView(this);chip.setText(origin.value);chip.setTextSize(12.5f);
+        chip.setTextColor(Color.rgb(102,112,126));chip.setGravity(Gravity.CENTER);
+        chip.setPadding(dp(12),dp(6),dp(12),dp(6));chip.setBackground(roundedRect(Color.rgb(242,245,249),999));
+        LinearLayout.LayoutParams chipParams=new LinearLayout.LayoutParams(-2,-2);chipParams.bottomMargin=dp(20);
+        card.addView(chip,chipParams);
+        Button retry=styledButton("重新连接",Color.WHITE,Color.rgb(7,193,96));
+        retry.setOnClickListener(view->connect(null));
+        card.addView(retry,new LinearLayout.LayoutParams(-1,-2));
+        Button settings=styledButton("App 连接设置",Color.rgb(42,48,58),Color.rgb(238,242,247));
+        settings.setOnClickListener(view->showSettings());
+        LinearLayout.LayoutParams setParams=new LinearLayout.LayoutParams(-1,-2);setParams.topMargin=dp(10);
+        card.addView(settings,setParams);
+        errorPanel.addView(card,new LinearLayout.LayoutParams(Math.min(getResources().getDisplayMetrics().widthPixels-dp(44),dp(368)),-2));
         surface.addView(errorPanel,new FrameLayout.LayoutParams(-1,-1));
     }
     private void hideError(){if(errorPanel!=null){surface.removeView(errorPanel);errorPanel=null;}}
-    private TextView text(String value,int size){TextView label=new TextView(this);label.setText(value);label.setTextSize(size);label.setTextColor(Color.rgb(55,55,55));label.setPadding(0,dp(8),0,dp(8));return label;}
+    private Button styledButton(String label,int textColor,int bgColor){
+        Button button=new Button(this);button.setText(label);button.setTextSize(15.5f);button.setTextColor(textColor);
+        button.setAllCaps(false);button.setMinHeight(dp(48));button.setMinimumHeight(dp(48));
+        button.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+        button.setStateListAnimator(null);
+        int ripple=bgColor==Color.rgb(7,193,96)?Color.argb(46,0,0,0):Color.argb(24,0,0,0);
+        button.setBackground(new RippleDrawable(ColorStateList.valueOf(ripple),roundedRect(bgColor,12),roundedRect(Color.WHITE,12)));
+        return button;
+    }
+    private Drawable settingsInputBackground(){
+        StateListDrawable states=new StateListDrawable();
+        GradientDrawable focused=roundedRect(Color.WHITE,12);focused.setStroke(dp(2),Color.rgb(7,193,96));
+        states.addState(new int[]{android.R.attr.state_focused},focused);
+        GradientDrawable normal=roundedRect(Color.rgb(244,246,249),12);normal.setStroke(dp(1),Color.rgb(224,230,238));
+        states.addState(new int[]{},normal);
+        return states;
+    }
+    private GradientDrawable roundedRect(int color,int radiusDp){
+        GradientDrawable drawable=new GradientDrawable();drawable.setColor(color);drawable.setCornerRadius(dp(radiusDp));return drawable;
+    }
+    private TextView text(String value,float size){TextView label=new TextView(this);label.setText(value);label.setTextSize(size);label.setTextColor(Color.rgb(55,55,55));label.setLineSpacing(0,1.25f);label.setPadding(0,dp(6),0,dp(6));return label;}
     private int dp(int amount){return Math.round(amount*getResources().getDisplayMetrics().density);}
     private void toast(String message){Toast.makeText(this,message,Toast.LENGTH_LONG).show();}
     private static String jsonString(String result){try{return new JSONArray("["+result+"]").getString(0);}catch(JSONException invalid){return "";}}

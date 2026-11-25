@@ -6,6 +6,10 @@ import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -14,6 +18,8 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.view.View;
+import android.view.Window;
+import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -64,11 +70,16 @@ final class AppUpdater {
     private void createDialog() {
         userClosed = false;
         LinearLayout content = new LinearLayout(activity); content.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(24); content.setPadding(pad,dp(12),pad,dp(8));
-        status = new TextView(activity); status.setTextSize(15); status.setTextColor(0xff373737);
+        int pad = dp(24); content.setPadding(pad,dp(14),pad,dp(10));
+        status = new TextView(activity); status.setTextSize(15); status.setTextColor(0xff252932);
+        status.setLineSpacing(0, 1.35f);
         content.addView(status,new LinearLayout.LayoutParams(-1,-2));
         progress = new ProgressBar(activity,null,android.R.attr.progressBarStyleHorizontal);
-        progress.setMax(100); LinearLayout.LayoutParams bar = new LinearLayout.LayoutParams(-1,dp(4)); bar.topMargin = dp(16);
+        progress.setMax(100);
+        ColorStateList accent = ColorStateList.valueOf(Color.rgb(7, 193, 96));
+        progress.setProgressTintList(accent);
+        progress.setIndeterminateTintList(accent);
+        LinearLayout.LayoutParams bar = new LinearLayout.LayoutParams(-1,dp(5)); bar.topMargin = dp(16);
         content.addView(progress,bar);
         dialog = new AlertDialog.Builder(activity).setTitle("更新安卓版").setView(content)
                 .setNegativeButton("关闭",null).setPositiveButton("更新安卓版",null).create();
@@ -81,7 +92,23 @@ final class AppUpdater {
             }
             persist();
         });
-        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> primary()));
+        dialog.setOnShowListener(ignored -> {
+            Window window = dialog.getWindow();
+            if (window != null) {
+                GradientDrawable bg = new GradientDrawable();
+                bg.setColor(Color.WHITE);
+                bg.setCornerRadius(dp(22));
+                window.setBackgroundDrawable(bg);
+            }
+            Button pos = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            Button neg = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            if (pos != null) {
+                pos.setTextColor(Color.rgb(7, 133, 68));
+                pos.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+                pos.setOnClickListener(view -> primary());
+            }
+            if (neg != null) neg.setTextColor(Color.rgb(102, 110, 122));
+        });
         dialog.show(); render();
     }
 
@@ -325,8 +352,12 @@ final class AppUpdater {
             JSONObject record = new JSONObject().put("confirmed",confirmed).put("appState",appState.name()).put("appMessage",appMessage)
                     .put("appOrigin",appOrigin).put("appSession",appSession).put("waitingForSource",waitingForSource).put("userClosed",userClosed);
             if (release != null) record.put("release",release.saved()).put("appTargetCode",release.versionCode);
-            if (!prefs.edit().putString(JOURNAL,record.toString()).commit()) throw new IllegalStateException("无法保存更新进度，请检查手机存储空间");
-        } catch (Exception error) { throw new IllegalStateException("无法保存更新进度",error); }
+            if (!prefs.edit().putString(JOURNAL,record.toString()).commit()) {
+                android.util.Log.w("PipiUpdate","Unable to persist Android update journal (low storage)");
+            }
+        } catch (Exception error) {
+            android.util.Log.w("PipiUpdate","Unable to serialize Android update journal",error);
+        }
     }
     private void cancelApp() { appGeneration++; if (appTransfer != null) appTransfer.cancel(); }
     private void postApp(int token, Runnable change) { handler.post(() -> { if (token == appGeneration && !activity.isDestroyed()) change.run(); }); }

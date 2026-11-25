@@ -228,7 +228,7 @@ body.wechat-classic .transfer-label { color:#191919; }
 body.wechat-classic .transfer-sheet .pay-amount { border-color:#ddd; }
 body.wechat-classic .transfer-sheet .pay-amount :is(b,.pay-amount-text) { color:#191919; }
 body.wechat-classic .transfer-sheet .pay-amount-text.pay-amount-long { font-size:36px; }
-body.wechat-classic .pay-caret { background:#07c160; }
+body.wechat-classic .pay-caret { background:var(--green); }
 body.wechat-classic #overlay .wallet-pay-note#transfer-note-editor { color:#576b95;min-height:44px;margin-top:10px;padding:12px 0; }
 body.wechat-classic #overlay .wallet-pay-note#transfer-note-editor.has-note { color:#191919; }
 body.wechat-classic #overlay .page-editor [data-payment-form="transfer"] :is(.modal-header,.modal-body,.modal-error),
@@ -241,7 +241,7 @@ body.wechat-classic #overlay .pay-key:active { background:#e5e5e5; }
 body.wechat-classic .pay-key>svg>path:first-child { fill:#191919; }
 body.wechat-classic #overlay .pay-key-action,
 body.wechat-classic #overlay .wallet-pay-confirm {
-  border:0;border-radius:5px;background:#07c160;
+  border:0;border-radius:5px;background:var(--green);
   color:#fff;box-shadow:none;
 }
 body.wechat-classic #overlay .pay-key-action:disabled,
@@ -281,11 +281,11 @@ body.wechat-classic .transfer-note-dialog {
   box-shadow:none;color:#191919;
 }
 body.wechat-classic .transfer-note-dialog::backdrop { background:#0006; }
-body.wechat-classic .transfer-note-dialog>input { border-color:#07c160;color:#191919;caret-color:#07c160; }
+body.wechat-classic .transfer-note-dialog>input { border-color:var(--green);color:#191919;caret-color:var(--green); }
 body.wechat-classic .transfer-note-dialog>input::placeholder { color:#aaa; }
 body.wechat-classic .transfer-note-actions { border-color:#e5e5e5; }
 body.wechat-classic .transfer-note-actions>button { color:#576b95; }
-body.wechat-classic .transfer-note-actions>button+button { border-color:#e5e5e5;color:#07883f; }
+body.wechat-classic .transfer-note-actions>button+button { border-color:#e5e5e5;color:var(--green-dark); }
 body.wechat-classic .redpacket-sticker-panel {
   border:var(--classic-pay-rim);border-bottom:0;border-radius:22px 22px 0 0;overflow:hidden;
   background:#f8f0e5;box-shadow:0 -8px 24px #75533b16;

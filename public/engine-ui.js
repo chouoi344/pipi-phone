@@ -22,7 +22,10 @@
     {key:'referenceHistoryDays',label:'参考过去的日程',unit:'天',hint:'生成时参考最近的日程记录，延续之前的安排。'}
   ];
   const toScheduleInput=(key,value)=>key==='chatChangeEnabled'?value:String(key==='surpriseProbability'?Math.round(value*100):value);
-  const getScheduleDraft=()=>JSON.parse(sessionStorage.getItem(scheduleDraftKey)||'{}');
+  const readSessionJson=key=>{try{return JSON.parse(sessionStorage.getItem(key)||'{}')||{};}catch{return {};}};
+  const writeSessionJson=(key,value)=>{try{sessionStorage.setItem(key,JSON.stringify(value));}catch{}};
+  const removeSessionKey=key=>{try{sessionStorage.removeItem(key);}catch{}};
+  const getScheduleDraft=()=>readSessionJson(scheduleDraftKey);
   const moduleChoices = (id,setting) => id==='waiting'?setting.options.map(({value})=>({value,label:waitingModeLabels[value]})):setting.options;
   const MEM_TYPE_LABELS = {FACT:'个人事实',PREFERENCE:'喜好忌口',EVENT:'重要经历',RELATIONSHIP:'关系点滴',PLAN:'约定计划',GENERAL:'共同记忆'};
   const MEMORY_PAGE_SIZE = 20;
@@ -41,7 +44,7 @@
     {value:'Europe/Berlin',label:'德国（柏林）'},
     {value:'Australia/Sydney',label:'澳大利亚（悉尼）'}
   ];
-  const timezoneLabel = value => timezones.find(item=>item.value===value)?.label || new Intl.DateTimeFormat('zh-CN',{timeZone:value,timeZoneName:'long'}).formatToParts().find(part=>part.type==='timeZoneName').value;
+  const timezoneLabel = value => {const found=timezones.find(item=>item.value===value);if(found)return found.label;try{return new Intl.DateTimeFormat('zh-CN',{timeZone:value,timeZoneName:'long'}).formatToParts().find(part=>part.type==='timeZoneName')?.value||String(value||'');}catch{return String(value||'');}};
   const state = () => P().getState();
   const ai = () => ui.config.ai;
   const modelName = model => `${ai().sources.find(source => source.id===model.sourceId)?.name || ''} · ${model.model}`;
@@ -135,10 +138,10 @@
     return field(setting.label,setting.key,value,type==='textarea'||type==='longtext'?'textarea':'text',setting.hint);
   }
   const voiceDraftKey='pipi.voice-settings-draft';
-  const voiceDraft=()=>JSON.parse(sessionStorage.getItem(voiceDraftKey)||'{}');
+  const voiceDraft=()=>readSessionJson(voiceDraftKey);
   const outreachDraftKey='pipi.outreach-settings-draft';
   function outreachDraft(){
-    const draft=JSON.parse(sessionStorage.getItem(outreachDraftKey)||'{}');
+    const draft=readSessionJson(outreachDraftKey);
     delete draft.mode;
     delete draft.enabled;
     return draft;
@@ -206,7 +209,7 @@
       const value=input.type==='checkbox'?input.checked:input.value,draft=outreachDraft();
       if(value===(typeof saved==='boolean'?saved:String(saved)))delete draft[input.name];
       else draft[input.name]=value;
-      sessionStorage.setItem(outreachDraftKey,JSON.stringify(draft));
+      writeSessionJson(outreachDraftKey,draft);
       if(input.name==='customPrompt'){
         const preview=form.querySelector('.caption-prompt-preview'),empty=!value.trim();
         preview.textContent=empty?'未填写':value;
@@ -225,7 +228,7 @@
         button.disabled=true;
         try{
           const result=await P().api('/api/engine/modules',{id:'outreach',values});
-          sessionStorage.removeItem(outreachDraftKey);
+          removeSessionKey(outreachDraftKey);
           if(ui.config)Object.assign(ui.config.settings.outreach,result.state.settings.modules.outreach);
           P().setState(result.state);
           P().toast('设置已保存');
@@ -259,7 +262,7 @@
       const input=event.target,value=input.type==='checkbox'?input.checked:input.value,draft=getScheduleDraft();
       if(value===toScheduleInput(input.name,ui.config.settings.schedule[input.name]))delete draft[input.name];
       else draft[input.name]=value;
-      sessionStorage.setItem(scheduleDraftKey,JSON.stringify(draft));
+      writeSessionJson(scheduleDraftKey,draft);
       button.disabled=!Object.keys(draft).length;
     };
     form.onsubmit=event=>{
@@ -277,7 +280,7 @@
           const result=await P().api('/api/engine/modules',{id:'schedule',values});
           P().setState(result.state);
           Object.assign(ui.config.settings.schedule,values);
-          sessionStorage.removeItem(scheduleDraftKey);
+          removeSessionKey(scheduleDraftKey);
           P().toast('设置已保存');
         }finally{
           ui.scheduleSaving=false;
@@ -302,7 +305,7 @@
     const r=state()?.roles?.find(x=>x.id===roleId);
     if(!r)return page('人物参考图与自拍',note('找不到这位好友。'));
     const faceRefs=(r.faceReferences||[]).filter(safeMedia),bodyRefs=(r.bodyReferences||[]).filter(safeMedia);
-    const fileInput='<input type="file" id="ref-image-input" accept="image/png,image/jpeg,image/webp" hidden>';
+    const fileInput='<input type="file" id="ref-image-input" accept="image/*" hidden>';
     if(inline)return '<div class="ref-inline">'+[['三视图',faceRefs,'faceReferences'],['全身图',bodyRefs,'bodyReferences']].map(([label,list,key])=>
       `<div class="ref-inline-row"><div class="ref-inline-label">${label}<span>${list.length}/3${key==='bodyReferences'?' · 选填':''}</span></div><div class="ref-inline-images">${list.map((url,idx)=>`<button type="button" class="ref-inline-thumb" data-ref-menu="${key}:${idx}" aria-label="${label}${idx+1}${idx===0?'，主图':''}，管理"><img src="${esc(url)}" alt="${label}${idx+1}">${idx===0?'<span>主图</span>':''}</button>`).join('')}${list.length<3?`<button type="button" class="ref-inline-add" data-ref-upload="${key}:${list.length}" aria-label="上传${label}">＋</button>`:''}</div></div>`
     ).join('')+'</div>'+fileInput;
@@ -341,7 +344,7 @@
 
   function lifeMemoryView(roleId){
     if(!ui.lifeMemoryViews.has(roleId)){
-      const saved=JSON.parse(sessionStorage.getItem(memoryBrowseKey(roleId))||'{}');
+      const saved=readSessionJson(memoryBrowseKey(roleId));
       ui.lifeMemoryViews.set(roleId,{
         status:saved.status||'active',query:saved.query||'',searchOffset:saved.searchOffset||0,
         browse:saved.browse||{active:{month:null,offset:0},archived:{month:null,offset:0}},response:null,request:null
@@ -370,7 +373,7 @@
         return loadLifeMemories(roleId);
       }
       view.response={...response,status,query,offset};
-      sessionStorage.setItem(memoryBrowseKey(roleId),JSON.stringify({status,query,searchOffset:view.searchOffset,browse:view.browse}));
+      writeSessionJson(memoryBrowseKey(roleId),{status,query,searchOffset:view.searchOffset,browse:view.browse});
     }).catch(error=>{if(view.request===request)view.response={error:error.message,status,query};}).finally(()=>{
       if(view.request!==request)return;
       view.request=null;
@@ -607,14 +610,14 @@
 
   function bindVoiceSettings(form){
     form.elements.enabled.onchange=()=>{
-      sessionStorage.setItem(voiceDraftKey,JSON.stringify({...voiceDraft(),enabled:form.elements.enabled.checked}));
+      writeSessionJson(voiceDraftKey,{...voiceDraft(),enabled:form.elements.enabled.checked});
     };
     form.querySelector('[data-model-pref="voice-model"]').onclick=()=>{
       window.PipiModels.chooseTtsModel(ui.config,voiceSelection().tts,tts=>{
         const draft=voiceDraft();
         if(tts===state().settings.ai.assign.tts)delete draft.tts;
         else draft.tts=tts;
-        sessionStorage.setItem(voiceDraftKey,JSON.stringify(draft));
+        writeSessionJson(voiceDraftKey,draft);
         P().refresh();
       });
     };
@@ -629,7 +632,7 @@
       task(async()=>{
         try{
           const result=await P().api('/api/engine/modules',{id:'voice',values,...(tts!==state().settings.ai.assign.tts?{tts}:{})});
-          sessionStorage.removeItem(voiceDraftKey);
+          removeSessionKey(voiceDraftKey);
           if(ui.config)acceptConfig(result);
           P().toast('设置已保存');
         }finally{
@@ -956,7 +959,7 @@
     ui.events.addEventListener('revision',event=>{const data=JSON.parse(event.data);if(data.revision>state().revision)sync();});
     ui.events.addEventListener('typing',event=>setChatProgress(JSON.parse(event.data)));
   }
-  function stop() {ui.events?.close();ui.events=null;ui.started=false;ui.config=null;ui.configRevision=null;ui.readOnEntry=false;ui.loading=null;ui.typing.clear();window.PipiReminders?.reset();ui.memCache.clear();ui.memRecallResults.clear();ui.importState=null;ui.activity.clear();sessionStorage.removeItem(scheduleDraftKey);sessionStorage.removeItem(voiceDraftKey);sessionStorage.removeItem(outreachDraftKey);window.PipiUsage?.reset();window.PipiSchedule?.reset();window.PipiModels?.reset();}
+  function stop() {ui.events?.close();ui.events=null;ui.started=false;ui.config=null;ui.configRevision=null;ui.readOnEntry=false;ui.loading=null;ui.typing.clear();window.PipiReminders?.reset();ui.memCache.clear();ui.memRecallResults.clear();ui.importState=null;ui.activity.clear();removeSessionKey(scheduleDraftKey);removeSessionKey(voiceDraftKey);removeSessionKey(outreachDraftKey);window.PipiUsage?.reset();window.PipiSchedule?.reset();window.PipiModels?.reset();}
   function activity(roleId) {const now=Date.now();if(now-(ui.activity.get(roleId)||0)<2000)return;ui.activity.set(roleId,now);P().api('/api/engine/typing',{roleId}).catch(error=>{if(error.status!==401)console.debug('输入状态上报失败');});}
   function resetActivity(roleId) {ui.activity.delete(roleId);}
   function stopActivity(roleId) {resetActivity(roleId);P().api('/api/engine/typing',{roleId,active:false}).catch(error=>{if(error.status!==401)console.debug('输入状态解除失败');});}

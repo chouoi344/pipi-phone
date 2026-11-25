@@ -43,31 +43,23 @@ async function main() {
           if (installed)
             await write('worker-ready.json', {
               updatedAt: new Date().toISOString(),
+              requestSchema: 2,
             });
           const fetchImpl = async (url) => {
             if (feed === 'offline')
               throw new Error('Isolated release unavailable');
             if (feed === 'empty')
-              return url.includes('/releases?')
-                ? Response.json([])
+              return url.endsWith('/channel.json')
+                ? Response.json({ schema: 1 })
                 : new Response('', { status: 404 });
-            const tag = 'v' + targetVersion;
+            assert(!url.includes('api.github.com'));
             return Response.json(
-              url.startsWith('https://api.github.com/')
+              url.startsWith('https://raw.githubusercontent.com/')
                 ? {
-                    tag_name: tag,
-                    draft: false,
-                    prerelease: false,
-                    html_url: `https://github.com/${repository}/releases/tag/${tag}`,
-                    published_at: new Date().toISOString(),
-                    body: '隔离更新说明：保留聊天与资料',
-                    assets: [
-                      {
-                        name: 'update.json',
-                        state: 'uploaded',
-                        browser_download_url: `https://github.com/${repository}/releases/download/${tag}/update.json`,
-                      },
-                    ],
+                    version: targetVersion,
+                    image: `ghcr.io/${repository}@sha256:` + 'b'.repeat(64),
+                    publishedAt: new Date().toISOString(),
+                    notes: '隔离更新说明：保留聊天与资料',
                   }
                 : {
                     version: targetVersion,

@@ -263,12 +263,209 @@ jobs:
       DIGEST: ${{ needs.image.outputs.digest }}
     steps:
       # No checkout or repository script runs with the release-writing token.
-      - name: Create the manifest and publish the prepared draft
+      - name: Publish or verify the stable release and atomically update its directory
         run: |
-          set -euo pipefail
-          jq --null-input --arg version "$VERSION" --arg image "$IMAGE@$DIGEST" \
-            '{version: $version, image: $image}' > update.json
-          sha256sum update.json > update.json.sha256
-          gh release create "$RELEASE_TAG" update.json update.json.sha256 \
-            --verify-tag --draft --title "$RELEASE_TAG" --generate-notes
-          gh release edit "$RELEASE_TAG" --draft=false --latest
+          python3 - <<'PY'
+          import base64, hashlib, json, os, re, subprocess, tempfile, time
+          from datetime import datetime
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+          LIMIT, BRANCH = 64 * 1024, "refs/heads/update-channel"
+          VERSION = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
+
+          def key(version):
+              if not isinstance(version, str) or len(version) > 32 or not re.fullmatch(VERSION, version):
+                  raise ValueError("Invalid stable version")
+              parts = tuple(map(int, version.split(".")))
+              if max(parts) > 9007199254740991:
+                  raise ValueError("Version exceeds the client limit")
+              return parts
+
+          def encode(value):
+              return (json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+
+          def checked(value, repo):
+              if not isinstance(value, dict) or set(value) != {"version", "image", "publishedAt", "notes"}:
+                  raise ValueError("Invalid directory record")
+              key(value["version"])
+              if not isinstance(value["image"], str) or not re.fullmatch(r"ghcr\.io/" + re.escape(repo.lower()) + r"@sha256:[0-9a-f]{64}", value["image"]):
+                  raise ValueError("Image must be this repository's fixed SHA-256 digest")
+              stamp = value["publishedAt"]
+              if not isinstance(stamp, str) or len(stamp) > 40 or datetime.fromisoformat(stamp.replace("Z", "+00:00")).tzinfo is None:
+                  raise ValueError("Invalid actual publication time")
+              if not isinstance(value["notes"], str) or len(value["notes"]) > 12000 or len(encode(value)) > LIMIT:
+                  raise ValueError("Directory record exceeds its size limit")
+              return value
+
+          def api(endpoint, optional=False):
+              result = subprocess.run(["gh", "api", endpoint], capture_output=True)
+              if optional and result.returncode and b"HTTP 404" in result.stderr:
+                  return None
+              result.check_returncode()
+              return json.loads(result.stdout)
+
+          def attachment(release, repo):
+              tag = release.get("tag_name", "")
+              if not isinstance(tag, str) or not re.fullmatch("v" + VERSION, tag) or release.get("prerelease") is not False or release.get("draft") is not False:
+                  raise ValueError("Release is not the expected official stable/draft state")
+              base = "https://github.com/" + repo + "/releases/"
+              assets = [asset for asset in release.get("assets", []) if asset.get("name") == "update.json"]
+              if release.get("html_url", "").lower() != (base + "tag/" + tag).lower() or len(assets) != 1 or assets[0].get("state") != "uploaded" or assets[0].get("browser_download_url", "").lower() != (base + "download/" + tag + "/update.json").lower():
+                  raise ValueError("Missing canonical official update.json attachment")
+              if type(assets[0].get("size")) is not int or not 0 < assets[0]["size"] <= LIMIT:
+                  raise ValueError("Official manifest exceeds its size limit")
+              return assets[0]["browser_download_url"]
+
+          def public_record(release, repo):
+              url = attachment(release, repo)
+              class OfficialRedirects(HTTPRedirectHandler):
+                  max_redirections = 5
+                  def redirect_request(self, request, response, code, message, headers, target):
+                      parsed = urlsplit(target)
+                      storage = parsed.hostname in {"release-assets.githubusercontent.com", "objects.githubusercontent.com", "github-releases.githubusercontent.com"} and parsed.path.startswith(("/github-production-release-asset/", "/github-production-release-asset-2e65be/"))
+                      if parsed.scheme != "https" or parsed.port not in (None, 443) or parsed.username or parsed.password or parsed.fragment or not (target == url or storage):
+                          raise ValueError("Attachment redirect left official GitHub storage")
+                      return super().redirect_request(request, response, code, message, headers, target)
+              # No authorization: require the actual published attachment to be public.
+              with build_opener(OfficialRedirects()).open(Request(url, headers={"Accept": "application/json", "User-Agent": "pipi-phone-release"}), timeout=30) as response:
+                  raw = response.read(LIMIT + 1)
+              if len(raw) > LIMIT:
+                  raise ValueError("Official manifest exceeds its size limit")
+              manifest = json.loads(raw)
+              if not isinstance(manifest, dict) or manifest.get("version") != release["tag_name"][1:]:
+                  raise ValueError("Official manifest version differs from its tag")
+              notes = release.get("body") or ""
+              if not isinstance(notes, str):
+                  raise ValueError("Release notes must be text")
+              value = {"version": manifest["version"], "image": manifest.get("image"), "publishedAt": release.get("published_at"), "notes": notes[:12000]}
+              while len(encode(value)) > LIMIT and value["notes"]:
+                  value["notes"] = value["notes"][:-100]
+              return checked(value, repo)
+
+          def publish_directory(git, remote, repo, current, previous=None):
+              observed = False
+              def show(base, name):
+                  exists = git("cat-file", "-e", base + ":" + name, check=False).returncode == 0
+                  if not exists:
+                      return None
+                  raw = git("show", base + ":" + name).stdout
+                  if len(raw) > LIMIT:
+                      raise ValueError("Existing directory file exceeds its size limit")
+                  return json.loads(raw)
+              for attempt in range(5):
+                  head = git("ls-remote", "--heads", remote, BRANCH).stdout.split()
+                  base, latest = None, None
+                  if head:
+                      observed = True
+                      git("fetch", "--no-tags", "--no-recurse-submodules", remote, "+" + BRANCH + ":refs/remotes/catalog")
+                      base = git("rev-parse", "refs/remotes/catalog").stdout.decode().strip()
+                      marker = show(base, "channel.json")
+                      if marker != {"schema": 1} or type(marker["schema"]) is not int:
+                          raise ValueError("Permanent channel marker must remain schema 1")
+                      value = show(base, "latest.json")
+                      if value is not None:
+                          latest = checked(value, repo)
+                          if show(base, "versions/v" + latest["version"] + ".json") != latest:
+                              raise ValueError("latest.json has no matching version record")
+                      git("read-tree", base)
+                  else:
+                      if observed:
+                          raise ValueError("The permanent channel branch disappeared")
+                      git("read-tree", "--empty")
+                  files = {"channel.json": {"schema": 1}}
+                  for value in [current] + ([previous] if previous is not None and base is None else []):
+                      name = "versions/v" + value["version"] + ".json"
+                      existing = show(base, name) if base else None
+                      if existing is not None:
+                          existing = checked(existing, repo)
+                          if existing["version"] != value["version"] or existing["image"] != value["image"]:
+                              raise ValueError("Refusing to overwrite a version's fixed image digest")
+                          value = existing
+                      elif base and git("log", "-1", "--format=%H", base, "--", name).stdout.strip():
+                          raise ValueError("Refusing to restore a withdrawn version record")
+                      files[name] = value
+                      if latest is None or key(value["version"]) > key(latest["version"]):
+                          latest = value
+                  files["latest.json"] = latest
+                  for name, value in files.items():
+                      blob = git("hash-object", "-w", "--stdin", content=encode(value)).stdout.decode().strip()
+                      git("update-index", "--add", "--cacheinfo", "100644", blob, name)
+                  tree = git("write-tree").stdout.decode().strip()
+                  if base and tree == git("rev-parse", base + "^{tree}").stdout.decode().strip():
+                      return {"result": "unchanged", "latest": latest["version"]}
+                  commit = git("commit-tree", tree, *(["-p", base] if base else []), content=("Publish stable update directory for v" + current["version"] + "\n").encode()).stdout.decode().strip()
+                  pushed = git("push", "--porcelain", remote, commit + ":" + BRANCH, check=False)
+                  if pushed.returncode == 0:
+                      return {"result": "published", "latest": latest["version"], "commit": commit}
+                  if git("ls-remote", "--heads", remote, BRANCH).stdout.split() == head:
+                      raise RuntimeError("Directory push failed: " + pushed.stderr.decode())
+                  time.sleep(1)
+              raise RuntimeError("Directory changed concurrently five times; retry this job")
+
+          def main():
+              repo, version = os.environ["GH_REPO"], os.environ["VERSION"]
+              expected = {"version": version, "image": os.environ["IMAGE"] + "@" + os.environ["DIGEST"]}
+              if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*", repo) or os.environ["RELEASE_TAG"] != "v" + version:
+                  raise ValueError("Official repository, tag and version must match")
+              key(version)
+              if not re.fullmatch(r"ghcr\.io/" + re.escape(repo.lower()) + r"@sha256:[0-9a-f]{64}", expected["image"]):
+                  raise ValueError("Build output is not this repository's fixed image digest")
+              remote, tag = "https://github.com/" + repo + ".git", "v" + version
+              with tempfile.TemporaryDirectory(prefix="pipi-update-channel-") as folder:
+                  folder = Path(folder)
+                  subprocess.run(["git", "init", "--bare", str(folder / "catalog.git")], check=True, capture_output=True)
+                  env = {**os.environ, "GIT_INDEX_FILE": str(folder / "index"), "GIT_AUTHOR_NAME": "github-actions[bot]", "GIT_COMMITTER_NAME": "github-actions[bot]", "GIT_AUTHOR_EMAIL": "41898282+github-actions[bot]@users.noreply.github.com", "GIT_COMMITTER_EMAIL": "41898282+github-actions[bot]@users.noreply.github.com"}
+                  def git(*args, content=None, check=True):
+                      return subprocess.run(["git", "-C", str(folder / "catalog.git"), "-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential", *args], input=content, capture_output=True, env=env, check=check)
+                  def releases():
+                      page = 1
+                      while True:
+                          batch = api("repos/" + repo + "/releases?per_page=100&page=" + str(page))
+                          if not batch:
+                              return
+                          yield from batch
+                          page += 1
+                  previous = None
+                  if not git("ls-remote", "--heads", remote, BRANCH).stdout:
+                      previous = next((item for item in releases() if item.get("draft") is False and item.get("prerelease") is False and re.fullmatch("v" + VERSION, item.get("tag_name", "")) and item["tag_name"] != tag and any(asset.get("name") == "update.json" and asset.get("state") == "uploaded" for asset in item.get("assets", []))), None)
+                  release = api("repos/" + repo + "/releases/tags/" + tag, optional=True)
+                  if release is None:
+                      release = next((item for item in releases() if item.get("tag_name") == tag), None)
+                  manifest = folder / "update.json"
+                  if release is None:
+                      manifest.write_bytes(encode(expected))
+                      checksum = folder / "update.json.sha256"
+                      checksum.write_text(hashlib.sha256(manifest.read_bytes()).hexdigest() + "  update.json\n")
+                      source = api("repos/" + repo + "/contents/CHANGELOG.md?ref=" + tag)
+                      changelog = base64.b64decode(source["content"]).decode()
+                      section = re.search(r"(?ms)^## " + re.escape(version) + r"(?:[ \t]+[^\n]*)?\n(.*?)(?=^## |\Z)", changelog)
+                      if not section or not re.search(r"[\u4e00-\u9fff]", section[1]):
+                          raise ValueError("The tagged changelog has no Chinese notes for this version")
+                      notes = folder / "release-notes.md"
+                      notes.write_text(section[1].strip() + "\n", encoding="utf-8")
+                      subprocess.run(["gh", "release", "create", tag, str(manifest), str(checksum), "--verify-tag", "--draft", "--title", tag, "--notes-file", str(notes)], check=True)
+                      release = next(item for item in releases() if item.get("tag_name") == tag)
+                  if release.get("draft") is True:
+                      # Drafts may expose untagged preview URLs and be absent from the by-tag endpoint.
+                      release = api("repos/" + repo + "/releases/" + str(release["id"]))
+                      assets = [item for item in release.get("assets", []) if item.get("name") == "update.json" and item.get("state") == "uploaded"]
+                      if release.get("tag_name") != tag or release.get("draft") is not True or release.get("prerelease") is not False or len(assets) != 1 or type(assets[0].get("size")) is not int or not 0 < assets[0]["size"] <= LIMIT:
+                          raise ValueError("Existing draft does not match the requested stable tag")
+                      subprocess.run(["gh", "release", "download", tag, "--pattern", "update.json", "--output", str(manifest), "--clobber"], check=True)
+                      if manifest.stat().st_size > LIMIT or json.loads(manifest.read_bytes()) != expected:
+                          raise ValueError("Existing draft differs from the verified build digest")
+                      subprocess.run(["gh", "release", "edit", tag, "--draft=false", "--latest"], check=True)
+                      release = api("repos/" + repo + "/releases/" + str(release["id"]))
+                  current = public_record(release, repo)
+                  if {name: current[name] for name in expected} != expected:
+                      raise ValueError("Published release differs from the verified build digest")
+                  # An already public tag is verified and reused; never re-mark a historical retry as latest.
+                  if previous is not None:
+                      previous = public_record(api("repos/" + repo + "/releases/tags/" + previous["tag_name"]), repo)
+                  print(json.dumps(publish_directory(git, remote, repo, current, previous)))
+
+          if __name__ == "__main__":
+              main()
+          PY

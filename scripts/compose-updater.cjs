@@ -32,10 +32,10 @@ function readConfig(env=process.env){
 }
 
 function validateRequest(value){
-  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!['id','version','previousVersion'].includes(k))||typeof value.id!=='string'||! /^[A-Za-z0-9_-]{1,100}$/.test(value.id)||!VERSION.test(value.version)||!VERSION.test(value.previousVersion))throw new Error('更新请求格式无效');
+  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!['id','version','previousVersion','expectedImage'].includes(k))||typeof value.id!=='string'||! /^[A-Za-z0-9_-]{1,100}$/.test(value.id)||!VERSION.test(value.version)||!VERSION.test(value.previousVersion)||value.expectedImage!==undefined&&(typeof value.expectedImage!=='string'||!/^ghcr\.io\/[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*@sha256:[a-f0-9]{64}$/.test(value.expectedImage)))throw new Error('更新请求格式无效');
   const compare=require('../lib/updates.cjs').compareVersions;
   if(compare(value.version,value.previousVersion)<=0)throw new Error('更新版本必须高于当前版本');
-  return {id:value.id,version:value.version,previousVersion:value.previousVersion};
+  return {id:value.id,version:value.version,previousVersion:value.previousVersion,...(value.expectedImage===undefined?{}:{expectedImage:value.expectedImage})};
 }
 
 async function readJson(filename,{optional=false,maxBytes=262144}={}){
@@ -88,7 +88,7 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
   }
   const jobFile=id=>path.join(jobsDir,id+'.json');
   const jsonDocker=async args=>JSON.parse(await docker(args));
-  async function ready(){await writeJson(path.join(config.updateDir,'worker-ready.json'),{updatedAt:stamp()},0o644);}
+  async function ready(){await writeJson(path.join(config.updateDir,'worker-ready.json'),{updatedAt:stamp(),requestSchema:2},0o644);}
   async function save(job,phase,message,stage=job.stage){
     job.stage=stage;
     job.status={...job.status,phase,message:message.slice(0,1000),updatedAt:stamp()};
@@ -198,7 +198,9 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
     const job={schema:1,stage:'checking',status:{...request,phase:'checking',message:'正在核对官方版本与当前安装',startedAt:stamp(),updatedAt:stamp()}};
     await save(job,'checking','正在核对官方版本与当前安装');
     try{
-      const release=await getRelease({repository:config.repository,version:request.version});
+      // Older app versions wrote no digest. They remain compatible only after
+      // independently checking this exact public, stable release and its official manifest.
+      const release=await getRelease({repository:config.repository,version:request.version,...(request.expectedImage===undefined?{}:{expectedImage:request.expectedImage})});
       if(!release||release.version!==request.version)throw publicError('官方版本的镜像清单无效或已撤回');
       const activeExists=Boolean(await readJson(activeFile,{optional:true}));
       const running=await container({active:activeExists});
@@ -287,7 +289,7 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
   async function close(){
     if(heartbeat)clearInterval(heartbeat);
     await heartbeatWrite;
-    if(lockToken){const owner=await readJson(lockFile,{optional:true});if(owner?.token===lockToken){await writeJson(path.join(config.updateDir,'worker-ready.json'),{updatedAt:new Date(0).toISOString()},0o644);await fs.unlink(lockFile);}lockToken=null;}
+    if(lockToken){const owner=await readJson(lockFile,{optional:true});if(owner?.token===lockToken){await writeJson(path.join(config.updateDir,'worker-ready.json'),{updatedAt:new Date(0).toISOString(),requestSchema:2},0o644);await fs.unlink(lockFile);}lockToken=null;}
   }
   async function run({once=false}={}){
     try{await initialize();do{await tick();if(once||stopping)break;await sleep(config.pollMs);}while(!stopping);}

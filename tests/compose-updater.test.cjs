@@ -16,7 +16,7 @@ async function fixture(t,options={}){
   const composeFile=path.join(dir,'compose.yaml'),featureFile=path.join(dir,'compose.updates.yaml');
   await fs.writeFile(composeFile,'services: {}\n');await fs.writeFile(featureFile,'services: {}\n');
   const config=readConfig({PIPI_UPDATE_DIR:path.join(dir,'shared'),PIPI_UPDATE_COMPOSE_FILE:composeFile,PIPI_UPDATE_REPOSITORY:'example/pipi-phone',PIPI_UPDATE_COMPOSE_PROJECT:'pipi-isolated-updater-test',PIPI_UPDATE_HEALTH_TIMEOUT_MS:'1000'});
-  const request={id:'test-update-job',version:'0.12.1',previousVersion:'0.12.0'};
+  const request={id:'test-update-job',version:'0.12.1',previousVersion:'0.12.0',...(options.pinned?{expectedImage:NEW}:{})};
   const volumes=new Map([['existing-real-data',{Name:'existing-real-data',Labels:{},data:structuredClone(BEFORE)}]]),helpers=new Map(),commands=[],logs=[];
   let clock=Date.now(),helperIndex=1;
   const running={Id:CID,Image:OLD,State:{Running:true},Mounts:[{Type:'volume',Name:'existing-real-data',Destination:'/app/data'}],Config:{Labels:{'com.docker.compose.project':config.project,'com.docker.compose.service':'pipi-phone'}}};
@@ -74,7 +74,7 @@ async function fixture(t,options={}){
     if(!running.State.Running)throw new Error('connection refused');
     return {status:200,json:async()=>({version:running.Image===OLD?'0.12.0':options.runtimeVersion||'0.12.1'})};
   }
-  const deps={docker,fetchImpl,getRelease:async input=>{assert.deepEqual(input,{repository:config.repository,version:request.version});return options.releaseMissing?null:{version:request.version,image:NEW};},now:()=>clock,sleep:async ms=>{clock+=ms;},log:error=>logs.push(error)};
+  const deps={docker,fetchImpl,getRelease:async input=>{assert.deepEqual(input,{repository:config.repository,version:request.version,...(request.expectedImage?{expectedImage:request.expectedImage}:{})});if(options.releaseFetch)return require('../lib/updates.cjs').getRelease({...input,fetchImpl:options.releaseFetch});return options.releaseMissing?null:{version:request.version,image:NEW};},now:()=>clock,sleep:async ms=>{clock+=ms;},log:error=>logs.push(error)};
   const make=()=>createUpdater(config,deps);
   async function submit(value=request){await fs.mkdir(config.updateDir,{recursive:true});await fs.writeFile(path.join(config.updateDir,'request.json'),JSON.stringify(value));}
   async function journal(){return JSON.parse(await fs.readFile(path.join(config.stateDir,'current.json'),'utf8'));}
@@ -145,6 +145,46 @@ test('Compose updater: unexpected image package version and withdrawn release le
   }
 });
 
+test('Compose updater: queued pinned jobs independently verify their fixed channel record and attachment without Latest or API calls',async t=>{
+  const calls=[],record={version:'0.12.1',image:NEW,publishedAt:new Date().toISOString(),notes:'isolated stable release'};
+  const f=await fixture(t,{pinned:true,releaseFetch:async url=>{
+    calls.push(url);
+    if(url==='https://raw.githubusercontent.com/example/pipi-phone/update-channel/versions/v0.12.1.json')return Response.json(record);
+    assert.equal(url,'https://github.com/example/pipi-phone/releases/download/v0.12.1/update.json');return Response.json({version:record.version,image:NEW});
+  }});
+  await f.submit();await f.make().run({once:true});assert.equal((await f.status()).phase,'succeeded');assert.equal(calls.length,2);
+  assert.equal((await f.journal()).targetImage,NEW);
+});
+
+test('Compose updater: withdrawn records and changed pinned images fail before any Docker command with a readable reason',async t=>{
+  for(const withdrawn of [false,true]){
+    const f=await fixture(t,{pinned:true,releaseFetch:async url=>{
+      if(url.endsWith('/channel.json'))return Response.json({schema:1});
+      assert.equal(url,'https://raw.githubusercontent.com/example/pipi-phone/update-channel/versions/v0.12.1.json');
+      return withdrawn?new Response('',{status:404}):Response.json({version:'0.12.1',image:'ghcr.io/example/pipi-phone@sha256:'+'d'.repeat(64),publishedAt:new Date().toISOString(),notes:''});
+    }});
+    await f.submit();await f.make().run({once:true});assert.equal((await f.status()).phase,'failed');assert.equal(f.commands.length,0);
+    assert.match((await f.status()).message,withdrawn?/撤回/:/已变化/);
+  }
+});
+
+test('Compose updater: old jobs without an image pin still independently verify the fixed official release',async t=>{
+  const calls=[];
+  const f=await fixture(t,{releaseFetch:async url=>{
+    calls.push(url);
+    if(url.startsWith('https://raw.githubusercontent.com/'))return Response.json({version:'0.12.1',image:NEW,publishedAt:new Date().toISOString(),notes:''});
+    assert.equal(url,'https://github.com/example/pipi-phone/releases/download/v0.12.1/update.json');return Response.json({version:'0.12.1',image:NEW});
+  }});
+  await f.submit();await f.make().run({once:true});assert.equal((await f.status()).phase,'succeeded');assert.equal(calls.length,2);
+  assert(!calls.some(url=>url.includes('/latest')||url.includes('api.github.com')));
+});
+
+test('Compose updater: checking failures keep their stage and rate-limit reason visible',async t=>{
+  const f=await fixture(t,{pinned:true,releaseFetch:async()=>new Response('',{status:429})});
+  await f.submit();await f.make().run({once:true});const status=await f.status();
+  assert.equal(status.phase,'failed');assert.match(status.message,/核对所选正式版本.*限制.*429/);assert.equal(f.commands.length,0);
+});
+
 test('Compose updater: failed snapshot copy restores the old image on the untouched original volume',async t=>{
   const f=await fixture(t,{copyFailure:true});await f.submit();await f.make().run({once:true});
   assert.equal((await f.status()).phase,'failed');assert.equal(f.running.Image,OLD);assert.equal(f.running.State.Running,true);assert.equal(f.running.Mounts[0].Name,'existing-real-data');
@@ -200,7 +240,7 @@ test('Compose updater: stop requests finish the active transaction before the wo
 test('Compose updater: a second worker refuses a live owner without touching any container',async t=>{
   const f=await fixture(t),first=f.make(),second=f.make();await first.initialize();
   t.after(()=>first.close());await assert.rejects(second.run({once:true}),/另一个更新工作进程/);assert.equal(f.commands.length,0);
-  const ready=JSON.parse(await fs.readFile(path.join(f.config.updateDir,'worker-ready.json'),'utf8'));assert.notEqual(ready.updatedAt,new Date(0).toISOString());
+  const ready=JSON.parse(await fs.readFile(path.join(f.config.updateDir,'worker-ready.json'),'utf8'));assert.notEqual(ready.updatedAt,new Date(0).toISOString());assert.equal(ready.requestSchema,2);
 });
 
 test('Compose updater: a stale worker PID is recovered without sending any termination signal',async t=>{

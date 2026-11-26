@@ -37,3 +37,18 @@ curl -fsS -c "$root/test.cookies" -H "Origin: $origin" -H 'Content-Type: applica
   -d "{\"displayName\":\"Install check\",\"password\":\"$password\"}" "$origin/api/setup" >/dev/null
 curl -fsS -b "$root/test.cookies" "$origin/api/updates/status" |
   python3 -c 'import json,sys; result=json.load(sys.stdin); assert result["workerAvailable"] and result["canUpdate"], result'
+
+# A separate release tree upgrades the systemd worker of an extracted, non-Git
+# deployment without changing the application container, session or data volume.
+release=$(mktemp -d /opt/pipi-release-worker-XXXXXXXX)
+install -d "$release/scripts" "$release/lib"
+install -m 0644 scripts/install-https.py scripts/compose-updater.cjs "$release/scripts/"
+install -m 0644 lib/updates.cjs "$release/lib/"
+install -m 0644 package.json "$release/"
+cid=$(docker compose ps -q pipi-phone)
+project=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "$cid")
+python3 "$release/scripts/install-https.py" --upgrade-from-release "$root"
+systemctl show "pipi-phone-updater-$project.service" -p ExecStart --value | grep -F '/release-workers/'
+test "$cid" = "$(docker compose ps -q pipi-phone)"
+curl -fsS -b "$root/test.cookies" "$origin/api/updates/status" |
+  python3 -c 'import json,sys; result=json.load(sys.stdin); assert result["workerAvailable"] and result["canUpdate"], result'

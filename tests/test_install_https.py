@@ -23,6 +23,28 @@ class InstallHttpsTests(unittest.TestCase):
         self.enterContext(patch.object(install, "ROOT", Path.cwd()))
         self.enterContext(patch.dict(os.environ, {}, clear=True))
 
+    def test_bridge_stages_a_consistent_version_separately_and_can_be_retried(self):
+        source = Path.cwd() / "tag"
+        names = ("package.json", "lib/updates.cjs", "scripts/compose-updater.cjs")
+        for name in names:
+            for root, content in [(Path.cwd(), "old-custom"), (source, "release")]:
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_text(content)
+        with patch.object(install, "SOURCE", source), patch.object(install, "require_root_control"), \
+                patch.object(install, "write_atomic", side_effect=lambda p, s, m: p.write_text(s)) as write:
+            worker = install.stage_release_worker("0.13.25")
+            self.assertEqual(worker, Path.cwd() / install.STATE / "release-workers/0.13.25")
+            self.assertEqual(write.call_count, 3)
+            self.assertEqual(install.stage_release_worker("0.13.25"), worker)
+            self.assertEqual(write.call_count, 3)
+            for name in names:
+                self.assertEqual((worker / name).read_text(), "release")
+                self.assertEqual(Path(name).read_text(), "old-custom")
+            (source / "lib/updates.cjs").write_text("different")
+            with self.assertRaisesRegex(SystemExit, "与来源不一致"):
+                install.stage_release_worker("0.13.25")
+            self.assertEqual((worker / "lib/updates.cjs").read_text(), "release")
+
     def test_existing_route_and_docker_network_are_avoided_and_saved(self):
         Path(".env").write_text("PIPI_PORT=19000")
         replies = ["network-1", '[{"Subnet":"172.30.0.0/16"}]', '[{"dst":"10.0.0.0/24"}]']

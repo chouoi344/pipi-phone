@@ -20,6 +20,33 @@
 
 ## 已有实例升级
 
+### 旧服务器首次接入阿里云镜像
+
+网页更新需要同时升级服务器上的更新服务和小手机容器。已经用标准 HTTPS 安装器启用网页更新的服务器，可在 root 终端执行以下命令。请把 `tag` 设为已经正式发布、包含 `--upgrade-from-release` 入口的版本。这里以 v0.13.25 为例。原部署目录可以是解压得到的目录。
+
+```sh
+(
+  set -eu
+  tag=v0.13.25
+  source_dir=$(mktemp -d)
+  git -c http.version=HTTP/1.1 clone --depth 1 --branch "$tag" \
+    https://github.com/chouoi344/pipi-phone.git "$source_dir"
+  python3 "$source_dir/scripts/install-https.py" --upgrade-from-release /opt/pipi-phone
+)
+```
+
+命令沿用现有地址、证书、资料卷和更新任务。已有更新任务时，请等任务结束。以后从「我 → 设置 → 关于屁屁机 → 网页程序更新」操作。服务器会按自身架构选择 GitHub 官方发布中的那一份镜像，例如杭州 x86 服务器会显示「正在从阿里云下载官方新版镜像（amd64）」。国内下载失败或缺少对应架构时，会从 GitHub 按同一份正式发布的指纹拉取。升级成功后，可在原目录用以下命令核对运行中的来源和版本：
+
+```sh
+cd /opt/pipi-phone &&
+docker inspect --format '{{.Config.Image}}' "$(docker compose ps -q pipi-phone)" &&
+docker compose exec -T pipi-phone node -p "require('./package.json').version"
+```
+
+从阿里云下载并成功切换后，第一行是包含 `.personal.cr.aliyuncs.com/chouoi344/pipi-phone@sha256:` 的地址；第二行是服务器实际运行的版本。
+
+### v0.13.24 的 GitHub 下载修复
+
 如果旧版提示「发现更新版本：无法连接 GitHub」，而服务器仍能从 Git 仓库获取源码，标准 HTTPS 安装可以用下面的命令手动升至 v0.13.24。先从「我 → 设置 → 聊天记录管理」导出备份，等待运行中的更新任务结束。在原部署目录通过管理员终端执行：
 
 ```sh

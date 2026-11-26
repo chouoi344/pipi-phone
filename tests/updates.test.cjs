@@ -270,6 +270,7 @@ test('malformed shared state fails visibly without overwriting the request',asyn
 
 test('official default and host readiness remain separate from release availability',async()=>{
   const result=await createUpdateService({currentVersion,updateDir:'',fetchImpl:async url=>{
+    if(url.includes('.personal.cr.aliyuncs.com/'))return new Response(null,{status:404});
     assert(url.startsWith('https://raw.githubusercontent.com/chouoi344/pipi-phone/update-channel/'));
     return url.endsWith('channel.json')?Response.json({schema:1}):new Response('',{status:404});
   }}).check();

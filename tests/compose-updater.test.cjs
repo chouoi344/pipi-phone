@@ -15,8 +15,9 @@ async function fixture(t,options={}){
   t.after(async()=>{assert.ok(path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep));assert.ok(path.basename(dir).startsWith('pipi-compose-updater-'));await fs.rm(dir,{recursive:true,force:true});});
   const composeFile=path.join(dir,'compose.yaml'),featureFile=path.join(dir,'compose.updates.yaml');
   await fs.writeFile(composeFile,'services: {}\n');await fs.writeFile(featureFile,'services: {}\n');
-  const config=readConfig({PIPI_UPDATE_DIR:path.join(dir,'shared'),PIPI_UPDATE_COMPOSE_FILE:composeFile,PIPI_UPDATE_REPOSITORY:'example/pipi-phone',PIPI_UPDATE_COMPOSE_PROJECT:'pipi-isolated-updater-test',PIPI_UPDATE_HEALTH_TIMEOUT_MS:'1000'});
-  const request={id:'test-update-job',version:'0.12.1',previousVersion:'0.12.0',...(options.pinned?{expectedImage:NEW}:{})};
+  const config=readConfig({PIPI_UPDATE_DIR:path.join(dir,'shared'),PIPI_UPDATE_COMPOSE_FILE:composeFile,PIPI_UPDATE_REPOSITORY:options.repository||'example/pipi-phone',PIPI_UPDATE_COMPOSE_PROJECT:'pipi-isolated-updater-test',PIPI_UPDATE_HEALTH_TIMEOUT_MS:'1000'});
+  const releaseImage='ghcr.io/'+config.repository+'@sha256:'+'b'.repeat(64);
+  const request={id:'test-update-job',version:'0.12.1',previousVersion:'0.12.0',...(options.pinned?{expectedImage:releaseImage}:{})};
   const volumes=new Map([['existing-real-data',{Name:'existing-real-data',Labels:{},data:structuredClone(BEFORE)}]]),helpers=new Map(),commands=[],logs=[];
   let clock=Date.now(),helperIndex=1;
   const running={Id:CID,Image:OLD,State:{Running:true},Mounts:[{Type:'volume',Name:'existing-real-data',Destination:'/app/data'}],Config:{Labels:{'com.docker.compose.project':config.project,'com.docker.compose.service':'pipi-phone'}}};
@@ -25,6 +26,10 @@ async function fixture(t,options={}){
   async function docker(args){
     commands.push([...args]);
     if(options.onCommand)await options.onCommand(args);
+    if(args[0]==='version'){
+      assert.deepEqual(args,['version','--format','{{.Server.Arch}}']);
+      return options.architecture;
+    }
     if(args[0]==='compose'){
       assert.equal(valueAfter(args,'--project-name'),config.project);
       assert.equal(args.at(-1),'pipi-phone');
@@ -74,7 +79,7 @@ async function fixture(t,options={}){
     if(!running.State.Running)throw new Error('connection refused');
     return {status:200,json:async()=>({version:running.Image===OLD?'0.12.0':options.runtimeVersion||'0.12.1'})};
   }
-  const deps={docker,fetchImpl,getRelease:async input=>{assert.deepEqual(input,{repository:config.repository,version:request.version,...(request.expectedImage?{expectedImage:request.expectedImage}:{})});if(options.releaseFetch)return require('../lib/updates.cjs').getRelease({...input,fetchImpl:options.releaseFetch});return options.releaseMissing?null:{version:request.version,image:NEW};},now:()=>clock,sleep:async ms=>{clock+=ms;},log:error=>logs.push(error)};
+  const deps={docker,fetchImpl,getRelease:async input=>{assert.deepEqual(input,{repository:config.repository,version:request.version,...(request.expectedImage?{expectedImage:request.expectedImage}:{})});if(options.releaseFetch)return require('../lib/updates.cjs').getRelease({...input,fetchImpl:options.releaseFetch});return options.releaseMissing?null:{version:request.version,image:releaseImage,platformDigests:options.platformDigests};},now:()=>clock,sleep:async ms=>{clock+=ms;},log:error=>logs.push(error)};
   const make=()=>createUpdater(config,deps);
   async function submit(value=request){await fs.mkdir(config.updateDir,{recursive:true});await fs.writeFile(path.join(config.updateDir,'request.json'),JSON.stringify(value));}
   async function journal(){return JSON.parse(await fs.readFile(path.join(config.stateDir,'current.json'),'utf8'));}
@@ -135,6 +140,39 @@ test('Compose updater: a pull failure does not stop the working service or creat
   const f=await fixture(t,{pullFailure:true});await f.submit();await f.make().run({once:true});
   assert.equal((await f.status()).phase,'failed');assert.equal(f.running.Image,OLD);assert.equal(f.running.State.Running,true);assert.equal(f.volumes.size,1);
   assert.ok(!f.commands.some(args=>args[0]==='compose'&&(args.includes('stop')||args.includes('up'))));
+});
+
+test('official updates select a verified platform digest and fall back to the pinned GHCR index',async t=>{
+  const repository='chouoi344/pipi-phone';
+  const mirror='crpi-7a803jqeqt4g8l32.cn-hangzhou.personal.cr.aliyuncs.com/'+repository+'@';
+  const upstream='ghcr.io/'+repository+'@sha256:'+'b'.repeat(64);
+  const digests={amd64:'sha256:'+'c'.repeat(64),arm64:'sha256:'+'d'.repeat(64)};
+  const cases=[
+    {architecture:'amd64',platformDigests:digests,pulls:[mirror+digests.amd64]},
+    {architecture:'arm64',platformDigests:digests,pulls:[mirror+digests.arm64]},
+    {architecture:'amd64',platformDigests:digests,mirrorFails:true,pulls:[mirror+digests.amd64,upstream]},
+    {architecture:'s390x',platformDigests:digests,pulls:[upstream]},
+    {architecture:'amd64',pulls:[upstream]},
+  ];
+  for(const {architecture,platformDigests,mirrorFails,pulls} of cases){
+    const downloadMessages=[];
+    const f=await fixture(t,{repository,pinned:true,architecture,platformDigests,onCommand:async args=>{
+      if(args[0]==='pull'){
+        downloadMessages.push((await f.status()).message);
+        if(args[1].startsWith(mirror) && mirrorFails)throw new Error('mirror unavailable');
+      }
+    }});
+    await f.submit();await f.make().run({once:true});
+    const selected=pulls.at(-1);
+    assert.equal((await f.status()).phase,'succeeded');
+    assert.equal((await f.journal()).targetImage,selected);
+    assert.equal(f.running.Image,selected);
+    assert.deepEqual(f.commands.filter(args=>args[0]==='pull').map(args=>args[1]),pulls);
+    if(pulls[0].startsWith(mirror))assert.match(downloadMessages[0],new RegExp('阿里云.*'+architecture));
+    assert.equal(f.commands.some(args=>args[0]==='version'),Boolean(platformDigests));
+    if(mirrorFails)assert.match(downloadMessages[1],/GitHub/);
+    assert.ok(f.commands.some(args=>args[0]==='run'&&args.includes('--rm')&&args.includes(selected)));
+  }
 });
 
 test('Compose updater: unexpected image package version and withdrawn release leave the running service untouched',async t=>{

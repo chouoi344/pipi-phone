@@ -1,4 +1,5 @@
 """Copy the official release without rebuilding, then publish its domestic update record."""
+import base64
 import hashlib
 import json
 import os
@@ -15,7 +16,9 @@ HOST = "crpi-7a803jqeqt4g8l32.cn-hangzhou.personal.cr.aliyuncs.com"
 MIRROR = HOST + "/" + REPO
 SOURCE = "ghcr.io/" + REPO
 ANNOTATION = "io.pipi-phone.release"
+SOURCE_INDEX = "io.pipi-phone.source-index"
 MANIFEST_TYPE = "application/vnd.oci.image.manifest.v1+json"
+INDEX_TYPE = "application/vnd.oci.image.index.v1+json"
 DIGEST = re.compile(r"sha256:[a-f0-9]{64}")
 SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)")
 
@@ -107,7 +110,70 @@ def verify_image(tag, digest, anonymous):
         raise ValueError("Domestic image does not contain both supported platforms")
 
 
-def write_layout(folder, record):
+def runtime_descriptors(source_index, digest):
+    if sha256(source_index) != digest:
+        raise ValueError("Official index does not match the published digest")
+    children = {}
+    for descriptor in json.loads(source_index)["manifests"]:
+        platform = descriptor.get("platform", {})
+        arch = platform.get("architecture")
+        if platform.get("os") != "linux" or arch not in ("amd64", "arm64"):
+            continue
+        if arch in children or not DIGEST.fullmatch(descriptor["digest"]):
+            raise ValueError("Invalid or ambiguous official runtime image")
+        children[arch] = descriptor
+    if set(children) != {"amd64", "arm64"}:
+        raise ValueError("Official index does not contain both supported platforms")
+    return children
+
+
+def mirror_images(tag, digest, auth, anonymous, base):
+    raw = inspect(SOURCE + "@" + digest, anonymous)
+    children = runtime_descriptors(raw, digest)
+    layout = base / "verified-platforms"
+    for arch, descriptor in children.items():
+        child = descriptor["digest"]
+        target = MIRROR + ":" + tag + "-" + arch
+        current = existing_digest(target, auth)
+        if current is None:
+            copy("docker://" + SOURCE + "@" + child, "docker://" + target, auth)
+        elif current != child:
+            raise ValueError("Refusing to overwrite a fixed platform tag: " + target)
+        if sha256(inspect(target, anonymous)) != child:
+            raise ValueError("Anonymous platform manifest differs from the official image")
+        # Pull by digest with no credentials and verify all referenced blobs.
+        copy("docker://" + MIRROR + "@" + child, "oci:" + str(layout) + ":" + arch, anonymous)
+        print(f"Verified public linux/{arch}: {MIRROR}@{child}", flush=True)
+
+    # ACR personal edition rejects BuildKit's OCI attestation manifests. The
+    # two runnable descriptors, image configs and layers stay byte-for-byte intact.
+    index = json_bytes({"schemaVersion": 2, "mediaType": INDEX_TYPE, "manifests": list(children.values())})
+    local_digest = sha256(index)
+    (layout / "blobs" / "sha256" / local_digest.split(":")[1]).write_bytes(index)
+    descriptor = {"mediaType": INDEX_TYPE, "digest": local_digest, "size": len(index),
+                  "annotations": {"org.opencontainers.image.ref.name": "release"}}
+    (layout / "index.json").write_bytes(json_bytes({"schemaVersion": 2, "manifests": [descriptor]}))
+    current = existing_digest(MIRROR + ":" + tag, auth)
+    if current is None:
+        copy("oci:" + str(layout) + ":release", "docker://" + MIRROR + ":" + tag, auth)
+        current = local_digest
+    elif current not in (local_digest, digest):
+        raise ValueError("Refusing to overwrite a version tag with another image")
+    verify_image(tag, current, anonymous)
+    amd64 = MIRROR + "@" + children["amd64"]["digest"]
+    subprocess.run(["docker", "pull", "--platform", "linux/amd64", amd64], check=True)
+    running_version = subprocess.check_output([
+        "docker", "run", "--rm", "--network", "none", "--read-only", "--platform", "linux/amd64",
+        "--entrypoint", "node", amd64, "-p", "require('./package.json').version",
+    ], text=True).strip()
+    if running_version != tag[1:]:
+        raise ValueError("Downloaded public domestic image is running a different version: " + running_version)
+    print("Verified public domestic container version: " + running_version, flush=True)
+    print(f"Verified public version tag: {MIRROR}:{tag} ({current})", flush=True)
+    return raw
+
+
+def write_layout(folder, record, source_index):
     # An ordinary zero-layer OCI image transports the catalog on Registry V2.
     blobs = folder / "blobs" / "sha256"
     blobs.mkdir(parents=True)
@@ -121,7 +187,8 @@ def write_layout(folder, record):
     config = blob({"architecture": "amd64", "os": "linux", "rootfs": {"type": "layers", "diff_ids": []},
                    "config": {}}, "application/vnd.oci.image.config.v1+json")
     manifest = blob({"schemaVersion": 2, "mediaType": MANIFEST_TYPE, "config": config, "layers": [],
-                     "annotations": {ANNOTATION: json_bytes(record).decode()}}, MANIFEST_TYPE)
+                     "annotations": {ANNOTATION: json_bytes(record).decode(),
+                                     SOURCE_INDEX: base64.b64encode(source_index).decode("ascii")}}, MANIFEST_TYPE)
     manifest["annotations"] = {"org.opencontainers.image.ref.name": "channel"}
     (folder / "index.json").write_bytes(json_bytes({"schemaVersion": 2, "manifests": [manifest]}))
     (folder / "oci-layout").write_bytes(b'{"imageLayoutVersion":"1.0.0"}')
@@ -131,7 +198,10 @@ def stored_record(tag, auth):
     manifest = read_tag(tag, auth)
     if manifest.get("mediaType") != MANIFEST_TYPE:
         raise ValueError("Unexpected channel manifest media type")
-    return validate(json.loads(manifest["annotations"][ANNOTATION]))
+    annotations = manifest["annotations"]
+    record = validate(json.loads(annotations[ANNOTATION]))
+    runtime_descriptors(base64.b64decode(annotations[SOURCE_INDEX], validate=True), record["image"].split("@")[1])
+    return record
 
 
 def publish_channel(record, tags, read, write):
@@ -174,20 +244,12 @@ def main():
         anonymous.write_bytes(b'{"auths":{}}')
         registry("login", "--authfile", auth, "--username", user, "--password-stdin", HOST, data=password.encode())
         # No registry credentials are sent to any other host. The source is public.
-        current_digest = existing_digest(MIRROR + ":" + tag, auth)
-        if current_digest is None:
-            copy("docker://" + SOURCE + "@" + digest, "docker://" + MIRROR + ":" + tag, auth)
-        elif current_digest != digest:
-            raise ValueError(f"Refusing to overwrite {tag} with another digest; retry the original successful build")
-        verify_image(tag, digest, anonymous)
-        # Download every referenced manifest and blob anonymously before advertising.
-        copy("docker://" + MIRROR + "@" + digest, "oci:" + str(base / "verification") + ":release", anonymous)
-        print(f"Verified public amd64/arm64 mirror: {MIRROR}@{digest}", flush=True)
+        source_index = mirror_images(tag, digest, auth, anonymous, base)
         if record is None:
             return
         tags = json.loads(registry("list-tags", "--authfile", auth, "docker://" + MIRROR))["Tags"]
         layout = base / "channel"
-        write_layout(layout, record)
+        write_layout(layout, record, source_index)
 
         def write(channel_tag):
             copy("oci:" + str(layout) + ":channel", "docker://" + MIRROR + ":" + channel_tag, auth)

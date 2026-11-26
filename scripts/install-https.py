@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 
 
 ROOT = Path.cwd() if __file__ == "<stdin>" else Path(__file__).resolve().parents[1]
+SOURCE = ROOT
 BASE = ["docker", "compose", "-f", "compose.yaml"]
 HTTPS = [*BASE, "-f", "compose.https.yaml"]
 PRODUCTION = "https://acme-v02.api.letsencrypt.org/directory"
@@ -289,7 +290,7 @@ def update_settings(config, container, https):
             "PIPI_PORT": port, **({} if https else {"PIPI_HOST_BIND": bind})}
 
 
-def wait_worker(service):
+def wait_worker(service, *, require_mirror=False):
     started = datetime.now(timezone.utc)
     deadline = time.monotonic() + 35
     while time.monotonic() < deadline:
@@ -302,12 +303,19 @@ def wait_worker(service):
                 info = os.fstat(fd)
                 if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022 or info.st_size > 4096:
                     sys.exit("更新服务写入的心跳文件异常，请核对共享目录。")
-                stamp = json.load(heartbeat)["updatedAt"].replace("Z", "+00:00")
-            if started <= datetime.fromisoformat(stamp) <= datetime.now(timezone.utc):
+                record = json.load(heartbeat)
+                stamp = record["updatedAt"].replace("Z", "+00:00")
+            if (started <= datetime.fromisoformat(stamp) <= datetime.now(timezone.utc)
+                    and (not require_mirror or record.get("acrMirror") is True)):
                 if subprocess.run(["systemctl", "is-active", "--quiet", service]).returncode == 0:
                     return
         time.sleep(1)
     sys.exit(f"网页更新服务尚未就绪。请查看 journalctl -u {service} -n 30 后重试。")
+
+
+def command_arg(filename):
+    # systemd expands percent specifiers and command arguments separately.
+    return json.dumps(str(filename), ensure_ascii=False).replace("%", "%%").replace("$", "$$")
 
 
 def enable_updates(config, container, enable_only):
@@ -356,10 +364,7 @@ def enable_updates(config, container, enable_only):
     CHANNEL.mkdir(mode=0o770, exist_ok=True)
     os.chown(CHANNEL, 1000, 1000)
     CHANNEL.chmod(0o770)
-    # systemd expands percent specifiers and command arguments separately.
     unit_root = str(ROOT).replace("%", "%%")
-    def command_arg(filename):
-        return json.dumps(str(filename), ensure_ascii=False).replace("%", "%%").replace("$", "$$")
     unit = (unit_marker + "[Unit]\nDescription=Pipi Phone web updater\nAfter=docker.service network-online.target\n"
             "[Service]\nType=simple\n" + f"WorkingDirectory={unit_root}\nEnvironmentFile={unit_root}/.env.updates\n"
             + "ExecStart=" + command_arg(node) + " " + command_arg(ROOT / "scripts/compose-updater.cjs") + "\n"
@@ -405,13 +410,91 @@ def enable_updates(config, container, enable_only):
     print("网页一键更新已启用，可在「我 → 设置 → 关于屁屁机 → 网页程序更新」检查和安装新版。")
 
 
+def stage_release_worker(version):
+    # Keep custom deployment files intact. Each official worker has its own private
+    # directory; switching the unit only after staging all files avoids mixed versions.
+    worker_root = ROOT / STATE / "release-workers" / version
+    if worker_root.resolve() != worker_root:
+        sys.exit("宿主更新程序目录不能重定向到其他路径。")
+    files = ("scripts/compose-updater.cjs", "lib/updates.cjs", "package.json")
+    for name in files:
+        source = SOURCE / name
+        require_root_control(source)
+        destination = worker_root / name
+        if destination.resolve() != destination:
+            sys.exit(f"宿主更新程序文件不能重定向到其他路径：{name}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        content = source.read_text(encoding="utf-8")
+        if destination.exists() and destination.read_text(encoding="utf-8") != content:
+            sys.exit(f"宿主上已安装的 {version} 文件与来源不一致：{name}")
+        if not destination.exists():
+            write_atomic(destination, content, 0o600)
+    return worker_root
+
+
+def upgrade_from_release(config, container):
+    """Bridge an existing managed installation without requiring its own .git directory."""
+    if not container or not container["State"]["Running"] or not UPDATE_ENV.is_file():
+        sys.exit("请指定正在运行、已启用网页更新的原部署目录。")
+    env = dict(entry.split("=", 1) for entry in container["Config"]["Env"])
+    if env.get("PIPI_UPDATE_REPOSITORY", "").lower() != "chouoi344/pipi-phone":
+        sys.exit("只有使用官方更新仓库的小手机才能接入对应的阿里云镜像。")
+    service = f"pipi-phone-updater-{config['name']}.service"
+    unit_path = SYSTEM_UNITS / service
+    if (not unit_path.is_file() or unit_path.is_symlink()
+            or not unit_path.read_text().startswith(f"{GENERATED} for {ROOT}\n")
+            or output(["systemctl", "show", service, "-p", "WorkingDirectory", "--value"]) != str(ROOT)):
+        sys.exit("此目录与标准宿主更新服务不匹配。")
+    version = json.loads((SOURCE / "package.json").read_text())["version"]
+    stable = r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
+    current = output(["docker", "exec", container["Id"], "node", "-p", "require('./package.json').version"])
+    if not all(re.fullmatch(stable, value) for value in (version, current)):
+        sys.exit("安装程序和原服务需要使用正式版本。")
+    if tuple(map(int, current.split("."))) > tuple(map(int, version.split("."))):
+        sys.exit(f"服务器已运行更高版本 {current}。")
+    if worker_busy():
+        sys.exit("请等服务器当前的更新任务结束。")
+    subprocess.run(["systemctl", "is-active", "--quiet", service], check=True)
+    if not STATE.is_dir() or STATE.is_symlink() or STATE.stat().st_uid != 0 or STATE.stat().st_mode & 0o077:
+        sys.exit("宿主更新状态目录必须是现有的 root 私有目录。")
+    worker_root = stage_release_worker(version)
+    worker = worker_root / "scripts/compose-updater.cjs"
+    dropins = SYSTEM_UNITS / (service + ".d")
+    dropins.mkdir(exist_ok=True)
+    override = dropins / "50-pipi-release-worker.conf"
+    marker = f"{GENERATED} for {ROOT}\n"
+    if override.exists() and not override.read_text().startswith(marker):
+        sys.exit(f"{override} 已有自定义配置。")
+    write_atomic(override, marker + "[Service]\nExecStart=\nExecStart="
+                 + command_arg(node_runtime()) + " " + command_arg(worker) + "\n", 0o644)
+    subprocess.run(["systemctl", "daemon-reload"], check=True)
+    subprocess.run(["systemctl", "restart", service], check=True)
+    wait_worker(service, require_mirror=True)
+    if current == version:
+        print(f"服务器已是 {version}，宿主更新服务已接入阿里云仓库。")
+        return
+    # The new client submits the selected release through the old container's own
+    # (non-root) account, using the same worker lock and pin checks as the About page.
+    client = (worker_root / "lib/updates.cjs").read_text(encoding="utf-8") + """
+;module.exports.createUpdateService({currentVersion:require('./package.json').version})
+  .request({version:process.argv[2]}).then(({job})=>console.log('已提交更新 v'+job.version))
+  .catch(error=>{console.error(error.message);process.exitCode=1;});
+"""
+    active_id = output([*BASE, "--project-name", config["name"], "ps", "-q", "pipi-phone"])
+    subprocess.run(["docker", "exec", "-i", active_id, "node", "-", version],
+                   input=client.encode("utf-8"), check=True)
+
+
 def main():
     global ROOT
     parser = argparse.ArgumentParser()
-    parser.add_argument("--enable-updates", type=Path, metavar="原部署目录")
+    options = parser.add_mutually_exclusive_group()
+    options.add_argument("--enable-updates", type=Path, metavar="原部署目录")
+    options.add_argument("--upgrade-from-release", type=Path, metavar="原部署目录")
     args = parser.parse_args()
-    if args.enable_updates:
-        ROOT = args.enable_updates.resolve()
+    existing = args.enable_updates or args.upgrade_from_release
+    if existing:
+        ROOT = existing.resolve()
     os.chdir(ROOT)
     if os.geteuid() != 0:
         sys.exit("请用 sudo 或 root 运行安装命令，以便启用宿主机网页更新服务。")
@@ -421,7 +504,10 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         check_host_files()
         config, container = check_installation()
-        enable_updates(config, container, args.enable_updates is not None)
+        if args.upgrade_from_release:
+            upgrade_from_release(config, container)
+        else:
+            enable_updates(config, container, args.enable_updates is not None)
     finally:
         os.close(lock)
 

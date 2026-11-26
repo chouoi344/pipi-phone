@@ -88,13 +88,33 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
   }
   const jobFile=id=>path.join(jobsDir,id+'.json');
   const jsonDocker=async args=>JSON.parse(await docker(args));
-  async function ready(){await writeJson(path.join(config.updateDir,'worker-ready.json'),{updatedAt:stamp(),requestSchema:2},0o644);}
+  async function ready(){await writeJson(path.join(config.updateDir,'worker-ready.json'),{updatedAt:stamp(),requestSchema:2,acrMirror:true},0o644);}
   async function save(job,phase,message,stage=job.stage){
     job.stage=stage;
     job.status={...job.status,phase,message:message.slice(0,1000),updatedAt:stamp()};
     await writeJson(currentFile,job);
     if(TERMINAL.has(phase))await writeJson(jobFile(job.status.id),job);
     await writeJson(path.join(config.updateDir,'status.json'),job.status,0o644);
+  }
+  async function pullReleaseImage(job,release){
+    const {image,platformDigests}=release;
+    let message='正在下载官方新版镜像';
+    const architecture=platformDigests?(await docker(['version','--format','{{.Server.Arch}}'])).trim():null;
+    if(architecture && Object.hasOwn(platformDigests,architecture)){
+      const {ACR_REPOSITORY}=require('../lib/updates.cjs');
+      job.targetImage=ACR_REPOSITORY+'@'+platformDigests[architecture];
+      await save(job,'downloading','正在从阿里云下载官方新版镜像（'+architecture+'）','pulling');
+      try{
+        await docker(['pull',job.targetImage]);
+        return;
+      }catch(error){
+        log(error);
+        message='阿里云下载失败，正在从 GitHub 下载同一份镜像';
+      }
+    }
+    job.targetImage=image;
+    await save(job,'downloading',message,'pulling');
+    await docker(['pull',image]);
   }
   async function useImage(image,volume){
     await writeJson(activeFile,{services:{'pipi-phone':{image,volumes:[{type:'volume',source:'pipi-update-data',target:'/app/data'}]}},volumes:{'pipi-update-data':{external:true,name:volume}}});
@@ -210,10 +230,9 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
       if(!mount||mount.Type!=='volume'||! /^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$/.test(mount.Name))throw publicError('当前资料必须使用 /app/data 命名数据卷');
       if(await statusVersion()!==request.previousVersion)throw publicError('当前版本已改变，请刷新后重新检查更新');
       const hash=crypto.createHash('sha256').update(config.project+'\n'+request.id).digest('hex').slice(0,24);
-      Object.assign(job,{oldImage:running.Image,originalVolume:mount.Name,snapshotVolume:`pipi-update-${hash}-snapshot`,rollbackVolume:`pipi-update-${hash}-rollback`,targetImage:release.image,snapshotComplete:false,rollbackCopyComplete:false});
-      await save(job,'downloading','正在下载官方新版镜像','pulling');
-      await docker(['pull',release.image]);
-      const imageVersion=(await docker(['run','--rm','--network','none','--read-only','--entrypoint','node',release.image,'-p',"require('./package.json').version"])).trim();
+      Object.assign(job,{oldImage:running.Image,originalVolume:mount.Name,snapshotVolume:`pipi-update-${hash}-snapshot`,rollbackVolume:`pipi-update-${hash}-rollback`,snapshotComplete:false,rollbackCopyComplete:false});
+      await pullReleaseImage(job,release);
+      const imageVersion=(await docker(['run','--rm','--network','none','--read-only','--entrypoint','node',job.targetImage,'-p',"require('./package.json').version"])).trim();
       if(imageVersion!==request.version)throw publicError('下载镜像的程序版本与发布清单不一致');
       await useImage(job.oldImage,job.originalVolume);
       await save(job,'backing-up','正在停止小手机并备份全部资料','stopping');
@@ -226,7 +245,7 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
       job.snapshotComplete=true;
       await save(job,'backing-up','资料备份已完成','snapshot-ready');
       await save(job,'installing','正在安装新版','switching');
-      await useImage(release.image,job.originalVolume);
+      await useImage(job.targetImage,job.originalVolume);
       await runCompose(true,'up','-d','--no-build','--no-deps',config.service);
       await save(job,'verifying','正在确认新版可以正常访问','verifying');
       await waitHealthy(request.version);

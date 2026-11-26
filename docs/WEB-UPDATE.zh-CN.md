@@ -125,3 +125,7 @@ docker compose --project-name "$PIPI_UPDATE_COMPOSE_PROJECT" "$@" -f compose.upd
 先把 package.json 增到下个版本，例如 0.12.2。更新说明写入发布提交，发布相同版本的 Git 标签 v0.12.2。工作流执行测试、构建对应的 amd64 和 arm64 镜像、验证镜像可匿名下载，然后在 GitHub 正式发布中附带 update.json。
 
 update.json 把版本号关联到镜像的固定摘要。服务器核对来自已配置仓库的清单后才会安装。GHCR 是 GitHub 的容器镜像仓库。如果它首次把项目镜像设为私有，需要在 GitHub 软件包设置将它公开，再重试发布工作流。在「关于屁屁机」看到包含清单的新版后，可点击安装。
+
+官方项目的发布流程会把 amd64、arm64 两种服务器的镜像同步到阿里云杭州仓库，并验证公开下载。GitHub 发布正式版以后，流程再更新阿里云上的固定版本清单和最新版本清单。仓库写入凭证保存在 GitHub Actions 的 `ACR_USERNAME` 和 `ACR_PASSWORD` 中，用户下载公开镜像无需登录。
+
+如果只需要补同步一个已发布的版本，在 GitHub Actions 中选择 **Sync a stable release to Alibaba Cloud → Run workflow**，选择 `main` 并填写原标签（例如 `v0.13.24`）。工作流沿用原版镜像。补同步旧版时，新版本仍保留为最新版。手动撤回某一版时，需要同时维护 GitHub 的版本目录与阿里云的 `channel-v版本号` 和 `channel-latest`。

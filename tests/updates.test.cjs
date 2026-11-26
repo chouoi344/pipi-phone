@@ -50,6 +50,56 @@ test('official stable channel and canonical attachment accept only a digest imag
   assert.equal(compareVersions('0.12.10','0.12.9'),1);assert.equal(compareVersions(version,version),0);assert.equal(compareVersions('0.9.0',currentVersion),-1);
 });
 
+test('web update tries current DNS addresses until TLS succeeds and sends each GET once',async t=>{
+  const net=require('node:net'),http=require('node:http'),tls=require('node:tls'),dns=require('node:dns');
+  const urls=[],attempts=[],sockets=[];
+  const server=http.createServer((req,res)=>{
+    urls.push(req.url);
+    res.setHeader('Content-Type','application/json');
+    res.end(JSON.stringify(req.url.endsWith('latest.json')?record:{version,image}));
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const ips=['192.0.2.1','192.0.2.2','192.0.2.3','192.0.2.4'];
+  t.mock.method(dns,'lookup',(host,options,cb)=>queueMicrotask(()=>cb(null,
+    (host==='raw.githubusercontent.com'?ips:[ips[3]]).map(address=>({address,family:4})))));
+  t.mock.method(tls,'connect',options=>{
+    attempts.push([options.servername,options.host]);
+    assert.equal(options.rejectUnauthorized,true);
+    assert.equal(Number(options.port),443);
+    let socket;
+    if(options.host===ips[3]){
+      socket=net.connect(server.address().port,'127.0.0.1',()=>socket.emit('secureConnect'));
+    }else{
+      socket=new net.Socket();
+      // The first connection stalls after TCP; the next two reset before TLS.
+      if(options.host!==ips[0])queueMicrotask(()=>socket.destroy(new Error('ECONNRESET')));
+    }
+    sockets.push(socket);
+    return socket;
+  });
+  const result=await getRelease({repository});
+  assert.equal(result.version,version);
+  assert.deepEqual(attempts.slice(0,4),ips.map(ip=>['raw.githubusercontent.com',ip]));
+  assert.deepEqual(urls,['/'+repository+'/update-channel/latest.json','/'+repository+'/releases/download/v'+version+'/update.json']);
+  assert.ok(sockets.slice(0,3).every(s=>s.destroyed));
+});
+
+test('an update handshake deadline closes stalled sockets and reports the failing stage',async t=>{
+  const dns=require('node:dns'),tls=require('node:tls'),net=require('node:net'),sockets=[];
+  t.mock.method(dns,'lookup',(_host,_options,cb)=>queueMicrotask(()=>cb(null,[{address:'192.0.2.1',family:4}])));
+  t.mock.method(tls,'connect',()=>{const socket=new net.Socket();sockets.push(socket);return socket;});
+  const timeout=AbortSignal.timeout.bind(AbortSignal);
+  t.mock.method(AbortSignal,'timeout',()=>timeout(20));
+  const keepAlive=setInterval(()=>{},100);
+  t.after(()=>clearInterval(keepAlive));
+  const state=await createUpdateService({repository,currentVersion,updateDir:''}).check();
+  assert.equal(state.state,'offline');
+  assert.equal(state.stage,'发现更新版本');
+  assert.equal(sockets.length,1);
+  assert.equal(sockets[0].destroyed,true);
+});
+
 test('install keeps the checked version if Latest changes and writes the server-discovered image pin',async t=>{
   const f=await fixture(t);let latestCalls=0;
   const service=createUpdateService({...f.config,fetchImpl:async(url,options)=>{

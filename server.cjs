@@ -1301,7 +1301,7 @@ function createApp(options={}){
         S.chatAllowed(S.role(s,m.roleId));
         if(m.meta?.expired)S.fail('语音已过期，无法转文字',409,'MEDIA_EXPIRED');
         if(m.type!=='voice'||!m.meta?.audio)S.fail('只有语音消息可以转文字');
-        if(m.meta.transcript?.trim())return json(res,200,{text:m.meta.transcript,state:S.publicState(s),...(m.meta.transcriptSource==='demo'?{demo:true}:{})});
+        if(m.meta.transcript?.trim())return json(res,200,stateResponse(req,s,{text:m.meta.transcript,...(m.meta.transcriptSource==='demo'?{demo:true}:{})}));
         const understanding=await AI.understandVoice(s,m.meta.audio,{onUsage:runtime.onUsage,dataDir});
         const transcript=understanding.text.trim();
         if(!transcript)S.fail('语音未识别出文字，请重试',502,'PROVIDER_RESPONSE');
@@ -1312,7 +1312,7 @@ function createApp(options={}){
           Object.assign(current.meta,{transcript,contentEmotion:understanding.contentEmotion,voiceEmotion:understanding.voiceEmotion});
           current.meta.transcriptSource=options.demoModel?'demo':'provider';
         });
-        return json(res,200,{text:transcript,state:S.publicState(result.state),...(options.demoModel?{demo:true}:{})});
+        return json(res,200,stateResponse(req,result.state,{text:transcript,...(options.demoModel?{demo:true}:{})}));
         }finally{inFlight--;}
       }
       case '/api/voice/speak':{
@@ -1339,9 +1339,7 @@ function createApp(options={}){
             };
           }
         });
-        return json(res,200,{
-          audio,state:S.publicState(result.state)
-        });
+        return json(res,200,stateResponse(req,result.state,{audio}));
         }finally{inFlight--;}
       }
       case '/api/restore':{

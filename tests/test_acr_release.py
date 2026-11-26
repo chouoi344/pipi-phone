@@ -107,24 +107,24 @@ class DomesticPublication(unittest.TestCase):
             with (patch.object(sync, "inspect", side_effect=[b"amd64", b"arm64"]),
                   patch.object(sync, "registry", side_effect=[b"amd64", b"arm64"]),
                   patch.object(sync, "existing_digest", return_value=None), patch.object(sync, "copy") as cp,
+                  patch.object(sync, "upload_staged") as upload,
                   patch.object(sync, "verify_image"), patch("subprocess.run"),
                   patch("subprocess.check_output", return_value="0.13.24\n")):
                 sync.stage_images("v0.13.24", selected, staged, "anon")
                 self.assertEqual(sync.mirror_images("v0.13.24", digest, raw, selected, staged,
-                                                    "logged-in", "anon", base), raw)
+                                                    base / "config.json", "anon", base), raw)
             root = base / "verified-platforms"
             child = json.loads((root / "index.json").read_bytes())["manifests"][0]
             runtime_index = json.loads((root / "blobs" / "sha256" / child["digest"].split(":")[1]).read_bytes())
             self.assertEqual(runtime_index["manifests"], [children[0], children[2]])
-            self.assertEqual(len(cp.call_args_list), 7)
+            self.assertEqual(len(cp.call_args_list), 5)
             for i, arch in enumerate(("amd64", "arm64")):
                 d = sync.sha256(arch.encode())
                 local = "oci:" + str(staged) + ":" + arch
                 self.assertEqual(cp.call_args_list[i].args, ("docker://" + sync.SOURCE + "@" + d, local, "anon"))
-                self.assertEqual(cp.call_args_list[2+i*2].args,
-                                 (local, "docker://" + sync.MIRROR + ":v0.13.24-" + arch, "logged-in"))
-                self.assertEqual(cp.call_args_list[3+i*2].args[0], "docker://" + sync.MIRROR + "@" + d)
-                self.assertEqual(cp.call_args_list[3+i*2].args[2], "anon")
+                self.assertEqual(upload.call_args_list[i].args, (staged, arch, sync.MIRROR + ":v0.13.24-" + arch, base))
+                self.assertEqual(cp.call_args_list[2+i].args[0], "docker://" + sync.MIRROR + "@" + d)
+                self.assertEqual(cp.call_args_list[2+i].args[2], "anon")
             with self.assertRaisesRegex(ValueError, "ambiguous"):
                 repeated = sync.json_bytes({"manifests": children + [children[0]]})
                 sync.runtime_descriptors(repeated, sync.sha256(repeated))
@@ -140,6 +140,15 @@ class DomesticPublication(unittest.TestCase):
               patch.object(sync, "registry", return_value=b"wrong-platform")):
             with self.assertRaisesRegex(ValueError, "staged platform"):
                 sync.stage_images("v0.13.27", selected, Path("local"), "anon")
+
+    def test_chunked_upload_only_changes_domestic_destination(self):
+        with patch("subprocess.run") as run:
+            sync.upload_staged(Path("staged"), "arm64", sync.MIRROR + ":example", Path("credentials"))
+        config, copy = run.call_args_list
+        self.assertEqual(config.args[0], ["regctl", "registry", "set", sync.HOST, "--blob-max", "4194304",
+                                        "--blob-chunk", "4194304", "--skip-check"])
+        self.assertEqual(copy.args[0][-2:], ["ocidir://staged:arm64", sync.MIRROR + ":example"])
+        self.assertEqual(copy.kwargs["env"]["DOCKER_CONFIG"], "credentials")
 
 
 if __name__ == "__main__":

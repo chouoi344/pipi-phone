@@ -55,6 +55,13 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y skopeo
           fi
+          mkdir -p "$RUNNER_TEMP/pipi-regctl"
+          curl -fsSL --retry 3 --proto '=https' --proto-redir '=https' \
+            https://github.com/regclient/regclient/releases/download/v0.11.7/regctl-linux-amd64 \
+            -o "$RUNNER_TEMP/pipi-regctl/regctl"
+          echo "3737fbbdd791e04e7a831640b681f3397a376498e80e2ad9b1b2d27296f239bc  $RUNNER_TEMP/pipi-regctl/regctl" | sha256sum --check
+          chmod 755 "$RUNNER_TEMP/pipi-regctl/regctl"
+          echo "$RUNNER_TEMP/pipi-regctl" >> "$GITHUB_PATH"
       - name: Stage missing GHCR platform images to local OCI storage
         run: python3 -B scripts/sync-acr.py stage
       - name: Upload staged OCI images to Hangzhou and verify by independent anonymous download

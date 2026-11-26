@@ -98,6 +98,16 @@ def copy(source, destination, auth):
                     str(auth), source, destination], check=True)
 
 
+def upload_staged(staged, arch, target, config_dir):
+    # regctl reads the isolated skopeo login as Docker's config.json. Its
+    # 4 MiB PATCHes are scoped to ACR; anonymous fetches keep using skopeo.
+    env = {**os.environ, "DOCKER_CONFIG": str(config_dir), "REGCTL_CONFIG": str(config_dir / "regctl.json")}
+    subprocess.run(["regctl", "registry", "set", HOST, "--blob-max", "4194304", "--blob-chunk", "4194304",
+                    "--skip-check"], env=env, check=True)
+    subprocess.run(["regctl", "image", "copy", "--verbosity", "info", "ocidir://" + str(staged) + ":" + arch,
+                    target], env=env, check=True)
+
+
 def read_tag(tag, auth):
     return json.loads(inspect(MIRROR + ":" + tag, auth))
 
@@ -154,8 +164,8 @@ def mirror_images(tag, digest, raw, children, staged, auth, anonymous, base):
         target = MIRROR + ":" + tag + "-" + arch
         current = existing_digest(target, auth)
         if current is None:
-            print(f"Uploading local OCI linux/{arch} to Hangzhou: {child}", flush=True)
-            copy("oci:" + str(staged) + ":" + arch, "docker://" + target, auth)
+            print(f"Uploading local OCI linux/{arch} to Hangzhou with 4 MiB blob chunks: {child}", flush=True)
+            upload_staged(staged, arch, target, auth.parent)
             print(f"Uploaded linux/{arch}: {target}", flush=True)
         elif current != child:
             raise ValueError("Refusing to overwrite a fixed platform tag: " + target)
@@ -260,7 +270,7 @@ def main():
         raise ValueError("Expected a valid build digest")
     with tempfile.TemporaryDirectory() as temporary:
         base = Path(temporary)
-        auth, anonymous = base / "auth.json", base / "anonymous.json"
+        auth, anonymous = base / "config.json", base / "anonymous.json"
         anonymous.write_bytes(b'{"auths":{}}')
         staging_root = base if phase == "both" else Path(os.environ["RUNNER_TEMP"])
         staged = staging_root / ("pipi-oci-" + digest.split(":")[1])

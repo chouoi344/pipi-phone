@@ -494,7 +494,10 @@ test('voice idempotency includes source audio and ordinary message deletion stay
 });
 
 test('quoted messages reject cross-role references and preserve detached snapshots',async t=>{
-  const f=await fixture(t),m=await mock(t);await configure(f,m);
+  const f=await fixture(t),m=await mock(t);
+  // Compare the full state before/after a rejected quote without unrelated schedule writes.
+  ok(await f.request('/api/engine/modules',{id:'schedule',values:{autoGenerate:false}}));
+  await configure(f,m);
   const roleId=f.initial.roles[0].id,otherId=f.initial.roles[1].id;
   const target=f.initial.messages.find(x=>x.roleId===roleId);
   ok(await chat(f,'/api/chat',{roleId:otherId,text:'OTHER_ROLE_QUOTE_SOURCE',requestId:randomUUID()}));

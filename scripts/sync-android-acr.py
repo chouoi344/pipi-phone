@@ -18,7 +18,7 @@ TAG = re.compile(r"android-v[0-9]+(?:\.[0-9]+){1,3}|v[0-9]+\.[0-9]+\.[0-9]+")
 # Personal ACR only accepts image-layer descriptors. This is an artifact tag
 # for the updater: the blob holds the original signed APK and is read by digest.
 # No runnable image or filesystem extraction is involved.
-LAYER = "application/vnd.oci.image.layer.v1.tar"
+LAYER = "application/vnd.oci.image.layer.v1.tar+gzip"
 CONFIG = "application/vnd.oci.image.config.v1+json"
 MANIFEST = "application/vnd.oci.image.manifest.v1+json"
 # OfficialUpdates.java requires the exact same signer set as the installed APK.

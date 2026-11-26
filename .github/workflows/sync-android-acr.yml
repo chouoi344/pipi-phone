@@ -1,0 +1,59 @@
+name: Sync official Android APK to Alibaba Cloud
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Published release with its signed APK, e.g. android-v0.1.15'
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+    secrets:
+      ACR_USERNAME:
+        required: true
+      ACR_PASSWORD:
+        required: true
+  # Releases published by a workflow using GITHUB_TOKEN do not emit another
+  # workflow event. Reconcile the newest published APK automatically as well.
+  schedule:
+    - cron: '23 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: domestic-android-publisher
+  queue: max
+
+jobs:
+  sync:
+    if: >-
+      github.repository == 'chouoi344/pipi-phone' &&
+      (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main') &&
+      (github.event_name != 'release' || (!github.event.release.prerelease &&
+      (startsWith(github.event.release.tag_name, 'android-v') || startsWith(github.event.release.tag_name, 'v'))))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+      - name: Check version selection and immutable APK records
+        run: python3 -B -m unittest discover -s tests -p test_android_acr_release.py
+      - uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # v1
+        with:
+          version: 1.4.0
+      - name: Verify the signed GitHub release bytes, mirror and announce
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        run: python3 -B scripts/sync-android-acr.py

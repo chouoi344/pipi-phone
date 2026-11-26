@@ -498,3 +498,13 @@ jobs:
     secrets:
       ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
       ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+
+  mirror-android-if-attached:
+    if: github.repository == 'chouoi344/pipi-phone'
+    needs: release
+    uses: ./.github/workflows/sync-android-acr.yml
+    with:
+      release_tag: ${{ inputs.release_tag || github.ref_name }}
+    secrets:
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}

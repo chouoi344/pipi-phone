@@ -82,13 +82,11 @@ def manifest_record(manifest):
 
 
 def check_signature(path, record):
-    sdk = Path(os.environ["ANDROID_HOME"]) / "build-tools"
-    stable = [p for p in sdk.iterdir() if re.fullmatch(r"\d+\.\d+\.\d+", p.name)]
-    tools = max(stable, key=lambda p: tuple(map(int, p.name.split("."))))
+    tools = Path(os.environ["ANDROID_HOME"]) / "build-tools" / "35.0.0"
     certificates = subprocess.check_output([tools / "apksigner", "verify", "--print-certs", path], text=True)
     signers = re.findall(r"^Signer #\d+ certificate SHA-256 digest: ([0-9a-f]{64})$", certificates, re.MULTILINE)
     if signers != [OFFICIAL_SIGNER]:
-        raise ValueError("APK signer differs from the installed official app; cannot publish this update")
+        raise ValueError(f"APK signer check failed, expected {OFFICIAL_SIGNER}, parsed {signers}: {certificates}")
     badging = subprocess.check_output([tools / "aapt", "dump", "badging", path], text=True)
     expected = f"package: name='com.pipiphone.app' versionCode='{record['versionCode']}' versionName='{record['versionName']}'"
     if not badging.startswith(expected + " ") and badging.splitlines()[0] != expected:

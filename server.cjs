@@ -17,6 +17,7 @@ const {createAndroidUpdateService}=require('./lib/android-updates.cjs');
 const JsonResponse=require('./lib/json-response.cjs');
 const RequestLimits=require('./lib/request-limits.cjs');
 const ClientSync=require('./lib/client-sync.cjs');
+const AndroidAssets=require('./lib/android-assets.cjs');
 const Waterdrop=require('./lib/waterdrop-activation.cjs');
 const scrypt=promisify(crypto.scrypt),VERSION=require('./package.json').version;
 // Server-only releases keep the cache key shipped in the current web and Android UI.
@@ -532,7 +533,7 @@ function createApp(options={}){
     }
     const p=u.pathname;
     if(!p.startsWith('/api/'))return staticFile(req,res,p,u.searchParams);
-    if(req.method==='GET'&&p==='/api/android-shell-manifest')return json(res,200,{...await require('./lib/android-assets.cjs').manifest(),clientProtocol:ClientSync.protocol});
+    if(req.method==='GET'&&p==='/api/android-shell-manifest')return json(res,200,{...await AndroidAssets.manifest(),clientProtocol:ClientSync.protocol});
     if(req.method==='GET'&&p==='/api/status'){
       const auth=session(req);
       return json(res,200,{
@@ -1464,7 +1465,8 @@ function createApp(options={}){
   stickerQueue=Stickers.create({getState:read,mutate,dataDir,onUsage:runtime.onUsage});
   try{stickerQueue.recover();}catch(error){console.error('Unable to resume sticker analysis during startup:',error?.stack||String(error));}
   return {
-    server,db,dataDir,listen(listenPort=port,listenHost=host){
+    server,db,dataDir,async listen(listenPort=port,listenHost=host){
+      await AndroidAssets.manifest();
       return new Promise((resolve,reject)=>{
         server.once('error',reject);
         server.listen(listenPort,listenHost,()=>{

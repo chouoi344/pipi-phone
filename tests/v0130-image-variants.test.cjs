@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto'),zlib=require('node:zlib');
-const S=require('../lib/state.cjs'),Media=require('../lib/media-store.cjs'),{createApp}=require('../server.cjs');
+const S=require('../lib/state.cjs'),Media=require('../lib/media-store.cjs'),ModelImages=require('../lib/engine/model-images.cjs'),{createApp}=require('../server.cjs');
 function png(color){
   const chunk=(type,data)=>{const name=Buffer.from(type),out=Buffer.alloc(data.length+12);out.writeUInt32BE(data.length);name.copy(out,4);data.copy(out,8);out.writeUInt32BE(zlib.crc32(Buffer.concat([name,data])),out.length-4);return out;};
   const header=Buffer.alloc(13);header.writeUInt32BE(1);header.writeUInt32BE(1,4);header[8]=8;header[9]=6;
@@ -27,11 +27,11 @@ test('chat variants are stored on pure image and image/text messages; original c
   assert.equal((await f.json('/api/status')).imageVariants,true);
   const body={roleId:f.roleId,image,thumb,modelImage,requestId:crypto.randomUUID()};
   const first=await f.json('/api/chat/send',body),message=first.state.messages.find(m=>m.id===first.messageId);
-  assert.equal(message.type,'image');assert.equal(message.content,image);assert.deepEqual({thumb:message.meta.thumb,modelImage:message.meta.modelImage},{thumb,modelImage});
+  const generated=ModelImages.cached(f.dataDir,image).url;assert.notEqual(generated,modelImage);assert.equal(message.type,'image');assert.equal(message.content,image);assert.deepEqual({thumb:message.meta.thumb,modelImage:message.meta.modelImage},{thumb,modelImage:generated});assert.deepEqual(Media.resolveImageBytes(f.dataDir,image).buffer,png(1));
   await f.json('/api/chat',body);assert.equal(f.read().messages.filter(m=>m.content===image).length,1);
   assert.equal((await f.request('/api/chat',{...body,modelImage:other})).status,409);
   const text=await f.send({text:'这张图',image,thumb,modelImage});const withText=text.state.messages.find(m=>m.id===text.messageId);
-  assert.equal(withText.type,'text');assert.equal(withText.content,'这张图');assert.deepEqual({image:withText.meta.image,thumb:withText.meta.thumb,modelImage:withText.meta.modelImage},{image,thumb,modelImage});
+  assert.equal(withText.type,'text');assert.equal(withText.content,'这张图');assert.deepEqual({image:withText.meta.image,thumb:withText.meta.thumb,modelImage:withText.meta.modelImage},{image,thumb,modelImage:generated});
 });
 
 test('legacy inline variants are externalized, while pure text, voice and non-chat image inputs cannot attach variants',async t=>{
@@ -74,8 +74,8 @@ test('legacy inline originals can receive a thumbnail without migration or origi
 });
 
 test('derived files survive quotes, forwards, favorites and backup/restore with reference collection',async t=>{
-  const f=await fixture(t),target=await fixture(t),[image,thumb,modelImage]=f.images;
-  const created=await f.send({image,thumb,modelImage}),s=f.read(),m=s.messages.find(row=>row.id===created.messageId);m.status='sent';f.write(s);
+  const f=await fixture(t),target=await fixture(t),[image,thumb,untrustedModelImage]=f.images;
+  const created=await f.send({image,thumb,modelImage:untrustedModelImage}),s=f.read(),m=s.messages.find(row=>row.id===created.messageId),modelImage=m.meta.modelImage;assert.equal(modelImage,ModelImages.cached(f.dataDir,image).url);assert.notEqual(modelImage,untrustedModelImage);m.status='sent';f.write(s);
   const quoted=await f.send({text:'引用',quoteId:m.id});const q=quoted.state.messages.find(row=>row.id===quoted.messageId).meta.quote;assert.equal(q.thumb,thumb);assert.equal(q.modelImage,modelImage);
   await f.json('/api/action',{type:'message.favorite',payload:{id:m.id}});
   const second=(await f.json('/api/action',{type:'role.save',payload:{name:'乙'}})).state.roles[1].id;

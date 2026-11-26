@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),http=require('node:http');
 const Wardrobe=require('../lib/engine/schedule-wardrobe.cjs');
 const {createApp}=require('../scripts/sample-data.cjs');
-const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ1kAAAAASUVORK5CYII=';
+const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWMwCsj7DwADmAHwphbYCgAAAABJRU5ErkJggg==';
 const second=Buffer.from(png.split(',')[1],'base64');second[second.length-5]^=1;
 const anotherPng='data:image/png;base64,'+second.toString('base64');
 const outfit=(image=png)=>({description:'白色衬衫与长裤',category:'外出',seasons:['春','秋'],image});

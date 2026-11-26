@@ -3,7 +3,7 @@
 const {sampleState}=require('../scripts/sample-data.cjs');
 const {test}=require('node:test'),assert=require('node:assert/strict'),{randomUUID}=require('node:crypto');
 const {createDemo}=require('../scripts/demo.cjs'),S=require('../lib/state.cjs');
-const PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBHoAAAAASUVORK5CYII=';
+const PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWMwCsj7DwADmAHwphbYCgAAAABJRU5ErkJggg==';
 const AUDIO='data:audio/wav;base64,'+Buffer.from('524946462600000057415645666d74201000000001000100401f0000803e00000200100064617461020000000000','hex').toString('base64');
 function ok(response){assert.equal(response.status,200,JSON.stringify(response.body));return response.body;}
 function rejected(response){assert.ok(response.status>=400&&response.status<500,JSON.stringify(response));assert.ok(response.body.error);}
@@ -11,6 +11,15 @@ async function fixture(t){
   let demo=await createDemo({appPort:0,providerPort:0});
   t.after(()=>demo.close());
   const request=(route,body)=>demo.request(route,body);
+  async function restore(backup){
+    const deadline=Date.now()+5000;let response;
+    do{
+      response=await request('/api/restore',{backup,confirm:true});
+      if(response.status!==409||response.body.code!=='BUSY')return response;
+      await new Promise(resolve=>setTimeout(resolve,20));
+    }while(Date.now()<deadline);
+    return response;
+  }
   ok(await request('/api/engine/modules',{id:'waiting',values:{idleSeconds:0,maxWaitSeconds:1}}));
   ok(await request('/api/engine/modules',{id:'segments',values:{enabled:false}}));
   async function checkMedia(ref,original){
@@ -21,7 +30,7 @@ async function fixture(t){
     assert.equal(media.status,200);
     assert.deepEqual(Buffer.from(await media.arrayBuffer()),Buffer.from(original.split(',')[1],'base64'));
   }
-  return {request,checkMedia,action:(type,payload)=>request('/api/action',{type,payload}),state:async()=>ok(await request('/api/state')),backup:async()=>ok(await request('/api/backup')),get providerRequests(){return demo.provider.requests.length;},get controlUrl(){return demo.controlUrl;},async restart(){const options={appPort:Number(new URL(demo.appUrl).port),providerPort:Number(new URL(demo.controlUrl).port),resumeDir:demo.dataDir};await demo.close();demo=await createDemo(options);}};
+  return {request,restore,checkMedia,action:(type,payload)=>request('/api/action',{type,payload}),state:async()=>ok(await request('/api/state')),backup:async()=>ok(await request('/api/backup')),get providerRequests(){return demo.provider.requests.length;},get controlUrl(){return demo.controlUrl;},async restart(){const options={appPort:Number(new URL(demo.appUrl).port),providerPort:Number(new URL(demo.controlUrl).port),resumeDir:demo.dataDir};await demo.close();demo=await createDemo(options);}};
 }
 async function seed(f){
   const backup=await f.backup(),s=backup.state,[source,target]=s.roles,now=Date.now();
@@ -29,7 +38,7 @@ async function seed(f){
   const base=make('来源角色的被引用消息'),text=make('带图片和朗读音频的原文',{sender:'user',meta:{image:PNG,audio:AUDIO,durationMs:1000,transcript:'原文的媒体说明',quote:{messageId:base.id,sender:'assistant',type:'text',content:base.content}}}),image=make(PNG,{type:'image'}),other=make('另一个会话的消息',{roleId:target.id});
   const system=make('系统提示',{sender:'system'}),voice=make('语音文字',{sender:'user',type:'voice',meta:{audio:AUDIO,durationMs:1000}}),error=make('失败消息',{sender:'user',status:'error',error:'测试失败'}),demo=make('示例消息',{status:'demo'});
   s.messages=[base,text,image,other,system,voice,error,demo];
-  ok(await f.request('/api/restore',{backup,confirm:true}));
+  ok(await f.restore(backup));
   for(const type of ['transfer','redpacket']){
     const before=new Set((await f.state()).messages.map(m=>m.id));
     ok(await f.action('wallet.transfer',{roleId:source.id,amountCents:100,type,requestId:randomUUID(),note:'隔离测试虚拟资金'}));
@@ -75,7 +84,7 @@ test('native045 forward preserves media and source quote authors in source order
   assert.deepEqual(forwarded[0].meta.quote,{sender:'assistant',type:'text',content:x.base.content,senderName:sourceName});assert.equal(forwarded[0].meta.amountCents,undefined);assert.equal(forwarded[0].meta.transactionId,undefined);
   ok(await f.action('role.save',{id:x.source,name:'来源角色已改名'}));
   const again=ok(await f.action('message.forward',{ids:[forwarded[0].id],targetRoleId:x.source})).state.messages.at(-1);assert.equal(again.meta.quote.senderName,sourceName);assert.equal(again.meta.quote.messageId,undefined);
-  const backup=await f.backup();ok(await f.request('/api/restore',{backup,confirm:true}));assert.equal((await f.state()).messages.at(-1).meta.quote.senderName,sourceName);
+  const backup=await f.backup();ok(await f.restore(backup));assert.equal((await f.state()).messages.at(-1).meta.quote.senderName,sourceName);
   await f.restart();assert.equal((await f.state()).messages.at(-1).meta.quote.senderName,sourceName);
 });
 
@@ -93,7 +102,7 @@ test('native046 individual voice forwarding copies playable media without a mode
   const result=ok(await f.action('message.forward',{ids:[x.voice.id],targetRoleId:x.target})).state,forwarded=result.messages.at(-1);
   assert.equal(forwarded.type,'voice');assert.equal(forwarded.roleId,x.target);assert.notEqual(forwarded.id,x.voice.id);
   assert.deepEqual(forwarded.meta,x.voice.meta);await f.checkMedia(forwarded.meta.audio,AUDIO);assert.deepEqual(result.wallet,before.wallet);assert.equal(f.providerRequests,calls);
-  const backup=await f.backup();ok(await f.request('/api/restore',{backup,confirm:true}));assert.deepEqual((await f.state()).messages.at(-1),forwarded);
+  const backup=await f.backup();ok(await f.restore(backup));assert.deepEqual((await f.state()).messages.at(-1),forwarded);
 });
 
 test('native045 favorite batch deletion is atomic and retains original chat records',async t=>{

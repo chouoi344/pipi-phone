@@ -18,64 +18,102 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
-/** Local static files require a whole-bundle match or an exact audited replacement. */
+/** The local shell starts independently; server protocol gates its business APIs. */
 final class AssetBundle {
     private final Context context;
-    private final SharedPreferences prefs;
     private final TrustedOrigin origin;
     private final String hash;
-    private final boolean cachedMatch;
     volatile boolean enabled;
     private volatile String microphoneToken;
-    private volatile boolean verifiedMatch, serverChanged;
+    private volatile String compatibilityState = "checking";
 
     AssetBundle(Context context, SharedPreferences prefs, TrustedOrigin origin) throws Exception {
-        this.context = context; this.prefs = prefs; this.origin = origin;
+        this.context = context; this.origin = origin;
         try (InputStream stream = context.getAssets().open("phone/bundle.json")) {
             hash = new JSONObject(readUtf8(stream, 4096)).getString("sha256");
         }
         if (!hash.matches("[a-f0-9]{64}")) throw new IOException("APK 内置页面清单无效");
-        cachedMatch = origin.value.equals(prefs.getString("verified_origin", ""))
-                && hash.equals(prefs.getString("verified_bundle", ""));
-        enabled = cachedMatch;
+        // An old verified hash must never authorize a new protocol or an offline
+        // write. Shared-page persistence is scoped by the frontend session.
+        enabled = true;
     }
 
-    boolean hasVerifiedCache() { return cachedMatch; }
-    boolean serverChanged() { return serverChanged; }
-    void useVerifiedMode() { enabled = verifiedMatch; }
+    boolean requiresServerPage() { return "server-page".equals(compatibilityState); }
+    void useServerMode() { enabled = false; microphoneToken = null; }
+    boolean allowsBusiness() {
+        String state = compatibilityState;
+        return "protocol-v1".equals(state) || "legacy-audited".equals(state);
+    }
+    String compatibilityJson() {
+        String state = compatibilityState;
+        return "{\"state\":\"" + state + "\",\"legacyAllowed\":" + "legacy-audited".equals(state) + "}";
+    }
+    String queryCompatibility(String token, String command, String requestUrl, String pageUrl, String nativeToken) {
+        return queryCompatibility(token, command, requestUrl, pageUrl, nativeToken, null);
+    }
+    String queryCompatibility(String token, String command, String requestUrl, String pageUrl, String nativeToken, Runnable retryVerification) {
+        boolean issuedToken = token != null && !token.isEmpty()
+                && (ownsMicrophoneToken(token) || token.equals(nativeToken));
+        if (!"get".equals(command) || !origin.isAppPage(requestUrl) || !origin.isAppPage(pageUrl) || !issuedToken)
+            return "{\"state\":\"unsupported\",\"legacyAllowed\":false}";
+        if (retryVerification != null && beginReverification()) retryVerification.run();
+        return compatibilityJson();
+    }
+    synchronized boolean beginReverification() {
+        if (!"offline".equals(compatibilityState) && !"unsupported".equals(compatibilityState)) return false;
+        compatibilityState = "checking";
+        return true;
+    }
 
-    /** Offline startup can reuse a prior match, scoped to this exact origin and APK. */
+    /** Only the native HTTP result can grant the readonly legacy permission. */
     String verify() {
+        compatibilityState = "checking";
         HttpURLConnection connection = null;
         try {
             connection = origin.open("/api/android-shell-manifest");
-            connection.setConnectTimeout(5000); connection.setReadTimeout(5000);
+            connection.setConnectTimeout(2000); connection.setReadTimeout(3000);
             connection.setRequestProperty("Accept", "application/json");
-            if (connection.getResponseCode() != 200) {
-                invalidate(); return cachedMatch ? "服务器未提供版本清单，下次连接使用服务器资源"
-                        : "服务器未提供版本清单，使用服务器资源";
+            int status = connection.getResponseCode();
+            if (status == 404 || status == 405) {
+                compatibilityState = "server-page";
+                return "旧服务器未提供协议清单，使用其服务器页面";
             }
-            String remote;
+            if (status != 200) {
+                compatibilityState = status >= 500 ? "offline" : "unsupported";
+                return "暂时无法核对服务器协议，请重试连接";
+            }
+            JSONObject manifest;
             try (InputStream stream = connection.getInputStream()) {
-                remote = new JSONObject(readUtf8(stream, 4096)).getString("sha256");
+                manifest = new JSONObject(readUtf8(stream, 16384));
             }
-            verifiedMatch = BundleCompatibility.accepts(hash, remote); serverChanged = !verifiedMatch;
-            prefs.edit().putString("verified_origin", verifiedMatch ? origin.value : "")
-                    .putString("verified_bundle", verifiedMatch ? hash : "").apply();
-            return verifiedMatch ? (hash.equals(remote) ? "使用同版本本地页面" : "使用 App 内置的兼容页面") : cachedMatch
-                    ? "服务器页面已更新，下次连接使用服务器资源" : "服务器页面已更新，使用服务器资源";
+            // A declared but incompatible protocol cannot use the legacy path,
+            // even when its resource hash happens to equal the local bundle.
+            if (manifest.has("clientProtocol")) {
+                if (!BundleCompatibility.supportsClientProtocol(manifest.opt("clientProtocol"))) {
+                    compatibilityState = "unsupported";
+                    return "服务器协议不兼容，请更新 App 或服务器";
+                }
+                compatibilityState = "protocol-v1";
+                return "使用 App 内置页面，服务器协议已兼容";
+            }
+            String remote = manifest.getString("sha256");
+            if (!remote.matches("[a-f0-9]{64}")) {
+                compatibilityState = "unsupported";
+                return "服务器旧版清单无效，请更新服务器";
+            }
+            if (BundleCompatibility.accepts(hash, remote)) {
+                compatibilityState = "legacy-audited";
+                return "使用已核对兼容的旧版服务器";
+            }
+            compatibilityState = "server-page";
+            return "旧服务器尚未与此内置页面核对，使用其服务器页面";
         } catch (JSONException invalidManifest) {
-            invalidate(); return cachedMatch ? "服务器版本清单无效，下次连接使用服务器资源"
-                    : "服务器版本清单无效，使用服务器资源";
+            compatibilityState = "unsupported";
+            return "服务器协议清单无效，请更新服务器或重试";
         } catch (IOException offline) {
-            verifiedMatch = cachedMatch;
-            return cachedMatch ? "离线：使用上次核对的本地页面" : "未核对本地版本，使用服务器页面";
+            compatibilityState = "offline";
+            return "离线：页面可启动，服务器业务暂不可用";
         } finally { if (connection != null) connection.disconnect(); }
-    }
-
-    private void invalidate() {
-        verifiedMatch=false; serverChanged=true;
-        prefs.edit().remove("verified_origin").remove("verified_bundle").apply();
     }
 
     WebResourceResponse intercept(WebResourceRequest request) {
@@ -98,7 +136,7 @@ final class AssetBundle {
                 String token = UUID.randomUUID().toString();
                 String html;
                 try (InputStream source = stream) { html = readUtf8(source, 256 * 1024); }
-                html = html.replace("<head>", "<head><meta name=\"pipi-recording\" content=\"" + token + "\">")
+                html = html.replace("<head>", "<head><meta name=\"pipi-client-compat\" content=\"1\"><meta name=\"pipi-recording\" content=\"" + token + "\">")
                         .replace("<script ", "<script nonce=\"" + token + "\" ");
                 stream = new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8));
                 microphoneToken = token;

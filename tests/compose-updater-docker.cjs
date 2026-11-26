@@ -31,8 +31,9 @@ async function main(){
     await docker(['version']);await docker(['compose','version']);await fs.mkdir(shared,{mode:0o777});await fs.chmod(shared,0o777);
     for(const kind of Object.keys(images)){
       const context=path.join(dir,kind);await fs.mkdir(context);
-      for(const item of ['package.json','server.cjs','LICENSE','LICENSE-MIT.txt','THIRD_PARTY_NOTICES.md','lib','public'])await fs.cp(path.join(root,item),path.join(context,item),{recursive:true});
+      for(const item of ['package.json','package-lock.json','server.cjs','LICENSE','LICENSE-MIT.txt','THIRD_PARTY_NOTICES.md','lib','public'])await fs.cp(path.join(root,item),path.join(context,item),{recursive:true});
       const pkg=JSON.parse(await fs.readFile(path.join(context,'package.json'),'utf8'));pkg.version=versions[kind];await fs.writeFile(path.join(context,'package.json'),JSON.stringify(pkg));
+      const lock=JSON.parse(await fs.readFile(path.join(context,'package-lock.json'),'utf8'));lock.version=versions[kind];lock.packages[''].version=versions[kind];await fs.writeFile(path.join(context,'package-lock.json'),JSON.stringify(lock));
       let dockerfile=await fs.readFile(path.join(root,'Dockerfile'),'utf8');
       if(kind==='broken'){
         await fs.writeFile(path.join(context,'smoke-broken.cjs'),"const fs=require('node:fs');const {DatabaseSync}=require('node:sqlite');const db=new DatabaseSync('/app/data/pipi.sqlite');const state=JSON.parse(db.prepare('SELECT json FROM app WHERE id=1').get().json);state.profile.name='BROKEN_MIGRATION';db.prepare('UPDATE app SET json=? WHERE id=1').run(JSON.stringify(state));db.close();fs.writeFileSync('/app/data/media/smoke.txt','BROKEN_MIGRATION');process.exit(1);\n");

@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const Providers=require('../lib/providers.cjs'),Audio=require('../lib/provider-audio.cjs'),Native=require('../lib/provider-native.cjs'),Media=require('../lib/media-store.cjs');
 const Pipeline=require('../lib/engine/pipeline.cjs'),One=require('../lib/engine/system-one.cjs');
 const mp3=fs.readFileSync(path.join(__dirname,'../scripts/demo-assets/tone.mp3'));
-const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWVQAAAAASUVORK5CYII=','base64');
+const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWMwCsj7DwADmAHwphbYCgAAAABJRU5ErkJggg==','base64');
 function wav(){const b=Buffer.alloc(204);b.write('RIFF');b.writeUInt32LE(196,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(8000,24);b.writeUInt32LE(16000,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(160,40);return b;}
 function directory(t){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'pipi-model-media-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));return dir;}
 async function fixture(t,handler){
@@ -59,20 +59,23 @@ test('主聊天与System One读取图片文件，缺失图片不把相对地址�
   assert.equal(Pipeline.render(s,msg,true,dir,new Set()).content[1].image_url.url,Media.toDataUrl(dir,ref));
   const missing={...msg,content:'/api/media/'+'0'.repeat(64)+'.png'};assert.doesNotMatch(JSON.stringify(Pipeline.render(s,missing,true,dir,new Set())),/\/api\/media\//);
   const f=await fixture(t,(request,res)=>res.end(JSON.stringify({answers:{complete:{probability:0.95}}}))),state=f.state('decision');state.settings.ai.models[0].protocol='system-one';
-  assert.equal((await One.evaluateCompleteness(state,{images:[ref],dataDir:dir})).complete,true);assert.equal(Object.values(f.seen[0].body.assets)[0].data_base64,png.toString('base64'));
+  assert.equal((await One.evaluateCompleteness(state,{images:[ref],dataDir:dir})).complete,true);const work=require('../lib/engine/model-images.cjs').cached(dir,ref);assert.equal(Object.values(f.seen[0].body.assets)[0].data_base64,Media.resolveImageBytes(dir,work.url).buffer.toString('base64'));assert.deepEqual(Media.resolveImageBytes(dir,ref).buffer,png);
 });
 
 test('改图读取参考媒体文件，生成结果存文件且保持图片原字节',async t=>{
   const dir=directory(t),reference=Media.saveImage(dir,png),f=await fixture(t,(request,res)=>res.end(JSON.stringify({data:[{b64_json:png.toString('base64')}]})));
   const image=await Providers.generateImage(f.state('image'),'修改图片',{references:[reference],requireReference:true,dataDir:dir});
-  assert.equal(f.seen[0].url,'/v1/images/edits');assert(f.seen[0].bytes.includes(png));assert.doesNotMatch(f.seen[0].raw,/\/api\/media\//);assert(Media.isMediaUrl(image));assert.deepEqual(Media.resolveImageBytes(dir,image).buffer,png);
+  const work=require('../lib/engine/model-images.cjs').cached(dir,reference);assert.equal(f.seen[0].url,'/v1/images/edits');assert(f.seen[0].bytes.includes(Media.resolveImageBytes(dir,work.url).buffer));assert.doesNotMatch(f.seen[0].raw,/\/api\/media\//);assert(Media.isMediaUrl(image));assert.deepEqual(Media.resolveImageBytes(dir,image).buffer,png);
 });
 
-test('衣柜导入与编辑接受已上传图片地址，保留实际格式和512KB批量限制',t=>{
+test('衣柜保留已上传原图URL，内嵌批量图片仍受512KiB限制',t=>{
   const Wardrobe=require('../lib/engine/schedule-wardrobe.cjs'),dir=directory(t),image=Media.saveImage(dir,png),draft={description:'蓝色外套',category:'外出',seasons:['春'],image};
   const imported=Wardrobe.importItems([],[draft],{dataDir:dir});assert.equal(imported.added,1);assert.equal(imported.items[0].image,image);assert.deepEqual(Media.resolveImageBytes(dir,image).buffer,png);
   const updated=Wardrobe.upsertItem(imported.items,{id:imported.items[0].id,category:'居家'},{dataDir:dir});assert.equal(updated.item.image,image);assert.equal(updated.item.category,'居家');
-  const tooLarge=Media.saveImage(dir,Buffer.concat([png,Buffer.alloc(512*1024)])),before=structuredClone(imported.items);
-  assert.throws(()=>Wardrobe.importItems(imported.items,[{...draft,image:tooLarge}],{dataDir:dir}),{code:'VALIDATION'});assert.deepEqual(imported.items,before);
+  const largeBytes=Buffer.concat([png,Buffer.alloc(512*1024)]),largeRef=Media.saveImage(dir,largeBytes),before=structuredClone(imported.items);
+  const original=Wardrobe.importItems(imported.items,[{...draft,image:largeRef}],{dataDir:dir});
+  assert.equal(Media.MAX_IMAGE_BYTES,64*1024*1024);assert.equal(original.added,1);assert.equal(original.items.at(-1).image,largeRef);assert.deepEqual(Media.resolveImageBytes(dir,largeRef).buffer,largeBytes);assert.deepEqual(imported.items,before);
+  const files=fs.readdirSync(path.join(dir,'media'));
+  assert.throws(()=>Wardrobe.importItems(imported.items,[draft,{...draft,image:'data:image/png;base64,'+largeBytes.toString('base64')}],{dataDir:dir}),{code:'VALIDATION'});assert.deepEqual(imported.items,before);assert.deepEqual(fs.readdirSync(path.join(dir,'media')),files);
   assert.throws(()=>Wardrobe.upsertItem(imported.items,{id:imported.items[0].id,image:'/api/media/'+'0'.repeat(64)+'.png'},{dataDir:dir}),/无法读取/);
 });

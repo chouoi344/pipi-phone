@@ -4,7 +4,7 @@ const timers=require('node:timers/promises'),{sampleState}=require('../scripts/s
 const Media=require('../lib/media-store.cjs'),S=require('../lib/state.cjs'),Providers=require('../lib/providers.cjs');
 const Pipeline=require('../lib/engine/pipeline.cjs'),Runtime=require('../lib/engine/runtime.cjs'),R=require('../lib/engine/registry.cjs'),History=require('../lib/engine/tool-history.cjs');
 const Actions=require('../lib/engine/actions.cjs'),Selfie=require('../lib/engine/modules/selfie.cjs'),One=require('../lib/engine/system-one.cjs');
-const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWVQAAAAASUVORK5CYII=','base64');
+const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWMwCsj7DwADmAHwphbYCgAAAABJRU5ErkJggg==','base64');
 function fixture(t){
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'pipi-model-expiry-'));t.after(()=>{require('../lib/engine/memory-store.cjs').close(dataDir);fs.rmSync(dataDir,{recursive:true,force:true});});
   const original=Media.saveImage(dataDir,png),copy=Media.saveImage(dataDir,Buffer.concat([png,Buffer.from('model copy')]));

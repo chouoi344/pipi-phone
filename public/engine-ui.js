@@ -727,7 +727,8 @@
     if(input)input.onchange=()=>task(async()=>{
       const file=input.files[0],fieldKey=targetField;
       input.value='';if(!file||!fieldKey)return;
-      const url=await P().uploadProfileImage(file,{requireUrl:true});
+      const blob=await P().readImage(file,false,true);
+      const url=await P().uploadMedia(blob,{requireUrl:true});
       const current=state().roles.find(r=>r.id===roleId);
       const next=[...(current[fieldKey]||[]),url].slice(0,3);
       await P().act('role.save',{id:roleId,[fieldKey]:next});
@@ -945,9 +946,10 @@
     return Boolean(source?.baseUrl&&source.keySet);
   }
   async function sync() {if(ui.syncing){ui.resync=true;return;}ui.syncing=true;try{do{ui.resync=false;const result=await P().api('/api/state?since='+P().getState().revision);if(!result.unchanged)P().receiveState(result.state||result);}while(ui.resync);}catch(error){if(error.status!==401)console.debug('实时状态更新失败，将通过定时刷新重试');}finally{ui.syncing=false;}}
-  function setChatProgress({roleId,typing,slow}){
+  function setChatProgress(progress){
+    const {roleId,typing,slow}=progress;
     if(typing)ui.typing.add(roleId);else ui.typing.delete(roleId);
-    P().updateTyping(roleId,slow);
+    P().updateTyping(roleId,slow,progress);
   }
   function start() {
     if(ui.started||!P()?.getState())return;ui.started=true;
@@ -955,11 +957,11 @@
     if(!window.EventSource)return;
     ui.events=new EventSource('/api/events');
     ui.events.addEventListener('open',()=>{ui.typing.clear();window.WaterdropChat?.setConnected(true);P().updateTyping();P().syncChatProgress?.();sync();});
-    ui.events.addEventListener('error',()=>{ui.typing.clear();window.WaterdropChat?.setConnected(false);P().updateTyping();});
+    ui.events.addEventListener('error',()=>{ui.typing.clear();window.WaterdropChat?.setConnected(false);P().updateTyping(undefined,false,null);});
     ui.events.addEventListener('revision',event=>{const data=JSON.parse(event.data);if(data.revision>state().revision)sync();});
     ui.events.addEventListener('typing',event=>setChatProgress(JSON.parse(event.data)));
   }
-  function stop() {ui.events?.close();ui.events=null;ui.started=false;ui.config=null;ui.configRevision=null;ui.readOnEntry=false;ui.loading=null;ui.typing.clear();window.PipiReminders?.reset();ui.memCache.clear();ui.memRecallResults.clear();ui.importState=null;ui.activity.clear();removeSessionKey(scheduleDraftKey);removeSessionKey(voiceDraftKey);removeSessionKey(outreachDraftKey);window.PipiUsage?.reset();window.PipiSchedule?.reset();window.PipiModels?.reset();}
+  function stop() {ui.events?.close();ui.events=null;ui.started=false;ui.config=null;ui.configRevision=null;ui.readOnEntry=false;ui.loading=null;ui.typing.clear();P()?.updateTyping(undefined,false,null);window.PipiReminders?.reset();ui.memCache.clear();ui.memRecallResults.clear();ui.importState=null;ui.activity.clear();removeSessionKey(scheduleDraftKey);removeSessionKey(voiceDraftKey);removeSessionKey(outreachDraftKey);window.PipiUsage?.reset();window.PipiSchedule?.reset();window.PipiModels?.reset();}
   function activity(roleId) {const now=Date.now();if(now-(ui.activity.get(roleId)||0)<2000)return;ui.activity.set(roleId,now);P().api('/api/engine/typing',{roleId}).catch(error=>{if(error.status!==401)console.debug('输入状态上报失败');});}
   function resetActivity(roleId) {ui.activity.delete(roleId);}
   function stopActivity(roleId) {resetActivity(roleId);P().api('/api/engine/typing',{roleId,active:false}).catch(error=>{if(error.status!==401)console.debug('输入状态解除失败');});}

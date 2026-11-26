@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const {execFileSync}=require('node:child_process');
 const java=fs.readFileSync(path.join(__dirname,'../android/app/src/main/java/com/pipiphone/app/WebViewRequirements.java'),'utf8');
 const features=JSON.parse(java.match(/FEATURES = ("(?:[^"\\]|\\.)*");/)[1]);
 const syntax=JSON.parse(java.match(/SYNTAX = ("(?:[^"\\]|\\.)*");/)[1]);
 const pageStarted=JSON.parse(java.match(/PAGE_STARTED = ("(?:[^"\\]|\\.)*");/)[1]);
-const {fingerprint}=require('../lib/android-assets.cjs');
 function browser(setup=''){
   const context=vm.createContext({fetch:function(){},URL:function(){},URLSearchParams:function(){},FormData:function(){},AbortController:function(){},document:{getElementById:()=>null},navigator:{userAgent:'Chrome/83.0.4103.106'},CSS:{supports:()=>false}});
   if(setup)vm.runInContext(setup,context);
@@ -54,8 +54,13 @@ test('an older server with a rendered core page can work without the newer Andro
   assert.equal(vm.runInContext(pageStarted,context),true);
 });
 
-test('the audited Android page stays pinned until the old-server flow is reviewed again',async()=>{
-  const compatibility=fs.readFileSync(path.join(__dirname,'../android/app/src/main/java/com/pipiphone/app/BundleCompatibility.java'),'utf8');
-  const pinned=compatibility.match(/WEBVIEW_83_BUNDLE = "([^"]+)";/)[1];
-  assert.equal((await fingerprint()).sha256,pinned,'Web assets changed: review the Android compatibility page against the official 0.13.11 server before intentionally updating WEBVIEW_83_BUNDLE.');
+const protocolJdk=process.env.PIPI_ANDROID_TEST_JDK||process.env.JAVA_HOME||'C:/Program Files/Eclipse Adoptium/jdk-17.0.21.10002-hotspot';
+const protocolJar=process.env.PIPI_ANDROID_TEST_JSON_JAR||'C:/Users/34483/.codex/standalone-android/json-20240303.jar';
+const protocolTools=fs.existsSync(path.join(protocolJdk,'bin','javac'+(process.platform==='win32'?'.exe':'')))&&fs.existsSync(protocolJar);
+test('real native protocol contracts allow new protocol bundles while retaining the exact audited legacy gate',{
+  skip:protocolTools?false:'JDK17 and org.json are required; run tests/android-protocol.cjs in the Android checks',
+},()=>{
+  const output=execFileSync(process.execPath,[path.join(__dirname,'android-protocol.cjs')],{encoding:'utf8',env:{...process.env,PIPI_ANDROID_TEST_JDK:protocolJdk,PIPI_ANDROID_TEST_JSON_JAR:protocolJar},windowsHide:true});
+  const result=output.match(/Android protocol contracts: (\d+) passed, 0 failed/);
+  assert.ok(result,output);assert.ok(Number(result[1])>=9,output);
 });

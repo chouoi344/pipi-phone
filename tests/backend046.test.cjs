@@ -7,7 +7,7 @@ const {mkdtemp,rm}=require('node:fs/promises');
 const os=require('node:os'),path=require('node:path');
 const {randomUUID}=require('node:crypto');
 const {createApp}=require('../scripts/sample-data.cjs');
-const PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBHoAAAAASUVORK5CYII=';
+const PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWMwCsj7DwADmAHwphbYCgAAAABJRU5ErkJggg==';
 const WAV=Buffer.from('524946462600000057415645666d74201000000001000100401f0000803e00000200100064617461020000000000','hex');
 const AUDIO='data:audio/wav;base64,'+WAV.toString('base64'),PASSWORD='Backend-046-local-test!';
 function imageBytes(dataUrl){return Buffer.from(dataUrl.split(',')[1],'base64');}

@@ -9,11 +9,13 @@
   async function compress(file){
     const app=P();
     if(!file)throw new Error('请选择 PNG、JPG 或 WebP 静态图片');
-    if(file.size>20*1024*1024)throw new Error('图片不能超过 20 MB');
+    const limit=app?.mediaLimits?app.mediaLimits().imageBytes:20*1024*1024;
+    if(file.size>limit)throw new Error('图片不能超过 '+limit/1024/1024+' MB');
     const source=app?.readImage?await app.readImage(file,false,true):file;
     const mime=source.type||file.type;
     if(mime==='image/gif')throw new Error('衣柜需要静态图片，请选择其中一帧后上传');
     if(app?.detectAnimatedImage?await app.detectAnimatedImage(source,mime):false)throw new Error('衣柜需要静态图片，请选择其中一帧后上传');
+    if(app?.mediaLimits?.().preserveOriginal)return {image:await app.uploadMedia(source),bytes:source.size};
     let decoded;
     try{
       decoded=app?.decodeImageSource?await app.decodeImageSource(source):await (async()=>{const b=await createImageBitmap(source);return {source:b,width:b.width,height:b.height,close(){b.close();}};})();
@@ -95,7 +97,7 @@
       const busy=processing(row),node=row.node;
       node.querySelector('fieldset').disabled=busy;
       node.querySelector('[data-wardrobe-retry]').hidden=row.status!=='failed';
-      node.querySelector('[data-wardrobe-status]').textContent={queued:'等待识别',compressing:'正在压缩',recognizing:'正在识别',done:'已识别',manual:'已手动填写',failed:row.error}[row.status];
+      node.querySelector('[data-wardrobe-status]').textContent={queued:'等待识别',compressing:'正在准备图片',recognizing:'正在识别',done:'已识别',manual:'已手动填写',failed:row.error}[row.status];
       node.querySelector('[data-wardrobe-status]').classList.toggle('has-error',row.status==='failed');
       node.querySelector('[data-wardrobe-size]').textContent=row.bytes?size(row.file.size)+' → '+size(row.bytes):size(row.file.size);
       if(row.image&&!node.querySelector('img')){

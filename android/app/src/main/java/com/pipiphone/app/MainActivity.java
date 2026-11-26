@@ -262,29 +262,35 @@ public final class MainActivity extends Activity {
         try { assets = new AssetBundle(this,prefs,destination); }
         catch (Exception error) { showError("安装包页面资源有问题：" + error.getMessage()); return; }
         final AssetBundle nextAssets = assets;
-        final boolean loadImmediately = nextAssets.hasVerifiedCache();
-        if (loadImmediately) {
-            bundleStatus = "使用上次核对的本地页面，正在后台检查版本";
-            loadConnectedPage(savedState,destination,enterChats);
-        }
+        bundleStatus = "内置页面正在启动，正在核对服务器协议";
+        loadConnectedPage(savedState,destination,enterChats);
+        verifyCompatibility(nextAssets,destination,generation,enterChats,true);
+    }
+
+    private void verifyCompatibility(AssetBundle nextAssets,TrustedOrigin destination,int generation,boolean enterChats,boolean allowServerNavigation) {
         network.execute(() -> {
             String result = nextAssets.verify();
             handler.post(() -> {
                 if (isDestroyed() || generation != connectionGeneration) return;
-                bundleStatus = result;
+                bundleStatus = nextAssets.requiresServerPage() && !allowServerNavigation
+                        ? "旧服务器需要其自带页面，请在 App 设置中重新连接" : result;
                 updateSettingsStatus();
-                if (loadImmediately) {
-                    if (nextAssets.serverChanged()) toast("服务器页面已更新，下次连接时使用新版；当前草稿继续保留");
-                } else {
-                    nextAssets.useVerifiedMode(); loadConnectedPage(savedState,destination,enterChats);
+                if (nextAssets.requiresServerPage() && allowServerNavigation) {
+                    nextAssets.useServerMode();
+                    web.loadUrl(destination.value + (enterChats ? "/?android_entry=chats" : "/"));
+                } else if (pageReady && nextAssets.allowsBusiness()) {
+                    PhoneNotifications.onPageFinished(MainActivity.this);
+                    FcmTransport.onPageFinished(MainActivity.this);
+                    openPendingChat();
+                    enableLoginNotifications();
                 }
             });
         });
     }
 
     private void loadConnectedPage(Bundle savedState,TrustedOrigin destination,boolean enterChats) {
-        if (savedState != null && destination.value.equals(savedState.getString("server_origin"))
-                && web.restoreState(savedState.getBundle("web_state")) != null) return;
+        // Always boot this APK's complete page. Saved WebView history may hold
+        // old scripts; shared-page persistence restores the user's drafts/data.
         web.loadUrl(destination.value + (enterChats ? "/?android_entry=chats" : "/"));
     }
 
@@ -344,13 +350,16 @@ public final class MainActivity extends Activity {
                             : "服务器提供的页面可能与当前系统网页组件不兼容，或页面脚本没有加载成功。请更新服务器网页程序或系统网页组件后重新连接。"));
                     return;
                 }
-                pageReady = true; applyInsets(); installNativeRecordingToken(view, url); PhoneNotifications.onPageFinished(MainActivity.this);
+                pageReady = true; applyInsets(); installNativeRecordingToken(view, url);
                 web.evaluateJavascript(updateEntryScript,null);
                 appUpdater.onPageReady();
                 blobDownloads.install();
-                FcmTransport.onPageFinished(MainActivity.this);
-                openPendingChat();
-                enableLoginNotifications();
+                if (assets != null && assets.allowsBusiness()) {
+                    PhoneNotifications.onPageFinished(MainActivity.this);
+                    FcmTransport.onPageFinished(MainActivity.this);
+                    openPendingChat();
+                    enableLoginNotifications();
+                }
             });
         }
         @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error) {
@@ -420,6 +429,14 @@ public final class MainActivity extends Activity {
 
     private final class PhoneChromeClient extends WebChromeClient {
         @Override public boolean onJsPrompt(WebView view, String url, String message, String command, JsPromptResult result) {
+            if (message.startsWith("pipi-client-compat:")) {
+                String token = message.substring("pipi-client-compat:".length());
+                final AssetBundle currentAssets = assets;
+                result.confirm(currentAssets != null ? currentAssets.queryCompatibility(token, command, url, view.getUrl(), nativeRecordingToken,
+                        () -> verifyCompatibility(currentAssets,origin,connectionGeneration,false,false))
+                        : "{\"state\":\"unsupported\",\"legacyAllowed\":false}");
+                return true;
+            }
             if (!message.startsWith("pipi-recording:")) return super.onJsPrompt(view, url, message, command, result);
             String token = message.substring("pipi-recording:".length());
             boolean trustedToken = origin.isAppPage(url) && origin.isAppPage(view.getUrl()) && ownsRecordingToken(token);
@@ -856,7 +873,8 @@ public final class MainActivity extends Activity {
     }
 
     private void enableLoginNotifications() {
-        if (!notificationsAfterLogin || paused || !pageReady || errorPanel != null || !origin.isAppPage(web.getUrl())) return;
+        if (!notificationsAfterLogin || paused || !pageReady || errorPanel != null || !origin.isAppPage(web.getUrl())
+                || assets == null || !assets.allowsBusiness()) return;
         notificationsAfterLogin = false;
         enableOrRequestNotifications();
     }
@@ -901,7 +919,7 @@ public final class MainActivity extends Activity {
     private void clearPendingNotification() { pendingRoleId=null;pendingNotificationIntent=null; }
 
     private void openPendingChat() {
-        if(paused||pendingRoleId==null||!pageReady||!origin.isAppPage(web.getUrl()))return;
+        if(paused||pendingRoleId==null||!pageReady||!origin.isAppPage(web.getUrl())||assets==null||!assets.allowsBusiness())return;
         Intent candidate=pendingNotificationIntent;
         if(!notificationTargetsCurrentSession(candidate)){clearPendingNotification();return;}
         if(!candidate.hasExtra("appSessionScope")) {
@@ -927,17 +945,21 @@ public final class MainActivity extends Activity {
     }
 
     @Override public void onNewIntent(Intent intent) { super.onNewIntent(intent);setIntent(intent);takeIntent(intent);openPendingChat(); }
-    @Override protected void onResume() { super.onResume();paused=false;appUpdater.setVisible(true);web.onResume();PhoneNotifications.setVisible(this,true);FcmTransport.setVisible(this,true);openPendingChat();enableLoginNotifications(); }
+    @Override protected void onResume() {
+        super.onResume();paused=false;appUpdater.setVisible(true);web.onResume();
+        PhoneNotifications.setVisible(this,true);FcmTransport.setVisible(this,true);
+        if (assets != null && assets.beginReverification()) verifyCompatibility(assets,origin,connectionGeneration,false,false);
+        openPendingChat();enableLoginNotifications();
+    }
     @Override protected void onPause() {
         recordGestureDeadline = 0;
         recordTouchDown = microphonePermissionOnRelease = false;
         voiceCapture.cancel();
         paused=true;appUpdater.setVisible(false);
         if(origin.isAppPage(web.getUrl())) {
-            web.evaluateJavascript("window.PipiAndroidPage&&window.PipiAndroidPage.checkpoint()",ignored->{
-                if(paused&&!isDestroyed())web.onPause();
-            });
-        } else web.onPause();
+            web.evaluateJavascript("window.PipiAndroidPage&&window.PipiAndroidPage.checkpoint()",null);
+        }
+        web.onPause();
         CookieManager.getInstance().flush();PhoneNotifications.setVisible(this,false);FcmTransport.setVisible(this,false);super.onPause();
     }
     @Override protected void onSaveInstanceState(Bundle out) {

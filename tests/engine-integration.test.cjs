@@ -39,7 +39,7 @@ async function fixture(t,respond,{disableAutomaticSchedules=false}={}){
   assert.equal((await request('/api/engine/modules',{id:'waiting',values:{idleSeconds:0.05,maxWaitSeconds:1}})).status,200);
   assert.equal((await request('/api/engine/modules',{id:'segments',values:{intervalMode:'random',minSeconds:0,maxSeconds:0}})).status,200);
   const read=async()=>(await request('/api/state')).body;
-  const f={request,read,requests,source,roleId:state.roles[0].id,get app(){return app;},get base(){return base;},get cookie(){return cookie;},async restart(){await app.close();app=createApp({dataDir:dir,host:'127.0.0.1',port:0});await app.listen();base='http://127.0.0.1:'+app.server.address().port;await request('/api/login',{password:PASSWORD});}};
+  const f={request,read,requests,source,dataDir:dir,roleId:state.roles[0].id,get app(){return app;},get base(){return base;},get cookie(){return cookie;},async restart(){await app.close();app=createApp({dataDir:dir,host:'127.0.0.1',port:0});await app.listen();base='http://127.0.0.1:'+app.server.address().port;await request('/api/login',{password:PASSWORD});}};
   t.after(async()=>{await app.close();mock.closeAllConnections();await new Promise(resolve=>mock.close(resolve));assert.ok(path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(dir).startsWith('pipi-engine-integration-'));fs.rmSync(dir,{recursive:true,force:true});if(old===undefined)delete process.env.ALLOW_PRIVATE_PROVIDERS;else process.env.ALLOW_PRIVATE_PROVIDERS=old;});
   return f;
 }
@@ -226,6 +226,7 @@ test('image HTTP modes: plain drawing, exact quoted edits and wardrobe portraits
     assert.doesNotMatch(aiDetails,/固定机位|固定姿势/);
   }
   const drawText='给我画个排风井，不要人物。';
+  function workImages(originals){const Media=require('../lib/media-store.cjs'),Images=require('../lib/engine/model-images.cjs');return originals.map(original=>{const ref=Media.saveImage(f.dataDir,original),prepared=Images.cached(f.dataDir,original)||Images.cached(f.dataDir,ref);assert(prepared,'Each actually used reference has a server model copy');assert.deepEqual(Media.resolveImageBytes(f.dataDir,ref).buffer,Buffer.from(original.split(',')[1],'base64'));return Media.toDataUrl(f.dataDir,prepared.url);});}
   const [draw]=await send(drawText,'generate_image',{prompt:'通风设施的线稿',mode:'text',sendToChat:true},{quoteId:quoted.id});
   assert.equal(draw.url,'/v1/images/generations');
   assert.ok(draw.body.prompt.includes(drawText));
@@ -237,11 +238,11 @@ test('image HTTP modes: plain drawing, exact quoted edits and wardrobe portraits
   const editText='把这张自拍的背景改蓝，只改背景。';
   const [quotedEdit]=await send(editText,'generate_image',{prompt:'换蓝色背景',mode:'edit',sendToChat:true},{quoteId:quoted.id,image:latestImage});
   const edited=await editParts(quotedEdit);
-  assert.deepEqual(edited.images,[quoteImage]);
+  assert.deepEqual(edited.images,workImages([quoteImage]));
   assert.ok(edited.prompt.includes(editText));
   assert.doesNotMatch(edited.prompt,/验收窗边|验收灰外套/);
   const [uploadEdit]=await send('把这张刚发的图改成黑白。','generate_image',{prompt:'黑白',mode:'edit',sendToChat:true},{image:latestImage});
-  assert.deepEqual((await editParts(uploadEdit)).images,[latestImage]);
+  assert.deepEqual((await editParts(uploadEdit)).images,workImages([latestImage]));
   assert.deepEqual(await send('改一下图片','generate_image',{prompt:'背景改红',mode:'edit',sendToChat:true}),[]);
   assert.match(toolReply.error,/发送或引用/);
   const missingWaiting='我先找一下那张原图。';
@@ -252,7 +253,7 @@ test('image HTTP modes: plain drawing, exact quoted edits and wardrobe portraits
   const selfieText='拍一张今天的穿搭，别露牙。';
   const [portrait]=await send(selfieText,'send_selfie',{prompt:'在窗边拍，露齿大笑',kind:'outfit',shotPlan:[{angle:'侧面',expression:'露齿大笑'}]});
   const selfie=await editParts(portrait);
-  assert.deepEqual(selfie.images,[...identityImages,outfitImage]);
+  assert.deepEqual(selfie.images,workImages([...identityImages,outfitImage]));
   assert.ok(selfie.prompt.includes(selfieText));
   assert.match(selfie.prompt,/只参考衣服|仅参考.*服装/);
   assert.match(selfie.prompt,/侧面/);
@@ -265,7 +266,7 @@ test('image HTTP modes: plain drawing, exact quoted edits and wardrobe portraits
   assert.ok(singleParts.prompt.includes(singleText));
   assert.match(singleParts.prompt,/眼平/);
   assert.match(singleParts.prompt,/整理袖口/);
-  assert.deepEqual(singleParts.images,[...identityImages,outfitImage]);
+  assert.deepEqual(singleParts.images,workImages([...identityImages,outfitImage]));
 
   const groupText='就现在随手拍两张自拍。';
   const checkGroup=async args=>{
@@ -277,8 +278,8 @@ test('image HTTP modes: plain drawing, exact quoted edits and wardrobe portraits
       assert.ok(prompt.includes(groupText));
       assert.match(prompt,/同一套衣服和同一个场景/);
     }
-    assert.deepEqual(group[0].images,[...identityImages,outfitImage]);
-    assert.deepEqual(group[1].images,[...identityImages,outfitImage,'data:image/png;base64,'+png]);
+    assert.deepEqual(group[0].images,workImages([...identityImages,outfitImage]));
+    assert.deepEqual(group[1].images,workImages([...identityImages,outfitImage,'data:image/png;base64,'+png]));
     return group;
   };
   await checkGroup({prompt:'坐在窗边随手拍'});

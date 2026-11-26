@@ -1,6 +1,9 @@
 package com.pipiphone.app;
 
-/** Allow the bundled page to use only explicitly reviewed older servers. */
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+/** Protocol compatibility and the separate, explicitly reviewed legacy gate. */
 final class BundleCompatibility {
     static final String SERVER_0_13_11 = "d778b7ae7be4461b62cdbdef5e60f36cbdbd23e10fa4d5e6cc6c6c7a3b5700a4";
     static final String EARLIER_LOCAL_83 = "584ae6ee785ae12b2570cc7522b81d8c6e3aa232a7d7b9b2070c9edc7cf71567";
@@ -13,6 +16,25 @@ final class BundleCompatibility {
     static final String SERVER_0_13_15 = "ecfa9734011d1bab1de2d0fb62a8afddb43b158ce0a62888940a6d9261057845";
     static final String WEBVIEW_83_BUNDLE = "7acc1768fedd84b1cabab23199e09b927f694a0fff1754f9d4254cf9d9b89067";
     private BundleCompatibility() {}
+
+    static boolean supportsClientProtocol(Object value) {
+        if (!(value instanceof JSONObject)) return false;
+        JSONObject protocol = (JSONObject) value;
+        if (!"pipi-phone".equals(protocol.opt("name"))) return false;
+        Object version = protocol.opt("version");
+        if (!(version instanceof Integer || version instanceof Long) || ((Number) version).longValue() != 1) return false;
+        Object features = protocol.opt("features");
+        if (!(features instanceof JSONArray)) return false;
+        JSONArray values = (JSONArray) features;
+        boolean state = false, progress = false;
+        for (int i = 0; i < values.length(); i++) {
+            Object feature = values.opt(i);
+            if (!(feature instanceof String)) return false;
+            state |= "state-v1".equals(feature);
+            progress |= "chat-progress-v1".equals(feature);
+        }
+        return state && progress;
+    }
 
     static boolean accepts(String localHash, String serverHash) {
         return localHash.equals(serverHash)

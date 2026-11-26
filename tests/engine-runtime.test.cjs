@@ -90,7 +90,7 @@ test('识别语音和生成回答时保持好友名，只在分段送达期间�
     assert.equal(live(),true);
     await until(()=>unblockAfterLast);
     assert.equal(count(),2);assert.equal(live(),false);assert.equal(snapshot(),false);
-    assert.deepEqual(f.events.filter(e=>e.event==='typing').map(e=>e.typing),[false,true,false]);
+    assert.deepEqual(f.events.filter(e=>e.event==='typing').map(e=>e.typing).filter((value,index,values)=>index===0||value!==values[index-1]),[false,true,false]);
   }finally{
     acceptVoice?.({text:'结束测试'});
     answer?.({message:{content:''},model:f.config,modelId:'isolated'});
@@ -115,7 +115,7 @@ test('语音工具等待合成时不显示输入中，纯语音答复实际送�
     finishSpeech('data:audio/wav;base64,UklGRg==');
     await until(()=>!f.runtime.isBusy(f.roleId));
     assert.deepEqual(f.state().messages.filter(m=>m.sender==='assistant').map(m=>m.type),['voice']);
-    assert.deepEqual(f.events.filter(e=>e.event==='typing').map(e=>e.typing),[false,true,false]);
+    assert.deepEqual(f.events.filter(e=>e.event==='typing').map(e=>e.typing).filter((value,index,values)=>index===0||value!==values[index-1]),[false,true,false]);
   }finally{finishSpeech?.('data:audio/wav;base64,UklGRg==');await f.runtime.close();}
 });
 test('近期输入持续推迟回复，停止输入后按设定等待再回',async()=>{

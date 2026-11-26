@@ -48,6 +48,8 @@ function editorHarness(f){
   return {root,nodes,groups,get current(){return current;},get closed(){return closed;}};
 }
 function modelEntry(id,overrides={}){return {id,sourceId:'custom',model:id,kind:'chat',capabilities:['text'],maxContextTokens:32000,temperature:.7,maxTokens:800,timeoutSeconds:60,extraBody:{seed:9},voice:'',...overrides};}
+
+
 function chatModelEditor(f){
   const editor=editorHarness(f);
   editor.nodes.set('[name="model"]',{value:'edited'});
@@ -179,6 +181,10 @@ function stationEditor(f){
   f.document.createElement=()=>({});providerControls(f);f.engine.render('providers');f.engine.bind('providers');
   editor.open=()=>f.nodes.get('#model-relay').onclick();return editor;
 }
+
+
+
+
 
 test('engine UI memory: read failure remains visible and retry loads cards',async()=>{
   const f=await fixture();let fail=true,reads=0;

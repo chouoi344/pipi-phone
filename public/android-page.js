@@ -106,22 +106,29 @@
   // This is the only persistent-cache input boundary. Never spread app state,
   // model drafts, attachments, auth tokens or arbitrary route arguments here.
   function cleanCheckpoint(input) {
-    const output = {route:cleanPage(input?.route), stack:[], drafts:[], chats:[], chatsTop:number(input?.chatsTop), contactsTop:number(input?.contactsTop)};
+    const output = {route:cleanPage(input?.route), stack:[], drafts:[], chats:[], contacts:[], chatsTop:number(input?.chatsTop), contactsTop:number(input?.contactsTop)};
+    output.contacts = (Array.isArray(input?.contacts) ? input.contacts : []).slice(0, 200)
+      .filter(contact => typeof contact?.roleId === 'string' && contact.roleId.length <= 200)
+      .map(contact => ({roleId:contact.roleId, name:text(contact.name, 120)}));
     output.stack = (Array.isArray(input?.stack) ? input.stack : []).slice(-12).filter(page => pageNames.has(page?.name)).map(cleanPage);
-    let budget = 80000;
-    for (const draft of (Array.isArray(input?.drafts) ? input.drafts : []).slice(-32).reverse()) {
+    for (const draft of (Array.isArray(input?.drafts) ? input.drafts : []).slice(-200)) {
       if (typeof draft?.roleId !== 'string' || draft.roleId.length > 200) continue;
-      const value = text(draft.text, Math.min(20000, budget)); budget -= value.length;
-      if (value) output.drafts.unshift({roleId:draft.roleId, text:value});
+      const value = text(draft.text, 20000);
+      if (value) output.drafts.push({roleId:draft.roleId, text:value});
     }
+    let messageBudget = 600000;
     for (const chat of (Array.isArray(input?.chats) ? input.chats : []).slice(-8)) {
       if (typeof chat?.roleId !== 'string' || chat.roleId.length > 200) continue;
       output.chats.push({roleId:chat.roleId, name:text(chat.name, 120), top:number(chat.top), bottom:chat.bottom === true,
         anchor:text(chat.anchor, 200), offset:Number.isFinite(chat.offset) ? chat.offset : 0,
         limit:Number.isSafeInteger(chat.limit) ? Math.min(10000, Math.max(120, chat.limit)) : 120,
-        endId:text(chat.endId, 200), messages:(Array.isArray(chat.messages) ? chat.messages : []).slice(-24)
+        endId:text(chat.endId, 200), messages:(Array.isArray(chat.messages) ? chat.messages : []).slice(-100)
           .filter(message => typeof message?.id === 'string' && typeof message.content === 'string')
-          .map(message => ({id:message.id.slice(0, 200), sender:message.sender === 'user' ? 'user' : 'assistant', content:message.content.slice(0, 1200)}))});
+          .map(message => {
+            const content = message.content.length <= Math.min(20000, messageBudget) ? message.content : '这条消息请联网后查看';
+            messageBudget -= content.length;
+            return {id:message.id.slice(0, 200), sender:message.sender === 'user' ? 'user' : 'assistant', content};
+          })});
     }
     return output;
   }
@@ -130,10 +137,12 @@
     if (!raw) return null;
     try {
       const cache = JSON.parse(raw);
-      if (cache.version !== 1 || !/^[a-f0-9]{64}$/.test(cache.scope) || !Number.isFinite(cache.at) || Date.now() - cache.at > maxAge || cache.at > Date.now() + 60000) {
+      if (cache.version !== 1 || !/^[a-f0-9]{64}$/.test(cache.scope) || !Number.isFinite(cache.at) || cache.at > Date.now() + 60000) {
         localStorage.removeItem(storageKey); return null;
       }
-      return {...cleanCheckpoint(cache), version:1, scope:cache.scope, at:cache.at};
+      const result = {...cleanCheckpoint(cache), version:1, scope:cache.scope, at:cache.at};
+      if (Date.now() - cache.at > maxAge) { result.chats = []; result.contacts = []; }
+      return result;
     } catch (error) {
       console.warn('App 文字恢复副本已损坏，已清理。', error);
       localStorage.removeItem(storageKey); return null;
@@ -158,6 +167,9 @@
     clearTimeout(saveTimer);
     if (!scope || !adapter?.ready() || offline) return;
     saved = {version:1, scope, at:Date.now(), ...cleanCheckpoint(adapter.capture(saved))};
+    persistSaved();
+  }
+  function persistSaved() {
     try { localStorage.setItem(storageKey, JSON.stringify(saved)); }
     catch (error) {
       console.error('App 文字草稿保存失败', error);
@@ -221,7 +233,7 @@
   function openChat(roleId) {
     if (typeof roleId !== 'string' || !roleId || roleId.length > 200) return false;
     if (offline) {
-      if (saved?.chats.some(chat => chat.roleId === roleId) || saved?.drafts.some(draft => draft.roleId === roleId)) { offlineRole = roleId; showOffline(); return true; }
+      if (saved?.contacts.some(contact => contact.roleId === roleId) || saved?.chats.some(chat => chat.roleId === roleId) || saved?.drafts.some(draft => draft.roleId === roleId)) { offlineRole = roleId; showOffline(); return true; }
       pendingChat = roleId; return false;
     }
     if (!adapter?.ready()) { pendingChat = roleId; return false; }
@@ -238,26 +250,37 @@
     window.PipiChatNotice.navigated();
     scheduleCheckpoint();
   }
-  function showOffline(reason = '') {
+  function showOffline(reason = '', connecting = false) {
     const cache = saved || readCache();
-    if (!cache || (!cache.chats.length && !cache.drafts.length)) return false;
-    saved = cache; offline = true;
+    if (!cache || (!cache.chats.length && !cache.drafts.length && !cache.contacts.length)) return false;
+    saved = cache; offline = true; restored = false;
     const root = view(); root.replaceChildren(); root.dataset.route = 'android-offline';
     const page = document.createElement('section'); page.className = 'android-offline-page';
-    const heading = document.createElement('h2'); heading.textContent = '离线文字副本';
-    const note = document.createElement('p'); note.className = 'android-offline-note'; note.textContent = '暂时无法连接。这里保留这台设备上次看过的少量文字和草稿；联网校验登录后可继续聊天。';
+    const heading = document.createElement('h2'); heading.textContent = connecting ? '正在连接' : '离线聊天';
+    const note = document.createElement('p'); note.className = 'android-offline-note'; note.textContent = '正在显示本机保存的联系人和文字。可以继续写草稿，联网后由你点击发送；这里不会自动发送。';
     const retry = document.createElement('button'); retry.className = 'primary-btn'; retry.textContent = '重新连接'; retry.onclick = () => adapter.retry();
     const settings = document.createElement('button'); settings.className = 'secondary-btn'; settings.textContent = 'App 连接设置'; settings.onclick = () => { location.href = '/__android/settings'; };
     page.append(heading, note, retry, settings);
     if (reason) { const error = document.createElement('p'); error.className = 'android-offline-note'; error.textContent = reason; page.append(error); }
     const roles = new Map(cache.chats.map(chat => [chat.roleId, chat]));
+    for (const contact of cache.contacts) if (!roles.has(contact.roleId)) roles.set(contact.roleId, {...contact, messages:[]});
     for (const draft of cache.drafts) if (!roles.has(draft.roleId)) roles.set(draft.roleId, {roleId:draft.roleId, name:'聊天草稿', messages:[]});
     if (offlineRole && roles.has(offlineRole)) {
       const chat = roles.get(offlineRole), title = document.createElement('h3'); title.textContent = chat.name; page.append(title);
       const backButton = document.createElement('button'); backButton.className = 'secondary-btn'; backButton.textContent = '返回离线列表'; backButton.onclick = () => { offlineRole = ''; showOffline(); }; page.append(backButton);
       for (const message of chat.messages) { const line = document.createElement('p'); line.className = `android-offline-message ${message.sender}`; line.textContent = message.content; page.append(line); }
       const draft = cache.drafts.find(draft => draft.roleId === offlineRole);
-      if (draft) { const label = document.createElement('h3'); label.textContent = '尚未发送的草稿'; const value = document.createElement('textarea'); value.value = draft.text; value.readOnly = true; value.setAttribute('aria-label', '尚未发送的文字草稿（只读）'); page.append(label, value); }
+      const label = document.createElement('h3'); label.textContent = '尚未发送的草稿';
+      const value = document.createElement('textarea'); value.value = draft?.text || ''; value.maxLength = 20000; value.setAttribute('aria-label', '尚未发送的文字草稿');
+      value.oninput = () => {
+        const roleId = offlineRole;
+        cache.drafts = cache.drafts.filter(item => item.roleId !== roleId);
+        if (value.value) cache.drafts.push({roleId, text:value.value});
+        saved = {...cleanCheckpoint(cache), version:1, scope:cache.scope, at:cache.at};
+        cache.drafts = saved.drafts;
+        persistSaved();
+      };
+      page.append(label, value);
     } else {
       for (const chat of roles.values()) { const button = document.createElement('button'); button.className = 'android-offline-chat'; button.textContent = chat.name || '聊天'; button.onclick = () => { offlineRole = chat.roleId; showOffline(); }; page.append(button); }
     }
@@ -267,5 +290,6 @@
   document.addEventListener('scroll', scheduleCheckpoint, true);
   document.addEventListener('visibilitychange', () => { if (document.hidden) { checkpoint(); endGesture(); } });
   window.addEventListener('pagehide', checkpoint);
+  window.addEventListener('online', () => { if (offline) adapter.retry(); });
   window.PipiAndroidPage = Object.freeze({back, checkpoint, openChat, forgetDeviceCache, clearSession, beginSession, restore, leaving, ready, navigated, observeState:window.PipiChatNotice.observeState, showOffline, connect(value) { adapter = value; window.PipiChatNotice.connect(value); }});
 })();

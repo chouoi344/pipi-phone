@@ -47,7 +47,7 @@ test('binary upload retains bytes, requires login/CSRF and serves authenticated 
   assert.equal(fs.readdirSync(path.join(f.dataDir,'media')).some(name=>name.endsWith('.tmp')),false);
 });
 
-test('20MB original images and 8MB audio retain exact bytes; limits reject oversized and forged content',async t=>{
+test('20MiB legacy originals and 8MiB audio retain exact bytes under the new 64MiB static limit; oversized content rejects',async t=>{
   const f=await fixture(t),image=sizedPng(20*1024*1024),audio=wav(8*1024*1024);
   for(const [bytes,mime,ext] of [[image,'image/png','png'],[audio,'audio/wav','wav']]){
     const url=await f.upload(bytes,mime),response=await f.request(url);assert.equal(url.endsWith('.'+ext),true);
@@ -56,7 +56,7 @@ test('20MB original images and 8MB audio retain exact bytes; limits reject overs
       const ranged=await f.request(url,{headers:{Range:'bytes=0-1'}});assert.equal(ranged.status,206);assert.equal(ranged.headers.get('content-type'),'audio/wav');assert.deepEqual(Buffer.from(await ranged.arrayBuffer()),Buffer.from('RI'));
     }
   }
-  for(const [bytes,mime] of [[Buffer.alloc(20*1024*1024+1),'image/png'],[Buffer.alloc(10*1024*1024+1),'image/gif'],[Buffer.alloc(8*1024*1024+1),'audio/wav']]){
+  for(const [bytes,mime] of [[Buffer.alloc(64*1024*1024+1),'image/png'],[Buffer.alloc(10*1024*1024+1),'image/gif'],[Buffer.alloc(8*1024*1024+1),'audio/wav']]){
     const r=await f.request('/api/media/upload',{body:bytes,binary:true,headers:{'Content-Type':mime}});assert.equal(r.status,413);
   }
   for(const bytes of [Buffer.from('RIFF'),Buffer.from('not an audio file')])assert.equal((await f.request('/api/media/upload',{body:bytes,binary:true})).status,400);

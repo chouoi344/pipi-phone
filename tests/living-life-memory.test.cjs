@@ -26,7 +26,7 @@ const MemoryStore=require('../lib/engine/memory-store.cjs');
 const Memory=require('../lib/engine/modules/memory.cjs');
 const {createApp}=require('../scripts/sample-data.cjs');
 
-const PNG_B64='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBHoAAAAASUVORK5CYII=';
+const PNG_B64='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWMwCsj7DwADmAHwphbYCgAAAABJRU5ErkJggg==';
 const PNG=`data:image/png;base64,${PNG_B64}`;
 const PNG_BODY='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 const MP3=fs.readFileSync(path.join(__dirname,'../scripts/demo-assets/tone.mp3'));

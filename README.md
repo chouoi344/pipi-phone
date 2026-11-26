@@ -73,10 +73,11 @@ cd /opt && repo=https://github.com/chouoi344/pipi-phone && release=$(curl --http
 安装 Node.js 24 或更新版本后，在源码目录执行下面的命令。
 
 ```sh
+npm ci --omit=dev
 node server.cjs
 ```
 
-Windows 也可以双击 `start.cmd`。打开 [http://127.0.0.1:18766/](http://127.0.0.1:18766/) 设置访问密码。本机直接运行无需安装 npm 依赖，默认资料目录为 `data/`。
+Windows 也可以双击 `start.cmd`，Linux / macOS 可运行 `./start.sh`；启动脚本会在需要时安装锁定版本的图片处理依赖。打开 [http://127.0.0.1:18766/](http://127.0.0.1:18766/) 设置访问密码，默认资料目录为 `data/`。Docker 镜像已包含依赖。
 
 </details>
 

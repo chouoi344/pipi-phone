@@ -64,6 +64,8 @@ The separately supplied Android application was examined locally to measure dime
 
 Node.js and its bundled SQLite are runtime dependencies, not copied application sources. Install Node.js 24 LTS or use the supplied Docker configuration. Observe the runtime distribution's own notices.
 
+`sharp` 0.35.5 (https://github.com/lovell/sharp, Apache-2.0) provides the independent Node image preparation used for model requests. Its platform packages include libvips and codec libraries with their own notices. Exact package versions and integrity hashes are recorded in `package-lock.json`; installed package distributions retain their license files. No AstrBot runtime is included.
+
 ## Evaluated but not incorporated
 
 ZeroChat, AstrBot, SillyTavern, LovePhone Studio, Dinero.js and Farmhand were evaluated during planning. No source or media from these repositories has been copied into this prototype. They remain candidates for later evaluation; this application makes no plugin compatibility promise.

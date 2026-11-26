@@ -104,7 +104,7 @@ docker compose exec pipi-phone cat /app/data/setup-token.txt
 
 首次安装从空白通讯录和聊天记录开始。在聊天首页点“创建新朋友”即可添加角色。
 
-也可安装 Node.js 24 或更新版本后执行 `node server.cjs`；Windows 可双击 `start.cmd`；Linux / macOS 可执行 `./start.sh`。无需 `npm install`。
+也可安装 Node.js 24 或更新版本后，先执行 `npm ci --omit=dev`，再执行 `node server.cjs`。Windows 可双击 `start.cmd`，Linux / macOS 可执行 `./start.sh`，脚本会在需要时安装锁定版本的图片处理依赖。Docker 镜像已包含依赖。
 
 ## 模型和屁屁自己的站（choupi.tech）
 

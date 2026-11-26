@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const source=fs.readFileSync(path.join(__dirname,'../public/wardrobe-import.js'),'utf8');
+function fixture(declared=true,animated=false){const uploaded=[],url='/api/media/'+'a'.repeat(64)+'.png',app={readImage:async file=>file,detectAnimatedImage:async()=>animated,uploadMedia:async file=>{uploaded.push(file);return url;},...(declared?{mediaLimits:()=>({imageBytes:64*1024*1024,preserveOriginal:true})}:{})},scope=vm.createContext({window:{Pipi:app}});vm.runInContext(source,scope);return {compress:scope.window.PipiWardrobeImport.compress,uploaded,url};}
+test('declared new server wardrobe upload preserves original bytes without canvas/base64 conversion',async()=>{const f=fixture(),file={size:64*1024*1024,type:'image/png'},result=await f.compress(file);assert.equal(result.image,f.url);assert.equal(result.bytes,file.size);assert.equal(f.uploaded[0],file);});
+test('old wardrobe frontend fallback remains 20 MiB and explicit new limit rejects 64 MiB plus one byte',async()=>{await assert.rejects(fixture(false).compress({size:20*1024*1024+1,type:'image/png'}),/20 MB/);await assert.rejects(fixture().compress({size:64*1024*1024+1,type:'image/png'}),/64 MB/);});
+test('original-preserving wardrobe upload still rejects GIF and detected animation before uploading',async()=>{for(const [file,animated]of[[{size:1,type:'image/gif'},false],[{size:1,type:'image/webp'},true]]){const f=fixture(true,animated);await assert.rejects(f.compress(file),/静态图片/);assert.equal(f.uploaded.length,0);}});

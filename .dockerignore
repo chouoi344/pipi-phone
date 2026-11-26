@@ -13,7 +13,14 @@ coverage
 .pipi-updater
 .pipi-update-channel
 artifacts
-android
+outputs
+android/.gradle
+android/local.properties
+android/**/build
+**/*.jks
+**/*.keystore
+**/google-services.json
+android/*signing*.properties
 qa-*
 
 scripts/issue-waterdrop-code.cjs

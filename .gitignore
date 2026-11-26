@@ -12,6 +12,8 @@ node_modules/
 *.zip
 coverage/
 test-results/
+/outputs/standalone-batch1/
+/outputs/integrated-optimization/
 artifacts/
 .codex/
 .pipi-updater/

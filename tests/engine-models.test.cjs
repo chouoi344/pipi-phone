@@ -3,6 +3,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),http=require('node:http');
 const M=require('../lib/engine/models.cjs'),P=require('../lib/providers.cjs');
 const SECRET='ISOLATED_MODEL_TEST_KEY';
+const VALID_PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWMwCsj7DwADmAHwphbYCgAAAABJRU5ErkJggg==';
 process.env.ALLOW_PRIVATE_PROVIDERS='1';
 test.beforeEach(t=>{t.mock.method(require('node:timers/promises'),'setTimeout',async()=>{});});
 test.beforeEach(t=>t.mock.method(globalThis,'fetch',async url=>{
@@ -339,7 +340,7 @@ test('connection test, recognition, transcription and speech use new assignments
     answer(res,req.body.messages[0].role==='system'?'[]':'OK',{prompt_tokens:20,completion_tokens:3});
   });
   const s=configured(m.url,[model('main'),model('stt','custom',{kind:'stt',capabilities:[]}),model('tts','custom',{kind:'tts',capabilities:[]})]);s.settings.ai.assign.caption='main';s.settings.ai.models[0].capabilities.push('image');s.settings.ai.assign.stt='stt';s.settings.ai.assign.tts='tts';const usage=[];const opts={onUsage:x=>usage.push(x)};
-  assert.equal((await P.test(s,'chat',{modelId:'main',...opts})).ok,true);assert.deepEqual(await P.recognize(s,'data:image/png;base64,AAAA',opts),[]);assert.equal(await P.transcribe(s,'data:audio/webm;base64,YWJj',opts),'转写文字');assert.match(await P.speak(s,'朗读文字',opts),/^data:audio\/mpeg;base64,/);
+  assert.equal((await P.test(s,'chat',{modelId:'main',...opts})).ok,true);assert.deepEqual(await P.recognize(s,VALID_PNG,opts),[]);assert.equal(await P.transcribe(s,'data:audio/webm;base64,YWJj',opts),'转写文字');assert.match(await P.speak(s,'朗读文字',opts),/^data:audio\/mpeg;base64,/);
   assert.deepEqual(usage.map(x=>x.purpose),['test','caption','stt','tts']);assert.equal(usage[2].inputTokens,500);assert.equal(usage[3].outputTokens,500);assert.equal(m.requests[2].raw.includes('name="model"\r\n\r\nstt'),true);assert.equal(m.requests[3].body.model,'tts');
 });
 test('length hints count Chinese, emoji graphemes, images and voice',()=>{
@@ -523,7 +524,7 @@ test('图片转述只使用手选模型，普通对话的识图和回退设置�
   ]);
   assert.deepEqual(M.visionIds(s.settings.ai),[]);
   await assert.rejects(M.call(s,{purpose:'caption',messages:[]}),{code:'PROVIDER_UNCONFIGURED'});
-  const messages=[{role:'user',content:[{type:'image_url',image_url:{url:'data:image/png;base64,AAAA'}}]}];
+  const messages=[{role:'user',content:[{type:'image_url',image_url:{url:VALID_PNG}}]}];
   assert.equal((await M.call(s,{messages})).modelId,'main');
   assert.deepEqual(upstream.requests[0].body.messages,messages);
 

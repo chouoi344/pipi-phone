@@ -46,7 +46,8 @@ async function renderFromStatus(status){
     const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     function header(){return '';}
     async function api(route){calls.push(route);return route==='/api/status'?status:{revision:0};}
-    function setState(next){state=next;}function refresh(){}function renderAuth(){}
+    function setState(next){state=next;}function refresh(){}function renderAuth(setup,error){if(error)throw new Error(error);}
+    ${productFunction('configureMediaLimits')}
     ${productFunction('renderAbout')}
     ${productFunction('boot')}
     globalThis.ui={boot,renderAbout};`,scope);

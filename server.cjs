@@ -9,11 +9,14 @@ const {
 const S=require('./lib/state.cjs'),AI=require('./lib/providers.cjs'),Media=require('./lib/media-store.cjs');
 const Models=require('./lib/engine/models.cjs'),Registry=require('./lib/engine/registry.cjs'),Jobs=require('./lib/engine/scheduler.cjs'),Time=require('./lib/engine/time.cjs'),Runtime=require('./lib/engine/runtime.cjs');
 const Stickers=require('./lib/engine/stickers.cjs');
+const ModelImages=require('./lib/engine/model-images.cjs');
 const {Readable}=require('node:stream'),{pipeline}=require('node:stream/promises');
 const requestDeadline=Symbol('pipi.requestDeadline');
 const {createUpdateService}=require('./lib/updates.cjs');
 const {createAndroidUpdateService}=require('./lib/android-updates.cjs');
 const JsonResponse=require('./lib/json-response.cjs');
+const RequestLimits=require('./lib/request-limits.cjs');
+const ClientSync=require('./lib/client-sync.cjs');
 const Waterdrop=require('./lib/waterdrop-activation.cjs');
 const scrypt=promisify(crypto.scrypt),VERSION=require('./package.json').version;
 // Server-only releases keep the cache key shipped in the current web and Android UI.
@@ -85,8 +88,10 @@ function createApp(options={}){
   catch(error){db.close();throw error;}
   // Older stored settings can predate timezone validation. Check once per changed value.
   let previousZone, storedZone;
-  const parse=json=>{
+  const parse=(json,beforeDefaults)=>{
     const state=JSON.parse(json);
+    // Capture stored values before time-dependent defaults (for example status expiry) change them.
+    beforeDefaults?.(state);
     state.profile.cover??='';
     state.stickers??=[];
     state.emojiRecents??=[];
@@ -112,6 +117,9 @@ function createApp(options={}){
   };
   const storedJson=()=>db.prepare('SELECT json FROM app WHERE id=1').get().json;
   const read=()=>parse(storedJson());
+  const syncJournal=ClientSync.createJournal({revision:read().revision,...options.clientSync});
+  const clientSync=ClientSync.createReader({db,parse,state:S,journal:syncJournal});
+  const stateResponse=(req,state,extra={})=>req.headers['x-pipi-state-mode']==='delta'?{...extra,sync:clientSync.view(req.headers['x-pipi-sync-cursor'])}:{...extra,state:S.publicState(typeof state==='function'?state():state)};
   const androidFcm=require('./lib/android-fcm.cjs').create({
     credentialFile:process.env.PIPI_FCM_SERVICE_ACCOUNT_FILE,...options.fcm,getMeta,setMeta,getState:read,
     sessionValid:hash=>Boolean(db.prepare('SELECT hash FROM sessions WHERE hash=? AND expires>?').get(hash,Date.now())),
@@ -150,10 +158,10 @@ function createApp(options={}){
       throw e;
     }
   }
-  function mutate(fn){
-    let notificationSnapshot;
+  function mutate(fn,{messages=true}={}){
+    let notificationSnapshot,syncBefore;
     const result=transaction(()=>{
-      const json=storedJson(),state=S.limitBaseline(parse(json),Buffer.byteLength(json));
+      const json=storedJson(),state=S.limitBaseline(parse(json,stored=>{syncBefore=syncJournal.capture(stored,{messages});}),Buffer.byteLength(json));
       notificationSnapshot=androidFcm.snapshot(state);
       const previous=Media.mediaSnapshot(state),value=fn(state);
       Media.externalize(dataDir,state,{previous});
@@ -165,6 +173,7 @@ function createApp(options={}){
         state,value
       };
     });
+    syncJournal.commit(syncBefore,result.state);
     publish('revision',{revision:result.state.revision});
     androidFcm.publish(notificationSnapshot,result.state);
     return result;
@@ -326,37 +335,8 @@ function createApp(options={}){
   if(setupToken&&setupAllowed&&setupTokenRequired()&&(!fs.existsSync(tokenFile)||fs.readFileSync(tokenFile,'utf8').trim()!==setupToken))fs.writeFileSync(tokenFile,setupToken+'\n',{mode:0o600});
   const host=options.host||process.env.HOST||'127.0.0.1',port=options.port??Number(process.env.PORT||18766);
   const allowedHosts=new Set(['localhost','127.0.0.1','[::1]',host,...String(process.env.ALLOWED_HOSTS||'').split(',').map(x=>x.trim()).filter(Boolean)]);
-  const buckets=new Map();
+  const limits=RequestLimits.create(),rate=limits.consume;
   let inFlight=0,activeUploads=0,closed=false;
-  // Aggregate IPv6 addresses to /64 for rate limiting to prevent DDoS from large IPv6 subnets
-  function rateLimitKey(clientAddr){
-    const addr=String(clientAddr||'').split('%')[0];
-    // IPv4 and IPv4-mapped IPv6 (::ffff:1.2.3.4) stay per-address.
-    if(!require('node:net').isIPv6(addr)||addr.includes('.'))return clientAddr;
-    // Expand "::" so compressed and full spellings of one /64 share a bucket.
-    const [head,tail='']=addr.toLowerCase().split('::');
-    const left=head?head.split(':'):[],right=addr.includes('::')&&tail?tail.split(':'):[];
-    const groups=addr.includes('::')?[...left,...Array(8-left.length-right.length).fill('0'),...right]:left;
-    return groups.slice(0,4).map(g=>parseInt(g,16).toString(16)).join(':')+'::/64';
-  }
-  function rate(key,max=15,window=60000){
-    const now=Date.now();
-    if(buckets.size>5000){
-      for(const [k,v]of buckets)if(v.until<now)buckets.delete(k);
-      // Many distinct sources must not lock everyone out: drop the windows that started first.
-      for(const k of buckets.keys()){if(buckets.size<=5000)break;buckets.delete(k);}
-    }
-    const item=buckets.get(key);
-    if(!item||item.until<now){
-      // Re-insert so the map stays ordered by window start.
-      buckets.delete(key);
-      buckets.set(key,{
-        n:1,until:now+window
-      });
-      return;
-    }
-    if(++item.n>max)S.fail('请求过多，请稍后重试',429,'RATE_LIMIT');
-  }
   function session(req){
     const cookie=String(req.headers.cookie||'');
     const match=cookie.match(/(?:^|;\s*)pipi_session=([a-f0-9]{64})(?:;|$)/);
@@ -552,17 +532,19 @@ function createApp(options={}){
     }
     const p=u.pathname;
     if(!p.startsWith('/api/'))return staticFile(req,res,p,u.searchParams);
-    if(req.method==='GET'&&p==='/api/android-shell-manifest')return json(res,200,await require('./lib/android-assets.cjs').manifest());
+    if(req.method==='GET'&&p==='/api/android-shell-manifest')return json(res,200,{...await require('./lib/android-assets.cjs').manifest(),clientProtocol:ClientSync.protocol});
     if(req.method==='GET'&&p==='/api/status'){
       const auth=session(req);
       return json(res,200,{
         setupRequired:!getMeta('password'),authenticated:!!auth,...(auth?{
           csrfToken:auth.csrf,appSessionScope:androidSessionScope(auth.hash),appearance:appearance()
-        }:{}),version:VERSION,sourceUrl,rolePanel:true,softwareUpdates:true,binaryMedia:true,imageVariants:true,storageMaintenance:true,streamingBackup:true,accountSecurity:true,setupTokenRequired:setupTokenRequired(),messageLimit:50000,momentExclusions:true
+        }:{}),version:VERSION,clientProtocol:ClientSync.protocol,sourceUrl,rolePanel:true,softwareUpdates:true,binaryMedia:true,mediaLimits:{imageBytes:Media.MAX_IMAGE_BYTES,animatedImageBytes:Media.MAX_ANIMATED_BYTES,audioBytes:Media.MAX_AUDIO_BYTES,profileImageBytes:20*1024*1024},imageVariants:true,storageMaintenance:true,streamingBackup:true,accountSecurity:true,setupTokenRequired:setupTokenRequired(),messageLimit:50000,momentExclusions:true
       });
     }
     if(req.method==='POST'&&(p==='/api/setup'||p==='/api/login')){
-      rate('auth:'+rateLimitKey(clientAddress),10,15*60000);
+      const address=RequestLimits.clientKey(clientAddress),failureKey='password:'+address;
+      if(p==='/api/setup')rate('setup:'+address,10,15*60000);
+      else rate('login:'+address,60,60000);
       const b=await body(req,65536);
       const password=S.text(b.password,256);
       if(p==='/api/setup'){
@@ -593,16 +575,17 @@ function createApp(options={}){
           ...makeSession(req,res),state:S.publicState(read()),appearance:appearance()
         });
       }
-      const stored=getMeta('password');
-      if(!stored)S.fail('请先初始化',409,'SETUP_REQUIRED');
-      const {
-        salt,hash
-      }       =JSON.parse(stored);
-      if(!safeEqual(await passwordHash(password,salt),hash))S.fail('密码错误',401,'INVALID_PASSWORD');
-      if(closed)S.fail('服务器正在关闭',503,'CLOSING');
-      if(getMeta('password')!==stored)S.fail('密码已更新，请重新登录',401,'INVALID_PASSWORD');
-      return json(res,200,{
-        ...makeSession(req,res),state:S.publicState(read()),appearance:appearance()
+      return limits.attempt(failureKey,10,async()=>{
+        const stored=getMeta('password');
+        if(!stored)S.fail('请先初始化',409,'SETUP_REQUIRED');
+        const {salt,hash}=JSON.parse(stored);
+        if(!safeEqual(await passwordHash(password,salt),hash)){limits.record(failureKey,15*60000);S.fail('密码错误',401,'INVALID_PASSWORD');}
+        if(closed)S.fail('服务器正在关闭',503,'CLOSING');
+        if(getMeta('password')!==stored)S.fail('密码已更新，请重新登录',401,'INVALID_PASSWORD');
+        limits.clear(failureKey);
+        return json(res,200,{
+          ...makeSession(req,res),state:S.publicState(read()),appearance:appearance()
+        });
       });
     }
     const mutating=!['GET','HEAD'].includes(req.method),auth=authorized(req,mutating);
@@ -658,10 +641,20 @@ function createApp(options={}){
       let snapshot;
       try{snapshot=streamingBackup.take(S.text(u.searchParams.get('token'),100),auth.hash);}catch(error){unlock();throw error;}
       return await transfer(req,res,async signal=>{
+        let disposing;
+        const dispose=()=>disposing??=snapshot.dispose();
+        const archive=(async function*(){
+          let last;
+          for await(const chunk of streamingBackup.pack(snapshot.entries)){if(last)yield last;last=chunk;}
+          // Hold the final TAR padding until cleanup finishes: clients can complete a
+          // Content-Length response before pipeline's finally has otherwise run.
+          await dispose();unlock();
+          yield last;
+        })();
         try{
           res.writeHead(200,{'Content-Type':'application/x-tar','Content-Disposition':`attachment; filename="${snapshot.filename}"`,'Content-Length':snapshot.estimatedBytes});
-          await pipeline(Readable.from(streamingBackup.pack(snapshot.entries)),res,{signal});
-        }finally{unlock();await snapshot.dispose();}
+          await pipeline(Readable.from(archive),res,{signal});
+        }finally{try{await dispose();}finally{unlock();}}
       },{idle:true});
     }
     if(req.method==='POST'&&p==='/api/restore/tar'){
@@ -688,6 +681,7 @@ function createApp(options={}){
           if(restoreBusy())S.fail('后台任务进行中，请完成后再恢复',409,'BUSY');
           const commit=()=>{transaction(()=>{if(living)MemoryStore.restoreAttached(db,living,restored);restored.revision=current.revision+1;db.prepare('UPDATE app SET json=? WHERE id=1').run(JSON.stringify(restored));db.exec('DELETE FROM requests');});rollback=null;};
           if(living)MemoryStore.withRestoreJournal(db,dataDir,commit);else commit();
+          syncJournal.reset(restored.revision);
           publish('revision',{revision:restored.revision});
           try{stickerQueue.recover();stickerQueue.idle().catch(error=>console.error('恢复后表情识别失败',error));}catch(error){console.error('恢复后无法继续表情识别',error);}
           const previousAI=Models.sanitize(current.settings.ai),state=S.publicState(restored),clearedModelKeys=state.settings.ai.sources.some(source=>!source.keySet&&previousAI.sources.some(previous=>previous.id===source.id&&previous.keySet));
@@ -714,6 +708,18 @@ function createApp(options={}){
         if(revision!==null&&revision!==undefined&&String(revision)===since)return json(res,200,{revision,unchanged:true});
       }
       return json(res,200,S.publicState(read()));
+    }
+    if(req.method==='GET'&&p==='/api/sync')return json(res,200,clientSync.view(u.searchParams.get('cursor')));
+    if(req.method==='GET'&&['/api/messages','/api/messages/search','/api/messages/by-id'].includes(p)){
+      const roleId=S.text(u.searchParams.get('roleId'),100);if(!roleId)S.fail('请选择会话');
+      if(p==='/api/messages/by-id'){
+        const ids=(u.searchParams.get('ids')||'').split(',');
+        if(ids.length>100||!ids.every(id=>id&&id.length<=100)||new Set(ids).size!==ids.length)S.fail('请选择 1 到 100 条不同的消息');
+        return json(res,200,clientSync.byIds(roleId,ids));
+      }
+      const limit=S.integer(Number(u.searchParams.get('limit')??50),1,100),beforeId=S.text(u.searchParams.get('beforeId')??undefined,100),query=S.text(u.searchParams.get('q')??undefined,1000).trim(),type=S.enumOf(u.searchParams.get('type')??'all',['all','image','payment','voice','forward','link']);
+      const timestamp=key=>{const value=u.searchParams.get(key);if(value===null)return undefined;return S.integer(Number(value),0,8640000000000000);},from=timestamp('from'),to=timestamp('to');if(from!==undefined&&to!==undefined&&from>=to)S.fail('筛选时间范围无效');
+      return json(res,200,clientSync.page({roleId,limit,beforeId,...(p==='/api/messages/search'?{query,type,from,to}:{})}));
     }
     if(req.method==='GET'&&p==='/api/engine/chat-progress'){
       const role=S.role(read(),S.text(u.searchParams.get('roleId'),100));
@@ -831,7 +837,7 @@ function createApp(options={}){
         try{selectedScopes=JSON.parse(rawScopes);}catch{selectedScopes=rawScopes.split(',').map(x=>decodeURIComponent(x)).filter(Boolean);}
       }
       const resImport=mutate(s=>MS.executeImport(dataDir,s,{roleId,rawInput:rawText,format,selectedScopes,includeArchived,duplicateStrategy}));
-      return json(res,200,{result:resImport.value,state:S.publicState(resImport.state)});
+      return json(res,200,stateResponse(req,resImport.state,{result:resImport.value}));
     }
     if(req.method!=='POST')S.fail('接口不存在',404,'NOT_FOUND');
     if(p==='/api/media/upload'&&!String(req.headers['content-type']||'').toLowerCase().startsWith('application/json')){
@@ -859,19 +865,23 @@ function createApp(options={}){
     rate('api:'+clientAddress,180,60000);
     switch(p){
       case '/api/account/password':{
-        rate('auth:'+clientAddress,10,15*60000);
+        const address=RequestLimits.clientKey(clientAddress),failureKey='password:'+address;
+        rate('login:'+address,60,60000);
         const currentPassword=S.text(b.currentPassword,256),newPassword=S.text(b.newPassword,256),confirmPassword=S.text(b.confirmPassword,256);
         if(newPassword.length<8)S.fail('新密码至少需要 8 个字符');
         if(newPassword!==confirmPassword)S.fail('两次输入的新密码不一致');
-        const stored=getMeta('password'),current=JSON.parse(stored);
-        if(!safeEqual(await passwordHash(currentPassword,current.salt),current.hash))S.fail('当前密码错误',401,'INVALID_PASSWORD');
-        const salt=crypto.randomBytes(24).toString('hex'),hash=await passwordHash(newPassword,salt);
-        authorized(req,true);assertWritable();
-        transaction(()=>{
-          if(getMeta('password')!==stored)S.fail('密码已更新，请重新输入当前密码',409,'PASSWORD_CHANGED');
-          setMeta('password',JSON.stringify({salt,hash}));revokeOthers(auth);
+        return limits.attempt(failureKey,10,async()=>{
+          const stored=getMeta('password'),current=JSON.parse(stored);
+          if(!safeEqual(await passwordHash(currentPassword,current.salt),current.hash)){limits.record(failureKey,15*60000);S.fail('当前密码错误',401,'INVALID_PASSWORD');}
+          const salt=crypto.randomBytes(24).toString('hex'),hash=await passwordHash(newPassword,salt);
+          authorized(req,true);assertWritable();
+          transaction(()=>{
+            if(getMeta('password')!==stored)S.fail('密码已更新，请重新输入当前密码',409,'PASSWORD_CHANGED');
+            setMeta('password',JSON.stringify({salt,hash}));revokeOthers(auth);
+          });
+          limits.clear(failureKey);
+          return json(res,200,{ok:true,...account(auth),message:'密码已修改，其他设备需要重新登录'});
         });
-        return json(res,200,{ok:true,...account(auth),message:'密码已修改，其他设备需要重新登录'});
       }
       case '/api/account/sessions/revoke':
         revokeOthers(auth);
@@ -892,7 +902,7 @@ function createApp(options={}){
           if(shorter)expireMedia(state,items,retention,at,false);
         }).state;
         if(shorter)recordCleanup(cleanupKey,items,next,at);
-        return json(res,200,{storage:storageView(next),state:S.publicState(next)});
+        return json(res,200,stateResponse(req,next,{storage:storageView(next)}));
       }
       case '/api/backup/prepare':{
         if(typeof b.includeKeys!=='boolean'||typeof b.includeMedia!=='boolean')S.fail('请明确选择是否包含密钥和媒体');
@@ -906,7 +916,7 @@ function createApp(options={}){
       }
       case '/api/stickers/analyze':{
         stickerQueue.enqueue(b);
-        return json(res,200,{state:S.publicState(read())});
+        return json(res,200,stateResponse(req,read));
       }
       case '/api/logout':db.prepare('DELETE FROM sessions WHERE hash=?').run(auth.hash);
       androidFcm.removeSession(auth.hash);
@@ -937,7 +947,7 @@ function createApp(options={}){
             return require('./lib/engine/memory-store.cjs').deleteCard(dataDir,s,memory.roleId,memory.id);
           }
           return S.apply(s,type,b.payload===undefined?{}:b.payload);
-        });
+        },{messages:!['profile.save','settings.save'].includes(type)});
         if(['rolePersona.bind','rolePersona.save','rolePersona.delete','role.save'].includes(type))runtime.checkChatPersonas(result.state);
         if(type==='role.delete')require('./lib/engine/memory-store.cjs').removeRole(dataDir,null,b.payload?.id);
         if(type==='role.save'&&result.state.roles.find(r=>r.id===b.payload?.id)?.permissions.blocked)runtime.cancel(b.payload.id);
@@ -948,9 +958,7 @@ function createApp(options={}){
             runtime.enqueue(r.id,message.id);
           }
         }
-        return json(res,200,{
-          state:S.publicState(read())
-        });
+        return json(res,200,stateResponse(req,read));
       }
       case '/api/chat/media/thumbnail':{
         const messageId=S.text(b.messageId,100),thumb=S.image(b.thumb,false);
@@ -963,9 +971,9 @@ function createApp(options={}){
           return message;
         };
         const current=read();
-        if(target(current).meta?.thumb)return json(res,200,{state:S.publicState(current)});
+        if(target(current).meta?.thumb)return json(res,200,stateResponse(req,current));
         const result=mutate(state=>{const message=target(state);message.meta??={};if(!message.meta.thumb)message.meta.thumb=thumb;});
-        return json(res,200,{state:S.publicState(result.state)});
+        return json(res,200,stateResponse(req,result.state));
       }
       case '/api/chat/send':
       case '/api/chat':{
@@ -987,7 +995,13 @@ function createApp(options={}){
         const signatureBody={
           roleId,text,img,...(stickerId===undefined?{}:{stickerId}),...(audio?{audio,durationMs}:{}),...(quoteId?{quoteId}:{}),...variants
         },signature=digest(JSON.stringify(signatureBody));
-        const existing=db.prepare('SELECT * FROM requests WHERE id=?').get(requestId);
+        let existing=db.prepare('SELECT * FROM requests WHERE id=?').get(requestId);
+        let modelImage;
+        if(img&&!existing){
+          modelImage=await ModelImages.prepare(dataDir,img);
+          authorized(req,true);assertWritable();
+          existing=db.prepare('SELECT * FROM requests WHERE id=?').get(requestId);
+        }
         if(existing){
           // Older clients signed the media text before it was moved to a file.
           let matches=existing.signature===signature;
@@ -996,13 +1010,13 @@ function createApp(options={}){
             matches=existing.signature===digest(JSON.stringify(original));
           }
           if(existing.roleId!==roleId||!matches)S.fail('requestId 已用于其他消息',409,'REQUEST_REUSED');
-          return json(res,200,{
-            state:S.publicState(read())
-          });
+          return json(res,200,stateResponse(req,read));
         }
         let messageId;
         mutate(s=>{
           const r=S.role(s,roleId),meta={...variants};
+          S.chatAllowed(r);
+          if(modelImage)meta.modelImage=modelImage.url;
           if(stickerId!==undefined){
             const sticker=S.find(s.stickers,stickerId,'收藏表情');
             const media=require('./lib/media-store.cjs');
@@ -1029,7 +1043,7 @@ function createApp(options={}){
           db.prepare('INSERT INTO requests(id,roleId,signature,messageId) VALUES(?,?,?,?)').run(requestId,roleId,signature,m.id);
         });
         runtime.enqueue(roleId,messageId);
-        return json(res,200,{accepted:true,messageId,state:S.publicState(read())});
+        return json(res,200,stateResponse(req,read,{accepted:true,messageId}));
       }
       case '/api/chat/retry':{
         rate('ai:'+clientAddress,40);
@@ -1044,31 +1058,31 @@ function createApp(options={}){
           if(s.engine.summaries[m.roleId]?.coveredUntil>=m.createdAt)delete s.engine.summaries[m.roleId];
         });
         runtime.enqueue(m.roleId,m.id);
-        return json(res,200,{accepted:true,messageId:m.id,state:S.publicState(read())});
+        return json(res,200,stateResponse(req,read,{accepted:true,messageId:m.id}));
       }
       case '/api/moments/generate':{
         rate('ai:'+clientAddress,40);const s=read(),r=S.role(s,S.text(b.roleId,100));S.momentAllowed(r);
         // Reject here what the background run would reject, so the page is never told an impossible post was accepted.
         require('./lib/engine/modules/life-moments.cjs').eligible(s,r.id);chatModel(s,r);
         if(!runtime.initiate(r.id,{kind:'moment',instruction:'以你的角色身份写一条简短自然的朋友圈动态。只输出正文。'}))S.fail('该好友正在回复，请稍后再试',409,'CHAT_BUSY');
-        return json(res,200,{accepted:true,state:S.publicState(read())});
+        return json(res,200,stateResponse(req,read,{accepted:true}));
       }
       case '/api/engine/models':{
         if(req.headers['sec-fetch-site']&&req.headers['x-pipi-model-page']!=='card-save')S.fail('模型页面已更新，请刷新页面后再保存',409,'PROVIDER_CONFIG_CHANGED');
-        const result=mutate(s=>Models.save(s,b.ai,{stationPreset:b.stationPreset===true,checkSubmittedKeys:true}));return json(res,200,{state:S.publicState(result.state)});
+        const result=mutate(s=>Models.save(s,b.ai,{stationPreset:b.stationPreset===true,checkSubmittedKeys:true}));return json(res,200,stateResponse(req,result.state));
       }
       case '/api/engine/models/card':{
-        const result=mutate(s=>Models.saveCard(s,b));return json(res,200,{state:S.publicState(result.state)});
+        const result=mutate(s=>Models.saveCard(s,b));return json(res,200,stateResponse(req,result.state));
       }
       case '/api/engine/models/assign':{
-        const result=mutate(s=>Models.saveAssignments(s,b.assign));return json(res,200,{state:S.publicState(result.state)});
+        const result=mutate(s=>Models.saveAssignments(s,b.assign));return json(res,200,stateResponse(req,result.state));
       }
       case '/api/engine/models/station':{
         const unconfiguredGroups=[];
-        const result=mutate(s=>Models.configureStation(s,b.keys,{unconfiguredGroups,expectedKeyRevisions:b.expectedKeyRevisions??{}}));return json(res,200,{state:S.publicState(result.state),unconfiguredGroups});
+        const result=mutate(s=>Models.configureStation(s,b.keys,{unconfiguredGroups,expectedKeyRevisions:b.expectedKeyRevisions??{}}));return json(res,200,stateResponse(req,result.state,{unconfiguredGroups}));
       }
       case '/api/engine/models/source/delete':{
-        const result=mutate(s=>Models.removeSource(s,b.sourceId,{expectedKeyRevisions:{[b.sourceId]:b.expectedKeyRevision}}));return json(res,200,{state:S.publicState(result.state)});
+        const result=mutate(s=>Models.removeSource(s,b.sourceId,{expectedKeyRevisions:{[b.sourceId]:b.expectedKeyRevision}}));return json(res,200,stateResponse(req,result.state));
       }
       case '/api/engine/models/list':{
         rate('ai:'+clientAddress,40);
@@ -1107,7 +1121,7 @@ function createApp(options={}){
           if(id==='voice'&&b.tts!==undefined)Models.saveAssignments(s,{tts:S.text(b.tts,100)});
           Registry.apply(s,id,b.values);
         });
-        return json(res,200,{state:S.publicState(result.state)});
+        return json(res,200,stateResponse(req,result.state));
       }
       case '/api/engine/voices':{
         rate('ai:'+clientAddress,40);
@@ -1162,7 +1176,7 @@ function createApp(options={}){
               }
             }
           });
-          return json(res,200,{result:result.value,view:sched.view(result.state,roleId),state:S.publicState(result.state)});
+          return json(res,200,stateResponse(req,result.state,{result:result.value,view:sched.view(result.state,roleId)}));
         }
         rate('ai:'+clientAddress,40);S.chatAllowed(S.role(read(),roleId));
         if(inFlight+runtime.active>=8)S.fail('模型服务正忙，请稍后再试',429,'PROVIDER_BUSY');
@@ -1176,7 +1190,7 @@ function createApp(options={}){
           if(action==='describeOutfit')value=await require('./lib/engine/schedule-wardrobe.cjs').identifyImage(read(),{...opts,dataUri:b.image,dataDir});
           if(action==='identifyWardrobe')value=await require('./lib/engine/schedule-wardrobe.cjs').identifyImage(read(),{...opts,dataUri:b.image,dataDir,persistImage:false});
           const current=read();
-          return json(res,200,{[['describeOutfit','identifyWardrobe'].includes(action)?'item':'result']:value,view:sched.view(current,roleId),state:S.publicState(current)});
+          return json(res,200,stateResponse(req,current,{[['describeOutfit','identifyWardrobe'].includes(action)?'item':'result']:value,view:sched.view(current,roleId)}));
         }finally{inFlight--;}
       }
       case '/api/engine/memory':{
@@ -1186,7 +1200,7 @@ function createApp(options={}){
         if(action==='add'){
           const content=S.text(b.content,2000).trim();if(!content)S.fail('记忆内容不能为空');
           const result=mutate(s=>MS.upsertCard(dataDir,s,roleId,{content,memoryType:S.text(b.memoryType||'FACT',40),importance:MS.clampImportance(b.importance,0.7),locked:Boolean(b.locked),origin:'manual'}));
-          return json(res,200,{card:result.value,state:S.publicState(result.state)});
+          return json(res,200,stateResponse(req,result.state,{card:result.value}));
         }
         if(action==='update'){
           const id=S.text(b.id,100),content=S.text(b.content,2000).trim();if(!content)S.fail('记忆内容不能为空');
@@ -1194,27 +1208,27 @@ function createApp(options={}){
             const card=MS.getCard(dataDir,s,roleId,id);if(!card)S.fail('记忆不存在',404,'NOT_FOUND');
             return MS.upsertCard(dataDir,s,roleId,{...card,content,summary:content,memoryType:b.memoryType??card.memoryType,updatedAt:Date.now()});
           });
-          return json(res,200,{card:result.value,state:S.publicState(result.state)});
+          return json(res,200,stateResponse(req,result.state,{card:result.value}));
         }
         if(action==='restore'){
           const id=S.text(b.id,100);
           const result=mutate(s=>{const card=MS.setCardStatus(dataDir,s,roleId,id,{status:'active'});if(!card)S.fail('记忆不存在',404,'NOT_FOUND');return card;});
-          return json(res,200,{card:result.value,state:S.publicState(result.state)});
+          return json(res,200,stateResponse(req,result.state,{card:result.value}));
         }
         if(action==='toggleLock'){
           const id=S.text(b.id,100);
           const cur=MS.getCard(dataDir,read(),roleId,id);
           const result=mutate(s=>MS.setCardStatus(dataDir,s,roleId,id,{locked:cur?!cur.locked:Boolean(b.locked)}));
-          return json(res,200,{card:result.value,state:S.publicState(result.state)});
+          return json(res,200,stateResponse(req,result.state,{card:result.value}));
         }
         if(action==='delete'){
           const id=S.text(b.id,100);
           const result=mutate(s=>b.archive?MS.setCardStatus(dataDir,s,roleId,id,{status:'archived'}):MS.deleteCard(dataDir,s,roleId,id));
-          return json(res,200,{deleted:result.value,state:S.publicState(result.state)});
+          return json(res,200,stateResponse(req,result.state,{deleted:result.value}));
         }
         if(action==='saveProfile'){
           const result=mutate(s=>MS.saveProfile(dataDir,s,roleId,b.profile));
-          return json(res,200,{profile:result.value,state:S.publicState(result.state)});
+          return json(res,200,stateResponse(req,result.state,{profile:result.value}));
         }
         if(action==='recall'){
           const out=await Mem.recallForPrompt(read(),roleId,S.text(b.query||'',300),{dataDir,getState:read,onUsage:runtime.onUsage});
@@ -1222,7 +1236,7 @@ function createApp(options={}){
         }
         if(action==='consolidate'){
           const result=mutate(s=>Mem.consolidateAndDecay(s,roleId,{dataDir}));
-          return json(res,200,{archivedCount:result.value,state:S.publicState(result.state)});
+          return json(res,200,stateResponse(req,result.state,{archivedCount:result.value}));
         }
       }
       case '/api/engine/memory/extract':{
@@ -1232,12 +1246,12 @@ function createApp(options={}){
         inFlight++;
         try{
           const added=await require('./lib/engine/modules/memory.cjs').extractForRole({getState:read,mutate,roleId,dataDir,onUsage:runtime.onUsage,manual:true});
-          return json(res,200,{added,state:S.publicState(read())});
+          return json(res,200,stateResponse(req,read,{added}));
         }finally{inFlight--;}
       }
       case '/api/engine/timezone':{
         const timezone=Time.validateTimezone(b.timezone),result=mutate(s=>{s.settings.timezone=timezone;Jobs.rescheduleTimezone(s);});
-        return json(res,200,{state:S.publicState(result.state)});
+        return json(res,200,stateResponse(req,result.state));
       }
       case '/api/engine/jobs/save':{
         const roleId=S.text(b.roleId,100),id=b.id===undefined?null:S.text(b.id,100);
@@ -1246,11 +1260,11 @@ function createApp(options={}){
           const reminder={note:b.note,schedule:b.schedule};
           return id===null?Jobs.add(s,roleId,{...reminder,userRequested:true}):Jobs.edit(s,roleId,id,reminder);
         });
-        return json(res,200,{job:result.value,state:S.publicState(result.state)});
+        return json(res,200,stateResponse(req,result.state,{job:result.value}));
       }
       case '/api/engine/jobs/delete':{
         const roleId=S.text(b.roleId,100),id=S.text(b.id,100),result=mutate(s=>Jobs.remove(s,roleId,id));runtime.cancelJob(id);
-        return json(res,200,{state:S.publicState(read())});
+        return json(res,200,stateResponse(req,read));
       }
       case '/api/engine/typing':{
         const r=S.role(read(),S.text(b.roleId,100));S.chatAllowed(r);
@@ -1260,7 +1274,7 @@ function createApp(options={}){
       case '/api/engine/chat-cancel':{
         const role=S.role(read(),S.text(b.roleId,100));
         const cancelled=runtime.cancelSlowChat(role.id);
-        return json(res,200,{cancelled,state:S.publicState(read())});
+        return json(res,200,stateResponse(req,read,{cancelled}));
       }
       case '/api/providers/test':rate('ai:'+clientAddress,40);
       return json(res,200,await AI.test(read(),b.capability,{onUsage:runtime.onUsage}));
@@ -1352,6 +1366,7 @@ function createApp(options={}){
           db.exec('DELETE FROM requests');
         });
         if(living)MemoryStore.withRestoreJournal(db,dataDir,commit);else commit();
+        syncJournal.reset(restored.revision);
         publish('revision',{revision:restored.revision});
         // Restored stickers still waiting for analysis continue without a restart; the restore itself has already succeeded.
         try{stickerQueue.recover();stickerQueue.idle().catch(error=>console.error('Sticker analysis failed after restore:',error?.stack||String(error)));}
@@ -1430,10 +1445,11 @@ function createApp(options={}){
     req[requestDeadline]=mode=>{clearDeadline();if(mode!=='streaming'&&!req.readableEnded){deadline=setTimeout(()=>req.destroy(Object.assign(new Error('请求上传超时'),{status:408})),mode==='authenticated'?15*60*1000:60000);deadline.unref();}};
     req[requestDeadline]('anonymous');req.once('end',clearDeadline);req.once('close',clearDeadline);
     route(req,res).catch(e=>{
+      if(e?.retryAfter)res.setHeader('Retry-After',String(e.retryAfter));
       // Expected failures carry a status; anything else is a server bug that must leave a trace in the log.
       if(!e?.status)console.error('Unexpected server error:',req.method,String(req.url||'').split('?')[0],e);
       return json(res,e?.status||500,{
-        error:e?.status?e.message:'服务器处理失败',code:e?.code||'SERVER_ERROR',...(e?.keyRevisions?{keyRevisions:e.keyRevisions}:{}),...(e?.includeState&&!closed?{
+        error:e?.status?e.message:'服务器处理失败',code:e?.code||'SERVER_ERROR',...(e?.retryAfter?{retryAfter:e.retryAfter}:{}),...(e?.keyRevisions?{keyRevisions:e.keyRevisions}:{}),...(e?.includeState&&!closed?{
           state:S.publicState(read())
         }:{})
       });

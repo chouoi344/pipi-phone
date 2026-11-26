@@ -48,15 +48,15 @@ test('persistent input boundary strips secrets, attachments, object routes and l
   const f=fixture();f.api.beginSession(scope);f.setCheckpoint({route:{name:'providers',arg:{key:'secret'}},csrf:'secret',state:{models:['secret']},drafts:[{roleId:'one',text:'x'.repeat(25000),image:'secret',quote:'secret'}],chats:[{roleId:'one',name:'safe',messages:[{id:'safe',sender:'assistant',content:'safe',meta:{key:'secret'}}]}]});f.api.checkpoint();
   const value=parsed(f);assert.equal(value.route.name,'chats');assert.equal(value.drafts[0].text.length,20000);assert.equal(value.drafts[0].image,undefined);assert.equal(value.chats[0].messages[0].meta,undefined);assert.doesNotMatch(f.storage.get(key),/secret|csrf|models|image|quote/);
 });
-test('the active draft is preserved first when older draft text fills the cache budget',()=>{
-  const f=fixture();f.api.beginSession(scope);f.setCheckpoint({drafts:[0,1,2,3,4].map(id=>({roleId:String(id),text:String(id).repeat(20000)}))});f.api.checkpoint();assert.equal(parsed(f).drafts.at(-1).roleId,'4');assert.equal(parsed(f).drafts.reduce((size,draft)=>size+draft.text.length,0),80000);
+test('writing another draft never evicts earlier unsent drafts as ordinary cache',()=>{
+  const f=fixture();f.api.beginSession(scope);f.setCheckpoint({drafts:[0,1,2,3,4].map(id=>({roleId:String(id),text:String(id).repeat(20000)}))});f.api.checkpoint();assert.equal(parsed(f).drafts.at(-1).roleId,'4');assert.equal(parsed(f).drafts.length,5);assert.equal(parsed(f).drafts.reduce((size,draft)=>size+draft.text.length,0),100000);
 });
 test('new session, logout and explicit change-server cleanup remove App recovery data',()=>{
   const f=fixture();f.api.beginSession(scope);f.api.checkpoint();f.api.beginSession('b'.repeat(64));assert.equal(f.api.restore(),null);assert.equal(f.storage.has(key),false);assert.equal(f.clears,1);
   f.api.checkpoint();assert.equal(parsed(f).scope,'b'.repeat(64));f.api.forgetDeviceCache();assert.equal(f.storage.has(key),false);assert.equal(f.clears,2);assert.equal(f.api.showOffline(),false);
 });
-test('expired cache is not used offline and storage failure reports once',()=>{
-  const f=fixture();f.api.beginSession(scope);f.api.checkpoint();const cache=parsed(f);cache.at=Date.now()-8*86400000;f.storage.set(key,JSON.stringify(cache));const expired=fixture({storage:f.storage});assert.equal(expired.api.showOffline(),false);
+test('expired reading cache drops history but preserves unsent drafts and storage failure reports once',()=>{
+  const f=fixture();f.api.beginSession(scope);f.api.checkpoint();const cache=parsed(f);cache.at=Date.now()-8*86400000;f.storage.set(key,JSON.stringify(cache));const expired=fixture({storage:f.storage});assert.equal(expired.api.showOffline(),true);expired.api.beginSession(scope);const restored=expired.api.restore();assert.equal(restored.chats.length,0);assert.equal(restored.drafts[0].text,'未发送草稿');
   const full=fixture({full:true});full.api.beginSession(scope);full.api.checkpoint();full.api.checkpoint();assert.equal(full.warnings.length,1);
 });
 test('gesture start and cancel preserve the current page; commit uses the ordinary return action',()=>{
@@ -67,9 +67,14 @@ test('gesture start and cancel preserve the current page; commit uses the ordina
 test('native chat-open queues until login and current chat is handled by the existing opener',()=>{
   const f=fixture();f.setReady(false);assert.equal(f.api.openChat('two'),false);assert.deepEqual(f.messages,[]);f.api.clearSession();f.api.beginSession(scope);f.setReady(true);f.api.ready();assert.deepEqual(f.messages,['two']);assert.equal(f.api.openChat({id:'one'}),false);
 });
-test('offline snapshot is explicitly read only and native notification opens a cached friend without sending',()=>{
+test('offline chat edits a durable draft and never sends when the network returns',()=>{
   const first=fixture();first.api.beginSession(scope);first.api.checkpoint();const f=fixture({storage:first.storage});assert.equal(f.api.showOffline('offline'),true);assert.equal(f.view.dataset.route,'android-offline');assert.equal(f.api.openChat('one'),true);assert.deepEqual(f.messages,[]);
-  const page=f.view.children[0],draft=page.children.find(node=>node.tagName==='TEXTAREA');assert.equal(draft.value,'未发送草稿');assert.equal(draft.readOnly,true);assert.equal(f.api.back('commit'),true);assert.equal(f.api.back('commit'),false);
+  const page=f.view.children[0],draft=page.children.find(node=>node.tagName==='TEXTAREA');assert.equal(draft.value,'未发送草稿');assert.notEqual(draft.readOnly,true);draft.value='断网继续写的新草稿';draft.oninput();
+  const restarted=fixture({storage:f.storage});restarted.api.beginSession(scope);assert.equal(restarted.api.restore().drafts[0].text,'断网继续写的新草稿');assert.deepEqual(f.messages,[]);f.events.online();assert.equal(f.retries,1);assert.deepEqual(f.messages,[]);assert.equal(f.api.back('commit'),true);assert.equal(f.api.back('commit'),false);
+});
+test('cached contacts can start a local draft without previously opening their chat',()=>{
+  const first=fixture();first.api.beginSession(scope);first.setCheckpoint({contacts:[{roleId:'two',name:'第二位好友',secret:'not-persisted'}],drafts:[],chats:[]});first.api.checkpoint();
+  const f=fixture({storage:first.storage});assert.equal(f.api.showOffline(),true);assert.equal(f.api.openChat('two'),true);const draft=f.view.children[0].children.find(node=>node.tagName==='TEXTAREA');draft.value='给好友的草稿';draft.oninput();assert.equal(parsed(f).drafts[0].roleId,'two');assert.doesNotMatch(f.storage.get(key),/not-persisted/);assert.deepEqual(f.messages,[]);
 });
 test('foreground banner ignores the current friend, muted/blocked friends and background replay',()=>{
   const f=fixture(),roles=[{id:'one',name:'一',unread:1},{id:'two',name:'二',unread:1,muted:true},{id:'three',name:'三',unread:1,permissions:{blocked:true}},{id:'four',name:'四',unread:1}],base={messages:[],roles,settings:{}};

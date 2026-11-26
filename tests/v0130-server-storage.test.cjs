@@ -116,15 +116,19 @@ for(const type of ['conversation.clear','conversation.delete'])test('L2/L3: '+ty
 });
 
 test('S3: distinct sources evict the oldest windows while the current source still has its own rate limit',()=>{
-  const buckets=new Map(),clock={now:()=>1000};
-  const source=serverSource.match(/  function rate\([\s\S]*?(?=\n  function session\()/)[0];
-  const rate=vm.runInNewContext('('+source+')',{buckets,Date:clock,S});
-  for(let i=0;i<5002;i++)rate('source-'+i);
-  assert.equal(buckets.has('source-0'),false);assert.equal(buckets.has('source-5001'),true);
+  const Limits=require('../lib/request-limits.cjs'),rate=Limits.create({now:()=>1000}).consume;
+  for(let i=0;i<5002;i++)rate('source-'+i,1);
+  assert.doesNotThrow(()=>rate('source-0',1));
+  assert.throws(()=>rate('source-5001',1),error=>error.status===429);
   assert.doesNotThrow(()=>rate('owner',1));
   assert.throws(()=>rate('owner',1),error=>error.status===429);
-  buckets.clear();buckets.set('old',{n:9,until:999});buckets.set('newer',{n:1,until:2000});
-  rate('old');assert.deepEqual([...buckets.keys()],['newer','old']);
+  let now=0;const windows=Limits.create({now:()=>now});
+  windows.consume('old',1,1);windows.consume('newer',1,60000);
+  now=2;windows.consume('old',1,60000);
+  for(let i=0;i<4998;i++)windows.consume('fill-'+i);
+  windows.consume('fresh');
+  assert.throws(()=>windows.consume('old',1),error=>error.status===429);
+  assert.doesNotThrow(()=>windows.consume('newer',1));
 });
 
 test('S4: an error after response headers were sent ends the response without writing a second header',()=>{

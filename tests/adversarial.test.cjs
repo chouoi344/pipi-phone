@@ -10,7 +10,7 @@ const {randomUUID}=require('node:crypto');
 const {createApp}=require('../scripts/sample-data.cjs');
 const PASSWORD='Adversarial-only-Password_2026!';
 const SECRET='TEST_ONLY_NEVER_A_REAL_PROVIDER_KEY_9f2c';
-const PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jBHoAAAAASUVORK5CYII=';
+const PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWMwCsj7DwADmAHwphbYCgAAAABJRU5ErkJggg==';
 function wavFixture(sample=0){
   const payload=Buffer.from('524946462600000057415645666d74201000000001000100401f0000803e00000200100064617461020000000000','hex');
   payload.writeInt16LE(sample,44);

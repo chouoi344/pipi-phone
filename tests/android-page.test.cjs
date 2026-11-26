@@ -22,7 +22,8 @@ class Element {
 function fixture(options={}){
   const storage=options.storage||new Map(),events={},shell=new Element(),view=new Element(),messages=[],warnings=[];const listen=(name,fn)=>{const old=events[name];events[name]=old?()=>{old();fn();}:fn;};
   shell.append(view);view.dataset.route='chat';const document={documentElement:{dataset:{}},hidden:false,createElement:tag=>new Element(tag),getElementById:()=>view,querySelector:()=>shell,addEventListener:listen};
-  const window={addEventListener:listen};
+  const prompts=[];const window={addEventListener:listen,__pipiSessionResume:options.sessionResume,prompt:(...args)=>{prompts.push(args);return "ok";}};
+  if(options.token)document.querySelector=selector=>selector==='meta[name="pipi-recording"]'?{content:options.token}:shell;
   let route={name:'chat',arg:'one'},ready=true,clears=0,backs=0,retries=0,canBack=true,covered=false,openAllowed=true;
   let checkpoint={route,stack:[{name:'chats'}],drafts:[{roleId:'one',text:'未发送草稿'}],chats:[{roleId:'one',name:'好友一',top:144,bottom:false,anchor:'old-message',offset:-12,limit:240,messages:[{id:'old-message',sender:'assistant',content:'已经读过的文字'}]}]};
   const timers=new Map();let sequence=0;
@@ -32,7 +33,7 @@ function fixture(options={}){
   const adapter={ready:()=>ready,clear:()=>clears++,capture:()=>checkpoint,warn:message=>warnings.push(message),retry:()=>retries++,route:()=>route,
     visibleChat:roleId=>!covered&&route.name==='chat'&&route.arg===roleId,canBack:()=>canBack,back:()=>backs++,previous:()=>({name:'chats',arg:null}),previewTarget:()=>view,previewPage:()=>new Element(),
     openChat:roleId=>{if(!openAllowed)return false;messages.push(roleId);route={name:'chat',arg:roleId};return true;}};if(api)api.connect(adapter);else window.PipiChatNotice.connect(adapter);
-  return {api,notices:window.PipiChatNotice,covered:value=>covered=value,openAllowed:value=>openAllowed=value,storage,document,view,shell,messages,warnings,events,get backs(){return backs;},get clears(){return clears;},get retries(){return retries;},
+  return {api,prompts,notices:window.PipiChatNotice,covered:value=>covered=value,openAllowed:value=>openAllowed=value,storage,document,view,shell,messages,warnings,events,get backs(){return backs;},get clears(){return clears;},get retries(){return retries;},
     route:value=>route=value,canBack:value=>canBack=value,setReady:value=>ready=value,setCheckpoint:value=>checkpoint=value,flush:()=>{const work=[...timers.values()];timers.clear();work.forEach(fn=>fn());}};
 }
 const parsed=f=>JSON.parse(f.storage.get(key));
@@ -164,4 +165,12 @@ test('rebasing after backup restore suppresses imported rows and accepts the nex
   const base={messages:[],roles:[{id:'one',name:'好友一',unread:1}],settings:{}},restored={...base,messages:[{id:'imported',roleId:'one',sender:'assistant',status:'sent',type:'text',content:'备份旧消息',createdAt:123}]};
   f.notices.observeState(null,base);f.notices.rebase(restored);f.notices.observeState(base,restored);assert.equal(f.shell.children.length,1);
   f.notices.observeState(restored,{...restored,messages:[...restored.messages,{...restored.messages[0],id:'live',content:'恢复后的新消息',createdAt:124}]});assert.equal(f.shell.children.at(-1).children[1].textContent,'恢复后的新消息');
+});
+
+test('authenticated App session uses the token scoped resume bridge only when the native capability exists',()=>{
+  const current=fixture({sessionResume:true,token:'native-page-token'});current.api.beginSession(scope);
+  assert.deepEqual(current.prompts,[['pipi-session:native-page-token','begin']]);
+  const old=fixture({token:'native-page-token'});old.api.beginSession(scope);assert.deepEqual(old.prompts,[]);
+  const invalid=fixture({sessionResume:true,token:'native-page-token'});invalid.api.beginSession('invalid');assert.deepEqual(invalid.prompts,[]);
+  const missing=fixture({sessionResume:true});missing.api.beginSession(scope);assert.deepEqual(missing.prompts,[]);
 });

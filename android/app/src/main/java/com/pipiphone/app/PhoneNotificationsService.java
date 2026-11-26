@@ -66,6 +66,7 @@ public final class PhoneNotificationsService extends Service {
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && "stop".equals(intent.getAction())) {
             if (Build.VERSION.SDK_INT >= 26 && !running) promoteForeground();
+            PhoneNotifications.rememberPreference(this, false);
             PhoneNotifications.disable(this, "已关闭");
             stopSelf();
             return START_NOT_STICKY;
@@ -80,7 +81,7 @@ public final class PhoneNotificationsService extends Service {
         String cookie = PhoneNotifications.cookie(serverOrigin);
         if (cookie == null) {
             if (Build.VERSION.SDK_INT >= 26 && !running) promoteForeground();
-            PhoneNotifications.disable(this, "登录已退出，后台通知已关闭");
+            PhoneNotifications.authenticationExpired(this, serverOrigin, generation, null, "登录已失效，重新登录后恢复后台通知");
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -137,6 +138,7 @@ public final class PhoneNotificationsService extends Service {
                 int code = connection.getResponseCode();
                 if (code == 401) throw new PhoneNotifications.AuthenticationExpired();
                 if (code != 200) throw new IOException("HTTP " + code);
+                PhoneNotifications.saveSessionCookie(this, connection, run.origin, run.cookie, run.generation);
                 if (!run.active()) break;
                 updateStatus(run, "实时连接中；系统另有延迟补收");
                 reconnectSeconds = 2;
@@ -161,7 +163,12 @@ public final class PhoneNotificationsService extends Service {
                     connection.disconnect();
                     run.stream = null;
                 }
-            } catch (PhoneNotifications.AuthenticationExpired | SecurityException error) {
+            } catch (PhoneNotifications.AuthenticationExpired error) {
+                synchronized (PhoneNotifications.STATE_LOCK) {
+                    if (run.active()) PhoneNotifications.authenticationExpired(this, run.origin, run.generation, run.cookie, "登录已失效，重新登录后恢复后台通知");
+                }
+                break;
+            } catch (SecurityException error) {
                 synchronized (PhoneNotifications.STATE_LOCK) {
                     if (run.active()) PhoneNotifications.disable(this, "登录或通知权限已失效，请重新开启");
                 }

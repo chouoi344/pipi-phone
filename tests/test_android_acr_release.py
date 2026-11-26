@@ -1,7 +1,10 @@
 import importlib.util
 import json
 import os
-import subprocess
+import hashlib
+import gzip
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -20,54 +23,66 @@ def release(code=17, tag="android-v0.1.15"):
     return {"tag_name": tag, "draft": False, "prerelease": False, "assets": [asset]}
 
 
-def manifest(record):
-    return {"mediaType": sync.MANIFEST, "config": {"mediaType": sync.CONFIG}, "annotations": {sync.ANNOTATION: json.dumps(record)},
-            "layers": [{"size": record["size"], "digest": "sha256:" + record["sha256"], "mediaType": sync.LAYER}]}
-
-
 class AndroidPublication(unittest.TestCase):
-    def test_official_release_and_raw_blob(self):
-        record = sync.release_record(release())
-        data = manifest(record)
-        self.assertEqual(sync.manifest_record(data), record)
-        data["layers"][0]["size"] += 1
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name)
+        data = b"PK\x03\x04signed apk bytes" * 40
+        self.record = sync.release_record(release())
+        self.record.update(size=len(data), sha256=hashlib.sha256(data).hexdigest())
+        self.apk = self.base / self.record["name"]
+        self.apk.write_bytes(data)
+
+    def layout(self, name):
+        layout = self.base / name
+        sync.image_layout(layout, self.apk, self.record)
+        desc = json.loads((layout / "index.json").read_bytes())["manifests"][0]
+        blobs = layout / "blobs" / "sha256"
+        raw = (blobs / desc["digest"][7:]).read_bytes()
+        self.assertEqual(sync.acr["sha256"](raw), desc["digest"])
+        return layout, json.loads(raw)
+
+    def test_real_deterministic_single_file_image(self):
+        layout, manifest = self.layout("one")
+        self.assertEqual(self.layout("two")[1], manifest)
+        self.assertEqual(sync.manifest_record(manifest), self.record)
+        layer = manifest["layers"][0]
+        self.assertNotEqual(layer["digest"], "sha256:" + self.record["sha256"])
+        blobs = layout / "blobs" / "sha256"
+        config = json.loads((blobs / manifest["config"]["digest"][7:]).read_bytes())
+        raw_tar = gzip.decompress((blobs / layer["digest"][7:]).read_bytes())
+        self.assertEqual(config["rootfs"]["diff_ids"], [sync.acr["sha256"](raw_tar)])
+        sync.verify_download(layout, manifest, self.record)
+        with self.assertRaisesRegex(ValueError, "Downloaded APK"):
+            sync.verify_download(layout, manifest, dict(self.record, sha256="b" * 64))
+        with self.assertRaisesRegex(ValueError, "single APK"):
+            sync.verify_download(layout, manifest, dict(self.record, name="renamed.apk"))
+
+    def test_reject_raw_and_missing_release_assets(self):
+        layout, manifest = self.layout("bad")
+        manifest["annotations"][sync.ANNOTATION] = json.dumps(dict(self.record, encoding="raw"))
         with self.assertRaisesRegex(ValueError, "differs"):
-            sync.manifest_record(data)
-        web_only = dict(release(tag="v0.13.25"), assets=[])
-        self.assertIsNone(sync.release_record(web_only))
+            sync.manifest_record(manifest)
+        self.assertIsNone(sync.release_record(dict(release(tag="v0.13.25"), assets=[])))
         with self.assertRaisesRegex(ValueError, "exactly one"):
             sync.release_record(dict(release(), assets=[]))
 
-    def test_reconciliation_selects_highest_code_and_rejects_conflicting_duplicates(self):
-        new, old = release(17), release(16, "v0.13.23")
-        with patch("subprocess.check_output", return_value=json.dumps([[new, old]]).encode()):
-            self.assertEqual(sync.github("")[1]["versionCode"], 17)
-        old = release(17, "v0.13.23")
-        old["assets"][0]["digest"] = "sha256:" + "b"*64
-        with patch("subprocess.check_output", return_value=json.dumps([[new, old]]).encode()):
-            with self.assertRaisesRegex(ValueError, "conflict"):
-                sync.github("")
-
-    def test_retry_existing_version_verifies_blob_without_downgrading_latest(self):
-        old, new = sync.release_record(release(16)), sync.release_record(release(17))
-        calls = []
-        def invoke(args, **kwargs):
-            calls.append(args)
-            if args[1:3] == ["repo", "tags"]:
-                data = b"android-channel-latest\nandroid-apk-16\n"
-            elif args[1:3] == ["manifest", "fetch"]:
-                item = new if args[3].endswith(sync.LATEST) else old
-                data = json.dumps(manifest(item)).encode()
-            else:
-                data = b""
-            return subprocess.CompletedProcess(args, 0, stdout=data)
-        with (patch.dict(os.environ, {"RELEASE_TAG": "v0.13.23", "ACR_USERNAME": "test", "ACR_PASSWORD": "test"}),
-              patch.object(sync, "github", return_value=("v0.13.23", old)),
-              patch("subprocess.run", side_effect=invoke), patch.object(sync, "check_file") as verify):
+    def test_retry_existing_version_verifies_anonymously_without_downgrade(self):
+        layout, manifest = self.layout("retry")
+        newer_record = dict(self.record, versionCode=self.record["versionCode"]+1)
+        latest = dict(manifest, annotations={sync.ANNOTATION: json.dumps(newer_record)})
+        def inspect(ref, _auth):
+            return sync.acr["json_bytes"](latest if ref.endswith(sync.LATEST) else manifest)
+        def copy(source, destination, auth):
+            self.assertTrue(source.startswith("docker://" + sync.MIRROR + "@sha256:"))
+            self.assertEqual(auth.name, "public.json")
+            shutil.copytree(layout, destination.removeprefix("oci:").removesuffix(":apk"))
+        with (patch.dict(os.environ, {"RELEASE_TAG": "android-v0.1.15", "ACR_USERNAME": "user", "ACR_PASSWORD": "pass"}),
+              patch.object(sync, "github", return_value=("android-v0.1.15", self.record)),
+              patch.dict(sync.acr, {"inspect": inspect, "copy": copy,
+                                    "registry": lambda *a, **kw: b'{"Tags":["android-image-latest","android-image-17"]}'})):
             sync.main()
-        verify.assert_called_once()
-        self.assertTrue(any(a[1:3] == ["blob","fetch"] for a in calls))
-        self.assertFalse(any(a[1] in ("push","tag") for a in calls))
 
 
 if __name__ == "__main__":

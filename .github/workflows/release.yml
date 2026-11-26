@@ -91,8 +91,10 @@ jobs:
           NODE
       - name: Check the public IP HTTPS installer
         run: python3 -B -m unittest discover -s tests -p test_install_https.py
-      - name: Check the domestic release channel
-        run: python3 -B -m unittest discover -s tests -p test_acr_release.py
+      - name: Check the domestic release channels
+        run: |
+          python3 -B -m unittest discover -s tests -p test_acr_release.py
+          python3 -B -m unittest discover -s tests -p test_android_acr_release.py
       # This job receives no provider keys, registry credentials or publishing permissions.
       # Keep the CI-only network guard in the workflow so an existing immutable tag
       # is tested unchanged when the runner settings on main are repaired.
@@ -265,6 +267,8 @@ jobs:
 
   release:
     name: Publish the update manifest and release notes
+    outputs:
+      has_apk: ${{ steps.publish.outputs.has_apk }}
     needs: [test, image, mirror-image]
     if: >-
       !cancelled() && needs.test.result == 'success' && needs.image.result == 'success' &&
@@ -283,6 +287,7 @@ jobs:
     steps:
       # No checkout or repository script runs with the release-writing token.
       - name: Publish or verify the stable release and atomically update its directory
+        id: publish
         run: |
           python3 - <<'PY'
           import base64, hashlib, json, os, re, subprocess, tempfile, time
@@ -484,6 +489,9 @@ jobs:
                   if previous is not None:
                       previous = public_record(api("repos/" + repo + "/releases/tags/" + previous["tag_name"]), repo)
                   print(json.dumps(publish_directory(git, remote, repo, current, previous)))
+                  has_apk = any(a["name"].endswith(".apk") for a in release["assets"])
+                  with open(os.environ["GITHUB_OUTPUT"], "a") as outputs:
+                      print("has_apk=" + str(has_apk).lower(), file=outputs)
 
           if __name__ == "__main__":
               main()
@@ -500,7 +508,7 @@ jobs:
       ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
 
   mirror-android-if-attached:
-    if: github.repository == 'chouoi344/pipi-phone'
+    if: github.repository == 'chouoi344/pipi-phone' && needs.release.outputs.has_apk == 'true'
     needs: release
     uses: ./.github/workflows/sync-android-acr.yml
     with:

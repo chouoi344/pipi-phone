@@ -470,7 +470,16 @@ jobs:
                       notes = folder / "release-notes.md"
                       notes.write_text(section[1].strip() + "\n", encoding="utf-8")
                       subprocess.run(["gh", "release", "create", tag, str(manifest), str(checksum), "--verify-tag", "--draft", "--title", tag, "--notes-file", str(notes)], check=True)
-                      release = next(item for item in releases() if item.get("tag_name") == tag)
+                      # A newly uploaded draft may take a moment to appear in the release list.
+                      for delay in (0, 1, 2, 4, 8, 12):
+                          time.sleep(delay)
+                          release = api("repos/" + repo + "/releases/tags/" + tag, optional=True)
+                          if release is None:
+                              release = next((item for item in releases() if item.get("tag_name") == tag), None)
+                          if release is not None:
+                              break
+                      else:
+                          raise RuntimeError("Created release draft is not yet visible: " + tag)
                   if release.get("draft") is True:
                       # Drafts may expose untagged preview URLs and be absent from the by-tag endpoint.
                       release = api("repos/" + repo + "/releases/" + str(release["id"]))

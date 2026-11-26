@@ -145,14 +145,11 @@ Docker 和直接运行 Node 都内置 `https://choupi.tech/v1` 与下列分组�
 
 直接访问小手机时，保持 `TRUST_PROXY` 未设置。同一台机器、同一网络环境内的 Nginx 或 Caddy 可设 `TRUST_PROXY=loopback`。程序和代理分开运行时，填应用实际接收到请求的代理 IP 或必要的最小网段，例如 `172.30.44.2` 或 `172.30.44.2/32`。可信代理报告 HTTPS 时，程序会自动给登录 Cookie 加 `Secure`。否则如需强制仅通过 HTTPS 携带登录凭证，可设置 `COOKIE_SECURE=1`。
 
-代理应覆盖或追加真实连接地址。应用只接受受信任的上一跳，沿 `X-Forwarded-For` 从右往左判断客户端。将公网来源或共享网段误设为信任范围会让外部请求伪造来源地址。Docker 的 `.env` 只参与 Compose 变量替换。要让 `COOKIE_SECURE`、`TRUST_PROXY` 或 `RESET_PASSWORD` 进到容器，应明确写在 `pipi-phone` 服务的 `environment`，然后按正常配置更新流程重建服务。
+代理应覆盖或追加真实连接地址。应用只接受受信任的上一跳，沿 `X-Forwarded-For` 从右往左判断客户端。将公网来源或共享网段误设为信任范围会让外部请求伪造来源地址。在部署目录的 `.env` 中按需填写变量，然后执行 `docker compose up -d` 重建服务。例：
 
-```yaml
-services:
-  pipi-phone:
-    environment:
-      TRUST_PROXY: "172.30.44.2"
-      COOKIE_SECURE: "1"
+```dotenv
+TRUST_PROXY=172.30.44.2
+COOKIE_SECURE=1
 ```
 
 上面的 IP 要换成实际连接应用的代理地址。代理在宿主机、应用在 Docker 容器时，容器看到的地址可能是网桥网关，可按实际连接地址配置。`COOKIE_SECURE=1` 适用于浏览器使用 HTTPS 的部署。
@@ -194,7 +191,7 @@ ingress:
 
 ## 忘记访问密码
 
-自行部署的用户可在服务器设置 `RESET_PASSWORD=1` 后启动一次。例如 PowerShell 可先执行 `$env:RESET_PASSWORD='1'`，再从同一个窗口启动小手机。Docker 将该变量加到应用的 `environment` 后重建应用服务。程序清除旧密码和会话，保留业务资料。用控制台或 `DATA_DIR/setup-token.txt` 中的一次性设置令牌在网页设置新密码。随后去掉该变量并重启。变量留在配置里时，后续普通重启不会反复清除密码；以后要再次执行重置，须先以没有该变量的配置启动一次。
+自行部署的用户可在服务器设置 `RESET_PASSWORD=1` 后启动一次。例如 PowerShell 可先执行 `$env:RESET_PASSWORD='1'`，再从同一个窗口启动小手机。Docker 用户在部署目录的 `.env` 加一行 `RESET_PASSWORD=1`，再执行 `docker compose up -d`。程序清除旧密码和会话，保留业务资料。用控制台或 `DATA_DIR/setup-token.txt` 中的一次性设置令牌在网页设置新密码。随后从 `.env` 移除该行，再执行 `docker compose up -d`。变量留在配置里时，后续普通重启不会反复清除密码；以后要再次执行重置，须先以没有该变量的配置启动一次。
 
 ## 关于页源码入口
 

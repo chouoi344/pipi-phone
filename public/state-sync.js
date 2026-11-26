@@ -83,7 +83,8 @@
     const enabled=status.clientProtocol?.features?.includes('sync-v1');
     if(!enabled){api.client?.reset();api.client=null;sessionScope='';return;}
     if(status.authenticated===false||sessionScope&&status.appSessionScope&&sessionScope!==status.appSessionScope){api.client?.reset();api.client=null;}
-    api.client??=create(options);sessionScope=status.appSessionScope||sessionScope;
+    if(!api.client)api.client=create(options);
+    sessionScope=status.appSessionScope||sessionScope;
   },observe(state){api.client?.observe(state);},replaces(state){return api.client?.replaces(state)||false;},reset(){api.client?.reset();sessionScope='';}};
   if(typeof module==='object')module.exports=api;else globalThis.PipiStateSync=api;
 })();

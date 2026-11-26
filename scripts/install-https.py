@@ -2,6 +2,7 @@
 """Install the public-IP HTTPS entry point on a Docker host."""
 import argparse
 from datetime import datetime, timezone
+import http.client
 import ipaddress
 from itertools import chain
 import json
@@ -9,12 +10,15 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
+import ssl
 import stat
 import subprocess
 import sys
 import tempfile
 import time
 from urllib.parse import urlsplit
+from urllib.request import ProxyHandler, build_opener
 
 
 ROOT = Path.cwd() if __file__ == "<stdin>" else Path(__file__).resolve().parents[1]
@@ -48,7 +52,7 @@ def check_host_files():
         sys.exit("部署目录名不能包含换行或控制字符。")
     require_root_control(ROOT)
     for name in ("scripts/compose-updater.cjs", "lib/updates.cjs", "package.json", "compose.yaml", "compose.updates.yaml",
-                 "compose.https.yaml", "deploy/Caddyfile", ".env", ".env.https", ".env.updates", "compose.override.yaml",
+                 "compose.https.yaml", "deploy/Caddyfile", "deploy/bundled-gateway.yaml", ".env", ".env.https", ".env.updates", "compose.override.yaml",
                  ".pipi-updater", ".pipi-updater/active-compose.json"):
         path = ROOT / name
         if path.exists() or path.is_symlink():
@@ -163,15 +167,22 @@ def public_ip():
                     local_ipv6 = address
     # Cloud NAT commonly assigns only a private address to the guest.
     for url in ("https://api.ipify.org", "https://checkip.amazonaws.com"):
-        response = subprocess.run(["curl", "-4fsS", "--noproxy", "*", "--max-time", "5", url],
-                                  capture_output=True, text=True)
-        if response.returncode == 0:
+        try:
+            response = subprocess.run(["curl", "-4fsS", "--noproxy", "*", "--max-time", "5", url],
+                                      capture_output=True, text=True)
+            value = response.stdout if response.returncode == 0 else ""
+        except FileNotFoundError:
             try:
-                address = ipaddress.IPv4Address(response.stdout.strip())
-            except ValueError:
+                with build_opener(ProxyHandler({})).open(url, timeout=5) as response:
+                    value = response.read(64).decode("ascii")
+            except (OSError, ValueError):
                 continue
-            if address.is_global and not address.is_multicast:
-                return str(address)
+        try:
+            address = ipaddress.IPv4Address(value.strip())
+        except ValueError:
+            continue
+        if address.is_global and not address.is_multicast:
+            return str(address)
     if local_ipv6 is not None:
         return str(local_ipv6)
     sys.exit("未能识别公网 IP。可用 PIPI_PUBLIC_IP=你的公网IP python3 scripts/install-https.py 重试。")
@@ -208,12 +219,29 @@ def wait_for_https(host, *, application):
         command.append("--fail")
     deadline = time.monotonic() + (30 if application else 120)
     while True:
-        result = subprocess.run(command, text=True, capture_output=True)
-        if result.returncode == 0:
+        try:
+            result = subprocess.run(command, text=True, capture_output=True)
+            ok, body, error = result.returncode == 0, result.stdout, result.stderr
+        except FileNotFoundError:
+            # Minimal image-based hosts need only Python, Docker and Compose.
+            # Connect via loopback while checking the certificate for the public IP.
+            context = ssl.create_default_context(cafile=os.environ.get("CURL_CA_BUNDLE"))
+            connection = http.client.HTTPConnection(host, 443, timeout=4)
+            try:
+                with socket.create_connection(("127.0.0.1", 443), timeout=4) as raw:
+                    connection.sock = context.wrap_socket(raw, server_hostname=host.strip("[]"))
+                    connection.request("GET", path)
+                    response = connection.getresponse()
+                    ok, body, error = not application or response.status == 200, response.read(65536), str(response.status)
+            except (OSError, http.client.HTTPException) as failure:
+                ok, body, error = False, "", str(failure)
+            finally:
+                connection.close()
+        if ok:
             if not application:
                 return
             try:
-                if isinstance(json.loads(result.stdout).get("authenticated"), bool):
+                if isinstance(json.loads(body).get("authenticated"), bool):
                     return
             except (ValueError, AttributeError):
                 pass
@@ -222,7 +250,7 @@ def wait_for_https(host, *, application):
                 sys.exit("证书已生效，但小手机尚未响应。请运行 docker compose logs --tail 30 pipi-phone 查看原因。")
             sys.exit("尚未取得手机可信的证书。请检查公网 IP、云安全组及防火墙的 TCP 80/443。\n"
                      "查看日志：docker compose -f compose.yaml -f compose.https.yaml logs --tail 30 pipi-https\n"
-                     "代理会继续重试。问题排除后重新运行安装命令即可。\n" + result.stderr.strip())
+                     "代理会继续重试。问题排除后重新运行安装命令即可。\n" + error.strip())
         time.sleep(2)
 
 
@@ -233,7 +261,7 @@ def write_atomic(path, content, mode=0o600):
     os.replace(temporary.name, path)
 
 
-def node_runtime():
+def node_runtime(installed_image=None):
     private_node = (STATE / "node").resolve()
     for node in (private_node, Path("/usr/bin/node"), Path("/usr/local/bin/node")):
         if node.is_file():
@@ -243,8 +271,9 @@ def node_runtime():
             if result.returncode == 0 and match and int(match[1]) >= 24:
                 return node
     # The app is built from this official multi-architecture image. Never copy code out of a live app.
-    image = "docker.io/library/node:24-bookworm-slim"
-    container = output(["docker", "create", "--network", "none", "--entrypoint", "/bin/true", image])
+    image = installed_image or "docker.io/library/node:24-bookworm-slim"
+    container = output(["docker", "create", *(["--pull", "never"] if installed_image else []),
+                        "--network", "none", "--entrypoint", "/bin/true", image])
     try:
         with tempfile.TemporaryDirectory(dir=STATE) as directory:
             candidate = Path(directory).resolve() / "node"
@@ -318,7 +347,7 @@ def command_arg(filename):
     return json.dumps(str(filename), ensure_ascii=False).replace("%", "%%").replace("$", "$$")
 
 
-def enable_updates(config, container, enable_only):
+def enable_updates(config, container, enable_only, installed_image=None):
     if not Path("/run/systemd/system").is_dir() or not shutil.which("systemctl"):
         sys.exit("此安装方式需要使用 systemd 的 Ubuntu 宿主机。")
     if not (Path("scripts/compose-updater.cjs").is_file() and Path("compose.updates.yaml").is_file()):
@@ -347,7 +376,7 @@ def enable_updates(config, container, enable_only):
     previous_https = MARKER.is_symlink()
     https = not enable_only or previous_https
     settings = update_settings(config, container, https)
-    node = node_runtime()
+    node = node_runtime(installed_image)
     # Docker inherits these values directly; systemd reads the same values on boot.
     def env_quote(value):
         return '"' + re.sub(r'([\\"$`])', r'\\\1', value) + '"'
@@ -385,7 +414,7 @@ def enable_updates(config, container, enable_only):
         subprocess.run([*compose, *args], env=env, check=True)
     if not enable_only:
         print(f"正在为 {host} 启动 HTTPS 并验证证书。公网 TCP 80 和 443 需能访问。", flush=True)
-        run_compose("up", "-d", "--no-deps", "pipi-https")
+        run_compose("up", "-d", "--no-deps", *(["--no-build", "--pull", "never"] if installed_image else []), "pipi-https")
         wait_for_https(host, application=False)
         if not MARKER.is_symlink():
             MARKER.symlink_to("compose.https.yaml")
@@ -401,7 +430,7 @@ def enable_updates(config, container, enable_only):
         compose.extend(["-f", str(ACTIVE)])
     run_compose("config", "--quiet")
     if not already_attached or not container["State"]["Running"] or (https and not previous_https):
-        run_compose("up", "-d", "--no-deps", *(["--no-build", "--pull", "never"] if ACTIVE.exists() else ["--build"]), "pipi-phone")
+        run_compose("up", "-d", "--no-deps", *(["--no-build", "--pull", "never"] if installed_image or ACTIVE.exists() else ["--build"]), "pipi-phone")
     subprocess.run(["systemctl", "enable", "--now", service], check=True)
     wait_worker(service)
     if https and not enable_only:
@@ -485,12 +514,35 @@ def upgrade_from_release(config, container):
                    input=client.encode("utf-8"), check=True)
 
 
+def prepare_image_install(image):
+    repository = "crpi-7a803jqeqt4g8l32.cn-hangzhou.personal.cr.aliyuncs.com/chouoi344/pipi-phone"
+    if not re.fullmatch(re.escape(repository) + r"@sha256:[0-9a-f]{64}", image):
+        sys.exit("首次镜像安装需要官方阿里云仓库中带 sha256 指纹的完整镜像地址。")
+    if "${PIPI_INSTALL_IMAGE:?" not in Path("compose.yaml").read_text():
+        sys.exit("请在从官方镜像 /opt/pipi-install 导出的安装目录中运行。")
+    version = output(["docker", "image", "inspect", "--format", '{{index .Config.Labels "org.opencontainers.image.version"}}', image])
+    if version != json.loads(Path("package.json").read_text())["version"]:
+        sys.exit("本机镜像的发布版本和安装目录不一致。")
+    if os.environ.get("PIPI_INSTALL_IMAGE", image) != image:
+        sys.exit("当前环境中的 PIPI_INSTALL_IMAGE 与所选镜像不一致。")
+    env_file = Path(".env")
+    pin = f"PIPI_INSTALL_IMAGE={image}"
+    if env_file.exists():
+        if pin not in env_file.read_text().splitlines():
+            sys.exit("原目录已有其他配置，请在新目录安装或沿用原安装方式升级。")
+    elif UPDATE_ENV.exists() or ACTIVE.exists() or MARKER.is_symlink():
+        sys.exit("此目录已有小手机实例，请沿用原安装方式升级。")
+    else:
+        write_atomic(env_file, pin + "\n")
+
+
 def main():
     global ROOT
     parser = argparse.ArgumentParser()
     options = parser.add_mutually_exclusive_group()
     options.add_argument("--enable-updates", type=Path, metavar="原部署目录")
     options.add_argument("--upgrade-from-release", type=Path, metavar="原部署目录")
+    options.add_argument("--install-from-image", metavar="官方国内镜像@sha256:指纹")
     args = parser.parse_args()
     existing = args.enable_updates or args.upgrade_from_release
     if existing:
@@ -503,11 +555,13 @@ def main():
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         check_host_files()
+        if args.install_from_image:
+            prepare_image_install(args.install_from_image)
         config, container = check_installation()
         if args.upgrade_from_release:
             upgrade_from_release(config, container)
         else:
-            enable_updates(config, container, args.enable_updates is not None)
+            enable_updates(config, container, args.enable_updates is not None, args.install_from_image)
     finally:
         os.close(lock)
 

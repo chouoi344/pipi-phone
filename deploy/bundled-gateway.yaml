@@ -1,0 +1,19 @@
+# Used by the installation directory embedded in the released server image.
+services:
+  gateway:
+    image: ${PIPI_INSTALL_IMAGE:?Missing installed image digest}
+    entrypoint: ["/usr/bin/caddy"]
+    command: ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    user: "1000:1000"
+    read_only: true
+    environment:
+      XDG_DATA_HOME: /data
+      XDG_CONFIG_HOME: /tmp
+    tmpfs:
+      - /tmp
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "0"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

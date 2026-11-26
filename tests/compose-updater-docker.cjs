@@ -31,7 +31,7 @@ async function main(){
     await docker(['version']);await docker(['compose','version']);await fs.mkdir(shared,{mode:0o777});await fs.chmod(shared,0o777);
     for(const kind of Object.keys(images)){
       const context=path.join(dir,kind);await fs.mkdir(context);
-      for(const item of ['package.json','package-lock.json','server.cjs','LICENSE','LICENSE-MIT.txt','THIRD_PARTY_NOTICES.md','lib','public'])await fs.cp(path.join(root,item),path.join(context,item),{recursive:true});
+      for(const item of ['package.json','package-lock.json','server.cjs','LICENSE','LICENSE-MIT.txt','THIRD_PARTY_NOTICES.md','lib','public','compose.yaml','compose.https.yaml','compose.updates.yaml','deploy','scripts/install-https.py','scripts/compose-updater.cjs'])await fs.cp(path.join(root,item),path.join(context,item),{recursive:true});
       const pkg=JSON.parse(await fs.readFile(path.join(context,'package.json'),'utf8'));pkg.version=versions[kind];await fs.writeFile(path.join(context,'package.json'),JSON.stringify(pkg));
       const lock=JSON.parse(await fs.readFile(path.join(context,'package-lock.json'),'utf8'));lock.version=versions[kind];lock.packages[''].version=versions[kind];await fs.writeFile(path.join(context,'package-lock.json'),JSON.stringify(lock));
       let dockerfile=await fs.readFile(path.join(root,'Dockerfile'),'utf8');

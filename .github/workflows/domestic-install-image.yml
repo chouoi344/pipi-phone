@@ -1,0 +1,90 @@
+name: Publish domestic first-install image
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: crpi-7a803jqeqt4g8l32.cn-hangzhou.personal.cr.aliyuncs.com
+  DOCKER_BUILD_SUMMARY: 'false'
+  DOCKER_BUILD_RECORD_UPLOAD: 'false'
+
+concurrency:
+  group: domestic-install-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'chouoi344/pipi-phone' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select a separate install-only tag
+        run: |
+          set -euo pipefail
+          version=$(jq -er .version package.json)
+          test "$version" = '0.13.24'
+          echo "INSTALL_IMAGE=$REGISTRY/chouoi344/pipi-phone:cn-install-$version-${GITHUB_SHA:0:12}" >> "$GITHUB_ENV"
+          if ! command -v skopeo >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y skopeo
+          fi
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+      - name: Reuse an already published image for this revision
+        id: current
+        run: |
+          set -euo pipefail
+          if skopeo inspect --raw "docker://$INSTALL_IMAGE" > /dev/null 2>"$RUNNER_TEMP/lookup-error"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          elif grep -Eqi 'manifest unknown|manifest_unknown|name unknown|name_unknown' "$RUNNER_TEMP/lookup-error"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "$RUNNER_TEMP/lookup-error" >&2
+            exit 1
+          fi
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        if: steps.current.outputs.exists != 'true'
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: steps.current.outputs.exists != 'true'
+      - name: Build the two installable runtime images
+        id: build
+        if: steps.current.outputs.exists != 'true'
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          target: runtime
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.INSTALL_IMAGE }}
+          provenance: false
+          sbom: false
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=0.13.24
+      - name: Confirm the published platform manifests and output the immutable install reference
+        env:
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' '{"auths":{}}' > "$RUNNER_TEMP/anonymous.json"
+          skopeo inspect --raw --authfile "$RUNNER_TEMP/anonymous.json" "docker://$INSTALL_IMAGE" > "$RUNNER_TEMP/install-index.json"
+          jq -e '([.manifests[].platform | .os + "/" + .architecture] | sort) == ["linux/amd64", "linux/arm64"]' "$RUNNER_TEMP/install-index.json"
+          digest="sha256:$(sha256sum "$RUNNER_TEMP/install-index.json" | cut -d' ' -f1)"
+          if [[ -n "$BUILD_DIGEST" ]]; then test "$digest" = "$BUILD_DIGEST"; fi
+          for arch in amd64 arm64; do
+            skopeo --override-os linux --override-arch "$arch" inspect --config --authfile "$RUNNER_TEMP/anonymous.json" "docker://$INSTALL_IMAGE" |
+              jq -e --arg rev "$GITHUB_SHA" '.config.Labels["org.opencontainers.image.revision"] == $rev and .config.Labels["org.opencontainers.image.version"] == "0.13.24"'
+          done
+          echo "$INSTALL_IMAGE"
+          echo "${INSTALL_IMAGE%:*}@$digest" | tee -a "$GITHUB_STEP_SUMMARY"

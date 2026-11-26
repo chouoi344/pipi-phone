@@ -1,5 +1,9 @@
 # Third-party components
 
+## Caddy
+
+The server image includes Caddy 2.11.9 from the official `caddy:2.11.9-alpine` image for its HTTPS gateway. Caddy is licensed under Apache License 2.0. The Debian runtime includes the license at `/usr/share/common-licenses/Apache-2.0`. Upstream source: https://github.com/caddyserver/caddy/tree/v2.11.9.
+
 ## Local UI fonts
 
 - Inter and Noto Sans SC are bundled under SIL Open Font License 1.1. Noto Sans SC 2.004 is distributed as the “Pipi Noto SC” common and extended subsets, with Adobe copyright retained. The build instructions, source attribution and complete licenses are in `public/fonts/`.

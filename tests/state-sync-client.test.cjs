@@ -82,7 +82,7 @@ const app=fs.readFileSync(path.join(__dirname,'../public/app.js'),'utf8');
 const apiSource=app.slice(app.indexOf('  async function api(path'),app.indexOf('  function readBlobData('));
 function apiFixture(respond,{enabled=true}={}){
   const calls=[],scope=vm.createContext({console,fetch:async(route,options)=>{calls.push({route,...options});const result=await respond(route,options);return {status:result.status||200,ok:(result.status||200)<400,json:async()=>result.body};}});
-  vm.runInContext(`let authEpoch=1,csrf='csrf-current',state=null;globalThis.window={PipiEngine:{stop(){}}};function setState(next){state=next;}function closeModal(){}function renderAuth(){authEpoch++;state=null;}${apiSource}globalThis.testAPI={api,apiRaw,getState:()=>state,getCSRF:()=>csrf};`,scope);
+  vm.runInContext(`let authEpoch=1,csrf='csrf-current',state=null;globalThis.window={PipiNetwork:{request:fetch},PipiEngine:{stop(){}}};function setState(next){state=next;}function closeModal(){}function renderAuth(){authEpoch++;state=null;}${apiSource}globalThis.testAPI={api,apiRaw,getState:()=>state,getCSRF:()=>csrf};`,scope);
   const client=enabled?Sync.create({request:(route)=>scope.testAPI.api(route,undefined,'GET',true),getEpoch:()=>vm.runInContext('authEpoch',scope)}):null;
   scope.window.PipiStateSync={client,reset(){client?.reset();}};return {scope,calls,api:scope.testAPI,client};
 }

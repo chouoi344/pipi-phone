@@ -2,20 +2,23 @@
 'use strict';
 (() => {
   function create({request,getEpoch=()=>0}) {
-    let snapshot=null,cursor='',cursorRevision=-1,serverEpoch='',generation=0,tail=Promise.resolve();
+    let snapshot=null,cursor='',cursorRevision=-1,serverEpoch='',generation=0,resetVersion=0,tail=Promise.resolve();
     const epochReplacements=new WeakSet();
+    const controllers=new Set();
     const stale=()=>Object.assign(new Error('登录状态已变化，请重新操作'),{stale:true});
-    function reset(){generation++;snapshot=null;cursor='';cursorRevision=-1;serverEpoch='';tail=Promise.resolve();}
+    function interrupt(){generation++;for(const controller of controllers)controller.abort();controllers.clear();tail=Promise.resolve();}
+    function reset(){resetVersion++;interrupt();snapshot=null;cursor='';cursorRevision=-1;serverEpoch='';}
     function observe(next){if(next&&Array.isArray(next.messages)&&(!snapshot||next.revision>=snapshot.revision))snapshot=next;}
     function replaces(next){return next===snapshot&&epochReplacements.has(next);}
     function headers(){return cursor&&snapshot?{'X-Pipi-State-Mode':'delta','X-Pipi-Sync-Cursor':cursor}:{};}
-    function enqueue(work){
-      const ownGeneration=generation,ownEpoch=getEpoch();
+    function enqueue(work,retryInterrupted=false){
+      const ownGeneration=generation,ownEpoch=getEpoch(),ownReset=resetVersion;
       const active=()=>{if(ownGeneration!==generation||ownEpoch!==getEpoch())throw stale();};
-      const fetch=async path=>{active();const result=await request(path);active();return result;};
-      const task=tail.then(async()=>{active();const result=await work(fetch,active);active();return result;});
+      const controller=new AbortController();
+      const fetch=async path=>{active();const result=await request(path,{signal:controller.signal});active();return result;};
+      const task=tail.then(async()=>{active();controllers.add(controller);try{const result=await work(fetch,active);active();return result;}finally{controllers.delete(controller);}});
       // The returned task reports failures; this continuation lets the next refresh recover.
-      tail=task.catch(()=>{});return task;
+      tail=task.catch(()=>{});return retryInterrupted?task.catch(error=>{if(ownReset===resetVersion&&ownEpoch===getEpoch()&&ownGeneration!==generation)return enqueue(work,true);throw error;}):task;
     }
     function envelope(value){
       if(!value||value.schema!==1||!['reset','delta'].includes(value.mode)||typeof value.epoch!=='string'||!value.epoch||typeof value.cursor!=='string'||!value.cursor||!Number.isSafeInteger(value.revision)||value.revision<0)throw new Error('服务器同步协议无效，请刷新页面重试');
@@ -61,7 +64,7 @@
     }
     function refresh(visibleRevision=snapshot?.revision){return enqueue(async fetch=>{const state=await refreshNow(fetch);return {state,revision:state.revision,unchanged:visibleRevision===state.revision&&!replaces(state)};});}
     function accept(result){
-      if(!result.sync)return result.state?enqueue(async()=>{observe(result.state);return result;}):Promise.resolve(result);
+      if(!result.sync)return result.state?enqueue(async()=>{observe(result.state);return result;},true):Promise.resolve(result);
       return enqueue(async fetch=>{
         const delta=envelope(result.sync);
         if(delta.mode==='reset')await bootstrap(fetch,delta);
@@ -70,9 +73,10 @@
         else if(delta.fromRevision!==cursorRevision)await refreshNow(fetch);
         else apply(delta);
         const {sync,...rest}=result;return {...rest,state:snapshot};
-      });
+      },true);
     }
-    return {reset,observe,replaces,headers,refresh,accept};
+    function resume(visibleRevision=snapshot?.revision){interrupt();return refresh(visibleRevision);}
+    return {reset,observe,replaces,headers,refresh,accept,resume};
   }
   let sessionScope='';
   const api={create,client:null,configure(status,options){

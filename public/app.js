@@ -287,14 +287,14 @@
     readRequests.add(roleId);
     act('conversation.read',{roleId}).then(()=>{readRequests.delete(roleId);pendingRender=true;flushRender(true);syncVisibleChatRead();}).catch(err=>{readRequests.delete(roleId);toast(err.message);});
   }
-  async function api(path, body, method, internal=false) {
+  async function api(path, body, method, internal=false,requestOptions={}) {
     const requestEpoch=authEpoch,verb = method || (body === undefined ? 'GET' : 'POST');
     const sync=internal?null:globalThis.window?.PipiStateSync?.client;
     if(sync&&verb==='GET'&&/^\/api\/state(?:\?|$)/.test(path))return sync.refresh(state?.revision??null);
     const headers={...(body!==undefined?{'Content-Type':'application/json'}:{}),...(verb!=='GET'&&csrf?{'X-CSRF-Token':csrf}:{}),...(sync?sync.headers():{})};
     if(path==='/api/engine/models')headers['X-Pipi-Model-Page']='card-save';
-    let response;try{response=await fetch(path, {method:verb,credentials:'same-origin',headers,...(body===undefined?{}:{body:JSON.stringify(body)})});}catch(cause){throw new Error('网络连接失败，请检查网络后重试',{cause});}
-    let result; try { result = await response.json(); } catch { throw new Error('服务器返回了无法读取的响应，请稍后重试'); }
+    let response;try{response=await window.PipiNetwork.request(path, {method:verb,credentials:'same-origin',headers,...(body===undefined?{}:{body:JSON.stringify(body)}),...requestOptions});}catch(cause){if(cause.code==='NETWORK_TIMEOUT'||cause.name==='AbortError')throw cause;throw new Error('网络连接失败，请检查网络后重试',{cause});}
+    let result; try { result = await response.json(); } catch(error) { if(error.code==='NETWORK_TIMEOUT'||error.name==='AbortError')throw error;throw new Error('服务器返回了无法读取的响应，请稍后重试'); }
     if(requestEpoch!==authEpoch){const error=new Error('登录状态已变化，请重新操作');error.stale=true;throw error;}
     if (result.csrfToken) csrf = result.csrfToken;
     if(sync&&response.status!==401)result=await sync.accept(result);
@@ -314,10 +314,11 @@
   async function apiRaw(path, body, contentType='application/octet-stream', method='POST') {
     const requestEpoch=authEpoch;
     const sync=globalThis.window?.PipiStateSync?.client;
-    let response;try{response=await fetch(path, {method,credentials:'same-origin',headers:{'Content-Type':contentType,...(csrf?{'X-CSRF-Token':csrf}:{}),...(sync?sync.headers():{})},body});}catch(cause){throw new Error('网络连接失败，请检查网络后重试',{cause});}
+    let response;try{response=await window.PipiNetwork.request(path, {method,credentials:'same-origin',headers:{'Content-Type':contentType,...(csrf?{'X-CSRF-Token':csrf}:{}),...(sync?sync.headers():{})},body});}catch(cause){if(cause.code==='NETWORK_TIMEOUT'||cause.name==='AbortError')throw cause;throw new Error('网络连接失败，请检查网络后重试',{cause});}
     let result;
     try { result = await response.json(); }
-    catch {
+    catch (error) {
+      if(error.code==='NETWORK_TIMEOUT'||error.name==='AbortError')throw error;
       if (response.status === 413) throw Object.assign(new Error('上传文件超过服务器或反向代理大小限制（HTTP 413），请缩小文件或调大代理体积上限'), {status: 413});
       throw new Error('服务器返回了无法读取的响应，请稍后重试');
     }
@@ -2329,7 +2330,7 @@
       const extMatch=/^data:image\/([^;]+)/.exec(images[index])||/\.([a-z0-9]+)$/i.exec(images[index]);downloadName=`pipi-image-${index+1}.${({png:'png',jpeg:'jpg',jpg:'jpg',webp:'webp',gif:'gif'})[extMatch?.[1]?.toLowerCase()]||'png'}`;
       transform();
     };
-    save.onclick=async()=>{if(currentMedia()?.meta?.expired){toast('图片已过期');return;}hideMenu();const data=images[index];let blob;if(data.startsWith('data:')){const comma=data.indexOf(','),binary=atob(data.slice(comma+1)),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);blob=new Blob([bytes],{type:data.slice(5,data.indexOf(';'))});}else{const resp=await fetch(data,{credentials:'same-origin'});blob=await resp.blob();}const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=downloadName;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+    save.onclick=async()=>{if(currentMedia()?.meta?.expired){toast('图片已过期');return;}hideMenu();const data=images[index];let blob;if(data.startsWith('data:')){const comma=data.indexOf(','),binary=atob(data.slice(comma+1)),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);blob=new Blob([bytes],{type:data.slice(5,data.indexOf(';'))});}else{const resp=await window.PipiNetwork.request(data,{credentials:'same-origin',responseType:'blob'});blob=await resp.blob();}const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=downloadName;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);};
     forward.onclick=async()=>{const id=options.messageIds[index];closeModal(false);await afterOverlayBack();await forwardMessages([id]);};
     favorite.onclick=async()=>{if(currentMedia()?.meta?.expired){toast('图片已过期，无法收藏。');return;}hideMenu();try{await act('message.favorite',{id:options.messageIds[index]});toast('已加入收藏');}catch(err){toast(err.message);}};
     const move=step=>{const next=index+step;if(next>=0&&next<images.length){index=next;paint();}};
@@ -2554,7 +2555,7 @@
       if(speechSession!==session||session.blobTried||!String(session.data||'').trim().startsWith('/api/media/'))return false;
       session.blobTried=true;
       try{
-        const res=await fetch(session.data.trim(),{credentials:'same-origin'});
+        const res=await window.PipiNetwork.request(session.data.trim(),{credentials:'same-origin',responseType:'blob'});
         if(!res.ok||speechSession!==session)return false;
         const blob=await res.blob();
         if(speechSession!==session)return false;
@@ -2696,7 +2697,7 @@
         const reply=command('finish');
         if(reply?.startsWith('url:')){
           const mediaUrl=reply.slice(4);
-          fetch(mediaUrl,{credentials:'same-origin'}).then(r=>{
+          window.PipiNetwork.request(mediaUrl,{credentials:'same-origin',responseType:'blob'}).then(r=>{
             if(!r.ok)throw new Error('录音读取失败');
             return r.blob();
           }).then(blob=>{
@@ -3079,7 +3080,7 @@
     try{
       const status=await api('/api/status');
       await window.PipiClientProtocol?.validate(status);
-      globalThis.window?.PipiStateSync?.configure(status,{request:(path,body,method)=>api(path,body,method,true),getEpoch:()=>authEpoch});
+      globalThis.window?.PipiStateSync?.configure(status,{request:(path,options)=>api(path,undefined,'GET',true,options),getEpoch:()=>authEpoch});
       sourceUrl=status.sourceUrl;binaryMedia=status.binaryMedia===true;configureMediaLimits(status);imageVariants=binaryMedia&&status.imageVariants===true;storageMaintenance=status.storageMaintenance===true;streamingBackup=status.streamingBackup===true;accountSecurity=status.accountSecurity===true;setupTokenRequired=status.setupTokenRequired===true;momentExclusions=status.momentExclusions===true;window.PipiMessageLimit?.configure(status.messageLimit);rolePanelAvailable=status.rolePanel===true;globalThis.__pipiVersion=status.version;globalThis.__pipiUpdatesEnabled=status.softwareUpdates===true;
       if(status.authenticated){window.PipiAndroidPage?.beginSession(status.appSessionScope);window.PipiSkins.configure(status.appearance);const result=await api('/api/state');setState(result.state||result);await restoreBrowserPage();}else renderAuth(status.setupRequired);
     }
@@ -3178,6 +3179,15 @@
   // Restored from the back/forward cache: the page is shown instantly, then state is refreshed in the background.
   window.addEventListener('pageshow',event=>{if(event.persisted&&state)boot();});
   let polling=false;
+  async function resumeStateSync(){
+    if(document.hidden)return;
+    if(!state){if(view.querySelector('#retry-boot'))void boot();return;}
+    window.PipiNetwork.abortSync();
+    try{const client=window.PipiStateSync?.client,next=client?await client.resume(state.revision):await api('/api/state?since='+state.revision);if(!next.unchanged)receiveState(next.state||next);flushRender();}
+    catch(error){if(error.status!==401&&!error.stale&&error.name!=='AbortError')console.debug('恢复联网后的同步失败，将自动重试');}
+  }
+  window.addEventListener('online',resumeStateSync);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void resumeStateSync();});
   setInterval(async()=>{
     if(!state||sending||polling||recordingSession||composeComposing||searchComposing||document.hidden)return;
     polling=true;

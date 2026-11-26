@@ -80,3 +80,6 @@ adb -s emulator-5556 reverse tcp:18766 tcp:18766
 - 原生安卓更新协议：准备 JDK 17+ 和测试所用的 JSON-java `org.json:json:20240303`（Maven Central），运行 `node tests/android-official-updates.cjs /path/to/json-20240303.jar /path/to/jdk`。也可分别设置 `PIPI_ANDROID_TEST_JSON_JAR` 与 `JAVA_HOME`。它使用本机临时 HTTP 服务和 Android 平台替身，不调用真实更新源、不安装 APK。
 
 两个网页脚本及推送构建脚本的截图、日志、隔离数据和构建结果默认保存在仓库内已忽略的 `test-results/android-page`、`test-results/android-notice`、`test-results/android-fcm-build`。可分别用 `PIPI_ANDROID_PAGE_OUTPUT`、`PIPI_ANDROID_NOTICE_OUTPUT`、`PIPI_ANDROID_FCM_BUILD_OUTPUT` 指定输出目录。
+## 前台网页网络恢复（P0-4，待发布）
+
+内置新网页的 App 对普通请求等待 20 秒、模型请求等待 180 秒；上传和备份恢复连续 60 秒无进度才中止。切回前台或联网恢复会补收消息，不重发已提交动作。此项属于共享网页资源，需随新版资源构建安装包；后台通知服务的恢复策略另见 `NOTIFICATIONS.md`。未真机验证。

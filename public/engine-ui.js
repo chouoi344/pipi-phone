@@ -922,7 +922,7 @@
     if(action==='lm-pick-import'){document.querySelector('#lm-import-file')?.click();return;}
     if(action==='lm-export-json'){
       const roleId=control.dataset.roleId;if(!roleId)return;
-      const resp=await fetch('/api/engine/memory/export?roleId='+encodeURIComponent(roleId),{credentials:'same-origin'});
+      const resp=await window.PipiNetwork.request('/api/engine/memory/export?roleId='+encodeURIComponent(roleId),{credentials:'same-origin',responseType:'blob'});
       if(!resp.ok)throw new Error('导出失败');
       const blob=await resp.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');
       a.href=url;a.download=`livingmemory-export-${roleId.slice(0,8)}.json`;document.body.append(a);a.click();a.remove();

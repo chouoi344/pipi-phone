@@ -82,3 +82,6 @@ Docker 另提供 `compose.fcm.yaml`：管理员显式使用 `-f compose.yaml -f 
 当前没有接入华为、小米、OPPO、vivo 等厂商系统推送。正式厂商路径需要应用开发者身份、固定包名/签名、厂商开通及密钥、服务端设备注册、服务端发送适配和对应真机验证；密钥须保留在服务端。FCM Android 客户端要求 Google Play 商店/Google APIs 环境，不能用本次无 GMS 模拟器代替验证。参见 [Firebase Android 接入条件](https://firebase.google.com/docs/cloud-messaging/android/get-started)、[华为 Push Kit](https://developer.huawei.com/consumer/en/hms/huawei-pushkit/)、[小米 Android 接入准备](https://dev.mi.com/xiaomihyperos/documentation/detail?pId=1543)。
 
 UnifiedPush 是可进一步落地的自托管路径：手机须另外安装并配置真实 distributor，例如 ntfy 或 NextPush；小手机须实现注册、端点绑定、消息确认与注销，服务器向该端点发送唤醒，再由客户端鉴权取消息。它不是 Android 内置通道，未安装 distributor 时不能启用或显示已连接。ntfy 自身也有长连接/FCM与电量策略的取舍。当前版本未实现这套协议，不把研究文档当作已接入证据。参见 [UnifiedPush Android 接入](https://github.com/UnifiedPush/documentation/blob/main/content/developers/android.md)、[协议](https://unifiedpush.org/developers/spec/android/)、[ntfy 发送和即时送达](https://docs.ntfy.sh/publish/)。
+## 前台同步恢复（P0-4，待发布）
+
+共享网页在重新联网或返回前台时会取消旧的同步请求，立即重新补收消息。挂起同步的普通请求会在 20 秒后报「网络超时，请重试」，后续请求继续执行；这项前台恢复不代替本文件描述的 Android 后台通知服务。未真机验证。

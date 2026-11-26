@@ -28,7 +28,7 @@ test('F2: queued chat redraw preserves a nonempty draft, selection and focus; IM
 
 test('F4: JSON and binary network failures both show a Chinese error',async()=>{
  const code=section(app,'  async function api(path','  async function act(');
- const f=context(code,{authEpoch:1,csrf:'',fetch:async()=>{throw new TypeError('Failed to fetch');}});
+ const f=context(code,{authEpoch:1,csrf:'',window:{PipiNetwork:{request:async()=>{throw new TypeError('Failed to fetch');}}}});
  await assert.rejects(f.api('/api/test'),/网络连接失败，请检查网络后重试/);await assert.rejects(f.apiRaw('/api/test','bytes'),/网络连接失败，请检查网络后重试/);
 });
 

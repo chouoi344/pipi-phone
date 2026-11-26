@@ -146,6 +146,15 @@ test('features046: watering targets the growing friend plot and daily repeated h
   sheet=null;f.data.farm.visits.push({roleId:'a',date:new Date().toISOString().slice(0,10)});button.events.get('click')({currentTarget:button});assert.equal(sheet,null);assert.match(f.calls.at(-1)[1],/今日已互助/);
 });
 
+test('P2-6 farm render and watering action use the configured Shanghai midnight',async t=>{
+  let at=Date.parse('2026-11-25T15:59:59Z');class Clock extends Date{constructor(...args){super(...(args.length?args:[at]));}static now(){return at;}}
+  const plot={id:'2',crop:'carrot',readyAt:at+3600000},f=fixture({settings:{timezone:'Asia/Shanghai'},farm:{coins:100,seeds:10,plots:[],friends:{a:{coins:20,seeds:2,plots:[plot]}},visits:[{roleId:'a',date:'2026-11-25'}]}},{Date:Clock}),button=new Node();button.dataset.plot='2';let sheet;
+  f.P.actionSheet=(caption,actions)=>{sheet={caption,actions};};f.doc.querySelectorAll=selector=>selector==='[data-plot]'?[button]:[];t.after(()=>f.api.cleanup());f.internals.bindFarm({roleId:'a'});
+  button.events.get('click')({currentTarget:button});assert.equal(sheet,undefined);assert.match(f.api.render('farm',{roleId:'a'}),/今日已互助/);
+  at+=2000;button.events.get('click')({currentTarget:button});assert.ok(sheet,'local midnight must enable the watering action');assert.doesNotMatch(f.api.render('farm',{roleId:'a'}),/今日已互助/);
+  await sheet.actions[0].run();assert.deepEqual(plain(f.calls.find(row=>row[0]==='farm.water')),['farm.water',{roleId:'a',plotId:'2'}]);
+});
+
 for(const roleId of [undefined,'a'])test(`features046: ${roleId?'friend':'own'} farm actual interval decodes DOM epoch and refreshes on maturity`,()=>{
   const base=1794696916104,readyAt=base+300000;let now=base,tick;
   class Clock extends Date{static now(){return now;}}

@@ -21,7 +21,10 @@
   const nativeIcon = name => `<span class="fw-feature-icon" aria-hidden="true" style="--fw-icon:url('/vendor/fake-world/masks/${name}.svg')"></span>`;
   const money = cents => (Number(cents || 0) / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
-  const utcToday = () => new Date().toISOString().slice(0, 10);
+  const farmToday = () => {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {timeZone: state().settings?.timezone || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit'}).formatToParts(Date.now()).map(part => [part.type, part.value]));
+    return `${parts.year}-${parts.month}-${parts.day}`;
+  };
   const roles = () => state().roles || [];
   const person = id => id === 'me' ? { ...state().profile, name: state().profile?.name || '我' } : roles().find(r => r.id === id) || { name: '已删除的角色' };
   const label = id => person(id).remark || person(id).name || '未命名';
@@ -944,7 +947,7 @@
     const farm = roleId ? root.friends?.[roleId] : root;
     if (!farm) return empty('', '找不到这个农场', '');
     const plots = farm.plots || [], config = root.cropConfig || {};
-    const visited = (root.visits || []).some(v => v.roleId === roleId && v.date === utcToday());
+    const visited = (root.visits || []).some(v => v.roleId === roleId && v.date === farmToday());
     return `<div class="feature-page farm-page" data-farm-role="${esc(roleId || '')}">${roleId ? `<div class="farm-owner">${avatar(roleId, 44)}<strong>${esc(label(roleId))}的农场</strong></div>` : ''}<div class="farm-info"><span>农场币 <b>${esc(farm.coins)}</b></span><span>种子 <b>${esc(farm.seeds)}</b></span></div><div class="farm-board">${plots.map((plot, index) => {
       const crop = crops[plot.crop], ready = crop && new Date(plot.readyAt).getTime() <= Date.now();
       return `<button class="farm-plot ${crop ? ready ? 'is-ready' : 'is-growing' : 'is-empty'}" data-plot="${esc(plot.id)}"><span class="plot-label">${index + 1} 号地</span><span class="plot-soil"><span class="crop-sprout">${crop ? ready ? crop.emoji : '🌱' : '＋'}</span></span><strong>${crop ? esc(crop.name) : '空闲地块'}</strong><small ${crop && !ready ? `data-ready-at="${esc(plot.readyAt)}"` : ''}>${crop ? ready ? '点击收获' : esc(remaining(plot.readyAt)) : '点击播种'}</small></button>`;
@@ -960,7 +963,7 @@
       if (plot.crop) {
         if (new Date(plot.readyAt).getTime() > Date.now()) {
           if (!roleId) return P().toast(`还需 ${remaining(plot.readyAt)}`);
-          const visited = (root.visits || []).some(v => v.roleId === roleId && v.date === utcToday());
+          const visited = (root.visits || []).some(v => v.roleId === roleId && v.date === farmToday());
           if (visited) return P().toast(`今日已互助，还需 ${remaining(plot.readyAt)}`);
           return P().actionSheet(`${crops[plot.crop].name} · 还需${remaining(plot.readyAt)}`, [{ label: '浇水互助', run: async () => { await mutation('farm.water', { roleId, plotId: plot.id }); P().toast('已浇水，生长时间缩短 1 分钟，获得 5 农场币'); } }]);
         }

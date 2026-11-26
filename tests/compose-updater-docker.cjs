@@ -3,12 +3,59 @@
 // Opt-in Linux/Docker release gate. All containers, volumes and data are isolated.
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto'),net=require('node:net');
 const {execFile}=require('node:child_process'),{promisify}=require('node:util');
-const execute=promisify(execFile),{readConfig,createUpdater}=require('../scripts/compose-updater.cjs');
+const execute=promisify(execFile),{readConfig,createUpdater,enginePull}=require('../scripts/compose-updater.cjs');
 const root=path.resolve(__dirname,'..'),project='pipi-updater-smoke-'+crypto.randomBytes(6).toString('hex');
 const images={old:project+':old',next:project+':next',broken:project+':broken'};
 const versions={old:'0.0.1',next:'0.0.2',broken:'0.0.3'},password='Isolated-Compose-Smoke-2026!';
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function availablePort(){const server=net.createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;}
+
+// Serve a fresh, immutable one-layer image to the actual runner daemon. A
+// throttled blob guarantees a cold download even when the build cache is warm.
+async function verifyEngineProgress(dir,docker){
+  const http=require('node:http'),zlib=require('node:zlib');
+  const fingerprint=bytes=>'sha256:'+crypto.createHash('sha256').update(bytes).digest('hex');
+  await fs.writeFile(path.join(dir,'progress.bin'),crypto.randomBytes(1536*1024));
+  const {stdout:tar}=await execute('tar',['-C',dir,'-cf','-','progress.bin'],{encoding:'buffer',maxBuffer:2*1024*1024});
+  const layer=zlib.gzipSync(tar),layerDigest=fingerprint(layer);
+  const arch=await docker(['version','--format','{{.Server.Arch}}']);
+  const config=Buffer.from(JSON.stringify({os:'linux',architecture:arch,config:{},rootfs:{type:'layers',diff_ids:[fingerprint(tar)]}}));
+  const manifestType='application/vnd.oci.image.manifest.v1+json',configType='application/vnd.oci.image.config.v1+json',layerType='application/vnd.oci.image.layer.v1.tar+gzip';
+  const descriptor=(bytes,mediaType)=>({mediaType,size:bytes.length,digest:fingerprint(bytes)});
+  const manifest=Buffer.from(JSON.stringify({schemaVersion:2,mediaType:manifestType,config:descriptor(config,configType),layers:[descriptor(layer,layerType)]}));
+  const repository='pipi-ci/progress',digest=fingerprint(manifest),resources=new Map([
+    ['/v2/'+repository+'/manifests/'+digest,[manifest,manifestType]],
+    ['/v2/'+repository+'/blobs/'+fingerprint(config),[config,configType]],
+    ['/v2/'+repository+'/blobs/'+layerDigest,[layer,layerType]]
+  ]);
+  const registry=http.createServer(async(req,res)=>{
+    if(req.url==='/v2/'){res.writeHead(200,{'Docker-Distribution-Api-Version':'registry/2.0'});res.end('{}');return;}
+    const resource=resources.get(req.url);
+    if(!resource){res.writeHead(404);res.end();return;}
+    const [bytes,type]=resource;
+    res.writeHead(200,{'Content-Type':type,'Content-Length':bytes.length,'Docker-Content-Digest':fingerprint(bytes)});
+    if(req.method==='HEAD'){res.end();return;}
+    if(bytes!==layer){res.end(bytes);return;}
+    for(let i=0;i<bytes.length&&!res.destroyed;i+=32768){res.write(bytes.subarray(i,i+32768));await wait(50);}
+    res.end();
+  });
+  await new Promise((resolve,reject)=>registry.once('error',reject).listen(0,'127.0.0.1',resolve));
+  const image='127.0.0.1:'+registry.address().port+'/'+repository+'@'+digest;
+  let pulled=false;
+  try{
+    const progress=[],api=await docker(['version','--format','{{.Server.APIVersion}}']);
+    await enginePull('/var/run/docker.sock',api,image,[layerDigest.slice(7)],p=>progress.push(p));
+    pulled=true;
+    const repoDigests=JSON.parse(await docker(['image','inspect','--format','{{json .RepoDigests}}',image]));
+    assert.ok(repoDigests.includes(image),'the daemon must store the exact registry digest');
+    assert.ok(progress.some(p=>p.layerBytes>0&&p.layerBytes<p.layerTotalBytes&&p.layerTotalBytes===layer.length),'actual Docker pull must publish in-flight layer bytes');
+    assert.deepEqual(progress.at(-1),{completedLayers:1,totalLayers:1});
+    console.log('Docker Engine verified real layer progress for a pinned cold pull:',progress);
+  }finally{
+    registry.closeAllConnections();await new Promise(resolve=>registry.close(resolve));
+    if(pulled)await docker(['image','rm',image]);
+  }
+}
 
 async function main(){
   if(process.platform!=='linux')throw new Error('Run this opt-in smoke on a Linux Docker host.');
@@ -28,7 +75,9 @@ async function main(){
   async function fileInVolume(volume,filename){return docker(['run','--rm','--network','none','--read-only','--mount',`type=volume,src=${volume},dst=/source,readonly`,'--entrypoint','node',images.old,'-e',`process.stdout.write(require('node:fs').readFileSync('/source/${filename}','utf8'))`]);}
   async function assertRetained(){const state=await api('/api/state');assert.equal(state.profile.name,'CI persistent profile');const c=await currentContainer(),volume=c.Mounts.find(m=>m.Destination==='/app/data').Name;assert.equal(await fileInVolume(volume,'media/smoke.txt'),'CI_PERSISTENT_MEDIA');return {container:c,volume};}
   try{
-    await docker(['version']);await docker(['compose','version']);await fs.mkdir(shared,{mode:0o777});await fs.chmod(shared,0o777);
+    await docker(['version']);await docker(['compose','version']);
+    stage='read actual downloaded layer bytes from Docker Engine';await verifyEngineProgress(dir,docker);
+    stage='build isolated images';await fs.mkdir(shared,{mode:0o777});await fs.chmod(shared,0o777);
     for(const kind of Object.keys(images)){
       const context=path.join(dir,kind);await fs.mkdir(context);
       for(const item of ['package.json','package-lock.json','server.cjs','LICENSE','LICENSE-MIT.txt','THIRD_PARTY_NOTICES.md','lib','public','compose.yaml','compose.https.yaml','compose.updates.yaml','deploy','scripts/install-https.py','scripts/compose-updater.cjs'])await fs.cp(path.join(root,item),path.join(context,item),{recursive:true});

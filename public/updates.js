@@ -51,6 +51,10 @@
       <div class="software-update" data-software-update>
       <p class="software-update-status" role="status">正在检查更新…</p>
       <p class="software-update-detail" hidden></p>
+      <div class="software-update-download" hidden>
+        <progress aria-label="程序下载进度"></progress>
+        <span></span>
+      </div>
       <pre class="software-update-notes" aria-label="更新说明" tabindex="0" hidden></pre>
       <div class="software-update-actions">
         <button class="secondary-btn" type="button" data-update-check>检查更新</button>
@@ -66,6 +70,9 @@
     if (!panel) return;
     const status = panel.querySelector('.software-update-status');
     const detail = panel.querySelector('.software-update-detail');
+    const download = panel.querySelector('.software-update-download');
+    const progress = download.querySelector('progress');
+    const progressText = download.querySelector('span');
     const notes = panel.querySelector('.software-update-notes');
     const checkButton = panel.querySelector('[data-update-check]');
     const installButton = panel.querySelector('[data-update-install]');
@@ -89,6 +96,33 @@
       const workVersion = showJob && job?.version && job.phase !== 'succeeded' ? '目标版本 v' + job.version : '';
       detail.textContent = [workVersion, showJob && job.message, result.reason].filter(Boolean).join(' · ');
       detail.hidden = !detail.textContent;
+      download.hidden = job?.phase !== 'downloading';
+      if (!download.hidden) {
+        const measured = job.downloadProgress;
+        const labels = [];
+        if (measured?.totalLayers) {
+          labels.push('已完成 ' + measured.completedLayers + ' / ' + measured.totalLayers + ' 层');
+          progress.max = measured.totalLayers;
+          progress.value = measured.completedLayers;
+        } else {
+          if (measured?.completedLayers !== undefined) labels.push('已完成 ' + measured.completedLayers + ' 层');
+          if (measured?.layerTotalBytes) {
+            progress.max = measured.layerTotalBytes;
+            progress.value = measured.layerBytes;
+          } else {
+            progress.removeAttribute('value');
+          }
+        }
+        if (measured?.layerTotalBytes) {
+          const mb = bytes => (bytes / 1000000).toLocaleString('zh-CN', {maximumFractionDigits: 1});
+          labels.push('当前层 ' + mb(measured.layerBytes) + ' / ' + mb(measured.layerTotalBytes) + ' MB');
+        }
+        const label = labels.join(' · ');
+        progressText.textContent = label;
+        progress.setAttribute('aria-label', measured?.layerTotalBytes && !measured.totalLayers ? '当前层下载进度' : '程序下载进度');
+        if (label) progress.setAttribute('aria-valuetext', label);
+        else progress.removeAttribute('aria-valuetext');
+      }
       notes.textContent = latest ? 'v' + latest.version + (latest.notes ? '\n' + latest.notes : '') : '';
       notes.hidden = !notes.textContent;
       const versionDisplay = container.querySelector('.about-logo p');
@@ -110,7 +144,13 @@
         checkedAt = Date.now();
         render(result);
       } catch (error) {
-        if (!panel.isConnected || error.status === 401) return;
+        if (!panel.isConnected) return;
+        download.hidden = true;
+        detail.hidden = true;
+        if (error.status === 401) {
+          status.textContent = '请重新登录后查看更新进度';
+          return;
+        }
         status.textContent = '等待小手机重新连接…';
         timer = setTimeout(poll, 2000);
       }

@@ -4,6 +4,8 @@ const fs=require('node:fs/promises');
 const {constants}=require('node:fs');
 const path=require('node:path');
 const crypto=require('node:crypto');
+const http=require('node:http');
+const os=require('node:os');
 const {execFile}=require('node:child_process');
 const {promisify}=require('node:util');
 const execute=promisify(execFile);
@@ -66,7 +68,127 @@ async function dockerCommand(args){
   catch(error){console.error('Docker 操作失败：',error.stderr||error);throw publicError('Docker 操作失败，请检查宿主机更新日志');}
 }
 
-function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>require('../lib/updates.cjs').getRelease(options),fetchImpl=global.fetch,now=Date.now,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),log=console.error}={}){
+async function platformLayers(digest,fetchImpl){
+  const accept='application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json';
+  const pull=require('../lib/updates.cjs').createAcrPull(fetchImpl);
+  const response=await pull('manifests/'+digest,accept,AbortSignal.timeout(3000));
+  if(!response.ok){await response.body?.cancel();throw new Error('HTTP '+response.status);}
+  const chunks=[];let size=0;
+  for await(const chunk of response.body){
+    size+=chunk.byteLength;
+    if(size>256*1024)throw new Error('镜像分层清单过大');
+    chunks.push(chunk);
+  }
+  const bytes=Buffer.concat(chunks);
+  if('sha256:'+crypto.createHash('sha256').update(bytes).digest('hex')!==digest)throw new Error('镜像分层清单指纹不符');
+  const manifest=JSON.parse(bytes.toString('utf8'));
+  if(manifest.schemaVersion!==2||!accept.split(', ').includes(manifest.mediaType)||!Array.isArray(manifest.layers)||!manifest.layers.length||
+     !manifest.layers.every(layer=>/^sha256:[a-f0-9]{64}$/.test(layer?.digest)))throw new Error('镜像分层清单无效');
+  return [...new Set(manifest.layers.map(layer=>layer.digest.slice(7)))];
+}
+
+// The pull stream also contains repository, manifest and config events. Only
+// Docker layer events count, and repeated messages must never advance a layer twice.
+async function readPullProgress(stream,layers,report){
+  const seen=new Set(),complete=new Set(),downloading=new Map();
+  let active,lastActive,lastWrite=-Infinity,lastCount=-1,buffer='';
+  const clock=()=>performance.now();
+  async function event(line){
+    if(!line.trim())return;
+    const item=JSON.parse(line);
+    if(item.error||item.errorDetail?.message)throw new Error(item.errorDetail?.message||item.error);
+    const id=item.id?.replace(/^sha256:/,'');
+    if(!id||!/^([0-9a-f]{12}|[0-9a-f]{64})$/.test(id))return;
+    let key=id;
+    if(layers){
+      const matched=layers.filter(layer=>layer.startsWith(id));
+      if(matched.length!==1)return;
+      key=matched[0];
+    }
+    if(['Pulling fs layer','Pull complete','Layer already exists'].includes(item.status))seen.add(key);
+    if(!layers&&!seen.has(key))return;
+    if(['Pull complete','Already exists','Layer already exists'].includes(item.status))complete.add(key);
+    if(item.status==='Downloading'){
+      const {current,total}=item.progressDetail||{};
+      if(!complete.has(key)&&Number.isSafeInteger(current)&&Number.isSafeInteger(total)&&current>=0&&total>0&&current<=total){
+        downloading.set(key,{layerBytes:current,layerTotalBytes:total});
+      }
+    }else if(['Download complete','Extracting','Pull complete','Already exists','Layer already exists','Verifying Checksum'].includes(item.status)){
+      downloading.delete(key);
+    }
+    if(!downloading.has(active))active=downloading.keys().next().value;
+    const time=clock();
+    if(complete.size===lastCount && active===lastActive && time-lastWrite<500)return;
+    await report({completedLayers:complete.size,...(layers?{totalLayers:layers.length}:{}),...downloading.get(active)});
+    lastCount=complete.size;lastActive=active;lastWrite=time;
+  }
+  stream.setEncoding('utf8');
+  for await(const chunk of stream){
+    buffer+=chunk;
+    const lines=buffer.split('\n');buffer=lines.pop();
+    for(const line of lines)await event(line);
+  }
+  await event(buffer);
+}
+
+function supportsAnonymousPull(registry,env,config){
+  if((env.DOCKER_CONTEXT||config.currentContext||'default')!=='default'||
+     env.DOCKER_HOST&&!['unix:///var/run/docker.sock','unix:///run/docker.sock'].includes(env.DOCKER_HOST)||
+     ['DOCKER_TLS','DOCKER_TLS_VERIFY','DOCKER_CERT_PATH','DOCKER_API_VERSION','DOCKER_CUSTOM_HEADERS','DOCKER_DEFAULT_PLATFORM','DOCKER_AUTH_CONFIG'].some(key=>env[key])||
+     (env.DOCKER_CONTENT_TRUST&&!/^(0|false|f)$/i.test(env.DOCKER_CONTENT_TRUST))||config.credsStore||Object.keys(config.HttpHeaders||{}).length)return false;
+  const matches=key=>key.replace(/^https?:\/\//,'').split('/')[0].toLowerCase()===registry;
+  return ![...Object.keys(config.auths||{}),...Object.keys(config.credHelpers||{})].some(matches);
+}
+
+async function localPullAvailable(image){
+  const registry=image.split('@')[0],{ACR_REPOSITORY}=require('../lib/updates.cjs');
+  if(process.platform!=='linux'||![ACR_REPOSITORY,'ghcr.io/chouoi344/pipi-phone'].includes(registry)||
+      !/@sha256:[a-f0-9]{64}$/.test(image))return false;
+  // Leave custom contexts, credentials and CLI headers to Docker itself.
+  let config={};
+  try{
+    config=JSON.parse(await fs.readFile(path.join(process.env.DOCKER_CONFIG||path.join(os.homedir(),'.docker'),'config.json'),'utf8'));
+  }catch(error){if(error.code!=='ENOENT')return false;}
+  if(!supportsAnonymousPull(registry.split('/')[0],process.env,config))return false;
+  const sock=await fs.stat('/var/run/docker.sock').catch(()=>null);
+  return Boolean(sock?.isSocket());
+}
+
+async function enginePull(socketPath,apiVersion,image,layers,report){
+  if(!/^\d+\.\d+$/.test(apiVersion))throw new Error('无效的 Docker Engine API 版本');
+  const [fromImage,tag]=image.split('@');
+  const response=await new Promise((resolve,reject)=>{
+    const request=http.request({socketPath,method:'POST',path:'/v'+apiVersion+'/images/create?'+new URLSearchParams({fromImage,tag}),
+      headers:{Accept:'application/json','X-Registry-Auth':'e30='},signal:AbortSignal.timeout(600000)},resolve);
+    request.on('error',reject);request.end();
+  });
+  if(response.statusCode!==200){response.resume();throw new Error('Docker 镜像请求返回 HTTP '+response.statusCode);}
+  await readPullProgress(response,layers,report);
+}
+
+async function pullDockerImage(image,report){
+  if(await localPullAvailable(image)){
+    const {ACR_REPOSITORY}=require('../lib/updates.cjs');
+    let layers;
+    if(image.startsWith(ACR_REPOSITORY+'@')){
+      try{layers=await platformLayers(image.split('@')[1],global.fetch);}
+      catch(error){console.error('无法确认镜像总层数：',error.message);}
+    }
+    const version=await dockerCommand(['version','--format','{{.Server.APIVersion}}']);
+    try{
+      await enginePull('/var/run/docker.sock',version,image,layers,report);
+      return;
+    }catch(error){
+      // A credential helper may exist even without a CLI config file. Let the
+      // CLI supply credentials in that case; real network failures use the mirror fallback.
+      if(!/HTTP (401|403)|unauthorized|denied|authentication required/i.test(error.message))throw error;
+      await report();
+    }
+  }
+  await dockerCommand(['pull',image]);
+}
+
+function createUpdater(config,{docker=dockerCommand,pullImage=docker===dockerCommand?pullDockerImage:(image=>docker(['pull',image])),getRelease=(options)=>require('../lib/updates.cjs').getRelease(options),fetchImpl=global.fetch,now=Date.now,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),log=console.error}={}){
   const currentFile=path.join(config.stateDir,'current.json'),activeFile=path.join(config.stateDir,'active-compose.json');
   const lockFile=path.join(config.stateDir,'worker.lock'),startLockFile=path.join(config.stateDir,'worker-start.lock'),jobsDir=path.join(config.stateDir,'jobs');
   let lockToken=null,heartbeat=null,heartbeatWrite=Promise.resolve(),busy=false,stopping=false;
@@ -98,6 +220,7 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
   }
   async function pullReleaseImage(job,release){
     const {image,platformDigests}=release;
+    const report=downloadProgress=>writeJson(path.join(config.updateDir,'status.json'),{...job.status,downloadProgress,updatedAt:stamp()},0o644);
     let message='正在下载官方新版镜像';
     const architecture=platformDigests?(await docker(['version','--format','{{.Server.Arch}}'])).trim():null;
     if(architecture && Object.hasOwn(platformDigests,architecture)){
@@ -105,7 +228,7 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
       job.targetImage=ACR_REPOSITORY+'@'+platformDigests[architecture];
       await save(job,'downloading','正在从阿里云下载官方新版镜像（'+architecture+'）','pulling');
       try{
-        await docker(['pull',job.targetImage]);
+        await pullImage(job.targetImage,report);
         return;
       }catch(error){
         log(error);
@@ -114,7 +237,7 @@ function createUpdater(config,{docker=dockerCommand,getRelease=(options)=>requir
     }
     job.targetImage=image;
     await save(job,'downloading',message,'pulling');
-    await docker(['pull',image]);
+    await pullImage(image,report);
   }
   async function useImage(image,volume){
     await writeJson(activeFile,{services:{'pipi-phone':{image,volumes:[{type:'volume',source:'pipi-update-data',target:'/app/data'}]}},volumes:{'pipi-update-data':{external:true,name:volume}}});
@@ -326,4 +449,4 @@ async function runCli(){
   finally{process.off('SIGINT',stop);process.off('SIGTERM',stop);}
 }
 if(require.main===module)runCli().catch(error=>{console.error(error.message);process.exitCode=1;});
-module.exports={readConfig,validateRequest,createUpdater,runCli};
+module.exports={readConfig,validateRequest,createUpdater,runCli,readPullProgress,platformLayers,enginePull,supportsAnonymousPull};

@@ -6,9 +6,41 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const os=require('node:os');
 const crypto=require('node:crypto');
-const {readConfig,validateRequest,createUpdater}=require('../scripts/compose-updater.cjs');
+const {readConfig,validateRequest,createUpdater,readPullProgress,platformLayers,supportsAnonymousPull}=require('../scripts/compose-updater.cjs');
 const OLD='sha256:'+'a'.repeat(64),NEW='ghcr.io/example/pipi-phone@sha256:'+'b'.repeat(64),CID='c'.repeat(64);
 const BEFORE={sqlite:'original database',media:'original photo',session:'original login'};
+
+test('Docker pull progress counts only unique verified layers and reports bytes for a single active download',async()=>{
+  const layers=['a'.repeat(64),'b'.repeat(64)],id=layers[0].slice(0,12),other=layers[1].slice(0,12);
+  const events=[{id:'d'.repeat(12),status:'Already exists'},{id,status:'Pulling fs layer'},
+    {id,status:'Downloading',progressDetail:{current:7,total:19}},{id:other,status:'Downloading',progressDetail:{current:13,total:41}},
+    {id,status:'Download complete'},{id,status:'Pull complete'},{id,status:'Pull complete'},{id:other,status:'Layer already exists'}];
+  const {Readable}=require('node:stream'),output=[];
+  const raw=events.map(e=>JSON.stringify(e)).join('\r\n');
+  await readPullProgress(Readable.from([raw.slice(0,90),raw.slice(90)]),layers,p=>output.push(p));
+  assert.deepEqual(output,[{completedLayers:0,totalLayers:2},{completedLayers:0,totalLayers:2,layerBytes:7,layerTotalBytes:19},
+    {completedLayers:0,totalLayers:2,layerBytes:13,layerTotalBytes:41},{completedLayers:1,totalLayers:2,layerBytes:13,layerTotalBytes:41},{completedLayers:2,totalLayers:2}]);
+  const unknown=[];
+  await readPullProgress(Readable.from([raw]),undefined,p=>unknown.push(p));
+  assert.ok(unknown.every(p=>!('totalLayers' in p)));assert.equal(unknown.at(-1).completedLayers,2);
+  await assert.rejects(readPullProgress(Readable.from([JSON.stringify({errorDetail:{message:'registry timeout'}})]),layers,()=>{}),/registry timeout/);
+});
+
+test('an ACR layer count must come from the exact pinned platform manifest',async()=>{
+  const layer='b'.repeat(64),raw=JSON.stringify({schemaVersion:2,mediaType:'application/vnd.oci.image.manifest.v1+json',layers:[{digest:'sha256:'+layer}]});
+  const digest='sha256:'+crypto.createHash('sha256').update(raw).digest('hex');
+  assert.deepEqual(await platformLayers(digest,async url=>{assert.ok(url.endsWith('/manifests/'+digest));return new Response(raw);}),[layer]);
+  await assert.rejects(platformLayers(digest,async()=>new Response(raw+' ')),/指纹/);
+});
+
+test('the local pull path preserves relevant Docker context, credentials, headers and platform settings',()=>{
+  const host='ghcr.io';
+  assert.equal(supportsAnonymousPull(host,{DOCKER_BUILDKIT:'1'},{currentContext:'default',auths:{'other.example':{}}}),true);
+  for(const [env,config] of [[{DOCKER_HOST:'ssh://remote'},{}],[{DOCKER_CONTEXT:'remote'},{}],[{DOCKER_DEFAULT_PLATFORM:'linux/arm64'},{}],
+    [{},{auths:{'https://ghcr.io/v1/':{}}}],[{},{credHelpers:{'ghcr.io':'secretservice'}}],[{},{credsStore:'pass'}],[{},{HttpHeaders:{header:'value'}}]]){
+    assert.equal(supportsAnonymousPull(host,env,config),false);
+  }
+});
 
 async function fixture(t,options={}){
   const dir=await fs.mkdtemp(path.join(os.tmpdir(),'pipi-compose-updater-'));
@@ -80,7 +112,7 @@ async function fixture(t,options={}){
     return {status:200,json:async()=>({version:running.Image===OLD?'0.12.0':options.runtimeVersion||'0.12.1'})};
   }
   const deps={docker,fetchImpl,getRelease:async input=>{assert.deepEqual(input,{repository:config.repository,version:request.version,...(request.expectedImage?{expectedImage:request.expectedImage}:{})});if(options.releaseFetch)return require('../lib/updates.cjs').getRelease({...input,fetchImpl:options.releaseFetch});return options.releaseMissing?null:{version:request.version,image:releaseImage,platformDigests:options.platformDigests};},now:()=>clock,sleep:async ms=>{clock+=ms;},log:error=>logs.push(error)};
-  const make=()=>createUpdater(config,deps);
+  const make=()=>createUpdater(config,{...deps,...(options.pullImage?{pullImage:options.pullImage}:{})});
   async function submit(value=request){await fs.mkdir(config.updateDir,{recursive:true});await fs.writeFile(path.join(config.updateDir,'request.json'),JSON.stringify(value));}
   async function journal(){return JSON.parse(await fs.readFile(path.join(config.stateDir,'current.json'),'utf8'));}
   async function status(){return JSON.parse(await fs.readFile(path.join(config.updateDir,'status.json'),'utf8'));}
@@ -104,6 +136,20 @@ test('Compose updater: healthy update retains the original named data volume and
   const stop=f.commands.findIndex(args=>args[0]==='compose'&&args.includes('stop')),copy=f.commands.findIndex(args=>args[0]==='run'&&args.includes('/bin/sh')),start=f.commands.findIndex(args=>args[0]==='compose'&&args.includes('up'));
   assert.ok(stop<copy&&copy<start);assert.equal(f.helpers.size,0);
   assert.ok(!f.commands.some(args=>args.includes('down')||args.includes('prune')));
+});
+
+test('download progress is published live and reset between registries and phases',async t=>{
+  const repository='chouoi344/pipi-phone',options={repository,architecture:'amd64',platformDigests:{amd64:'sha256:'+'c'.repeat(64)}};
+  const f=await fixture(t,options);
+  options.pullImage=async(image,report)=>{
+    const initial=await f.status();
+    assert.equal(initial.phase,'downloading');assert.equal(initial.downloadProgress,undefined);
+    const progress={completedLayers:1,totalLayers:2,layerBytes:128,layerTotalBytes:512};
+    await report(progress);assert.deepEqual((await f.status()).downloadProgress,progress);
+    if(!image.startsWith('ghcr.io/'))throw new Error('registry network failure');
+  };
+  await f.submit();await f.make().run({once:true});
+  const final=await f.status();assert.equal(final.phase,'succeeded');assert.equal(final.downloadProgress,undefined);
 });
 
 test('HTTPS installs preserve the loopback binding and proxy network during update and rollback',async t=>{

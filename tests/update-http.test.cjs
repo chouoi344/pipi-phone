@@ -63,6 +63,40 @@ test('backup, install, verification and rollback block business writes while rea
   await f.phase(job,'rolled-back');assert.equal((await f.request('/api/action',{type:'profile.save',payload:{name:'恢复后保存成功'}})).status,200);
 });
 
+test('HTTP update status exposes validated download progress, preserving older workers and other phases',async t=>{
+  const f=await fixture(t);
+  await f.request('/api/updates/check');
+  const {value:{job}}=await f.request('/api/updates/install',{version:'0.12.1'});
+  const layers={completedLayers:2,totalLayers:4};
+  const bytes={layerBytes:512,layerTotalBytes:4096};
+  const cases=[
+    ['downloading',{...layers,...bytes,internal:'private'},{...layers,...bytes}],
+    ['downloading',{completedLayers:0,totalLayers:4,layerBytes:0,layerTotalBytes:20},{completedLayers:0,totalLayers:4,layerBytes:0,layerTotalBytes:20}],
+    ['downloading',{completedLayers:1,totalLayers:1},{completedLayers:1,totalLayers:1}],
+    ['downloading',{completedLayers:1},{completedLayers:1}],
+    ['downloading',{completedLayers:0,...bytes},{completedLayers:0,...bytes}],
+    ['downloading',{completedLayers:-1,...bytes},undefined],
+    ['downloading',{...layers,layerBytes:1},layers],
+    ['downloading',{...layers,layerBytes:5,layerTotalBytes:4},layers],
+    ['downloading',{...layers,layerBytes:-1,layerTotalBytes:4},layers],
+    ['downloading',{...layers,layerBytes:0,layerTotalBytes:0},layers],
+    ['downloading',{...layers,layerBytes:'4',layerTotalBytes:8},layers],
+    ['downloading',{completedLayers:0,totalLayers:0},undefined],
+    ['downloading',{completedLayers:2,totalLayers:1},undefined],
+    ['downloading',{completedLayers:0.5,totalLayers:1},undefined],
+    ['downloading',{completedLayers:0,totalLayers:Number.MAX_SAFE_INTEGER+1},undefined],
+    ['downloading',undefined,undefined],
+    ['verifying',{...layers,...bytes},undefined]
+  ];
+  for(const [phase,progress,expected] of cases){
+    await f.write('status.json',{...job,phase,updatedAt:new Date().toISOString(),message:phase,downloadProgress:progress});
+    const {status,value}=await f.request('/api/updates/status');
+    assert.equal(status,200);
+    assert.equal(value.job.phase,phase);
+    assert.deepEqual(value.job.downloadProgress,expected);
+  }
+});
+
 test('fixed-version install survives Latest changing while offline requests and client-selected images stay blocked',async t=>{
   const f=await fixture(t);assert.equal((await f.request('/api/updates/check')).value.state,'available');
   f.offline=true;const failed=await f.request('/api/updates/check?refresh=1');assert.equal(failed.status,200);assert.equal(failed.value.state,'offline');

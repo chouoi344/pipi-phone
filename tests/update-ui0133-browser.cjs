@@ -144,16 +144,44 @@ async function main() {
               );
               assert.equal(job.version, targetVersion);
               assert.equal(job.previousVersion, currentVersion);
-              const phase = async (phase, message) =>
+              const phase = async (phase, message, downloadProgress) =>
                 write('status.json', {
                   ...job,
                   phase,
                   message,
+                  downloadProgress,
                   startedAt: new Date().toISOString(),
                   updatedAt: new Date().toISOString(),
                 });
+              const bar = page.getByRole('progressbar');
+              const label = page.locator('.software-update-download span');
+              await phase('downloading', '正在下载官方新版镜像');
+              await bar.waitFor();
+              assert.equal(await bar.getAttribute('value'), null);
+              await phase('downloading', '正在下载官方新版镜像', {
+                completedLayers: 2, totalLayers: 7, layerBytes: 3200000, layerTotalBytes: 17000000,
+              });
+              await label.filter({ hasText: '已完成 2 / 7 层 · 当前层 3.2 / 17 MB' }).waitFor();
+              assert.deepEqual(await bar.evaluate(el => [el.value, el.max]), [2, 7]);
+              assert.equal(await page.locator('[data-software-update]').evaluate(el => el.scrollWidth > el.clientWidth + 1), false);
+              await page.screenshot({path: path.join(output, `download-${skin}-${width}.png`)});
+              await page.route('**/api/updates/status', route => route.fulfill({status: 503, json: {error: '服务重启中'}}), {times: 1});
+              await status.filter({ hasText: '等待小手机重新连接' }).waitFor();
+              assert.equal(await bar.isVisible(), false);
+              await phase('downloading', '正在下载官方新版镜像', {
+                completedLayers: 2, layerBytes: 5100000, layerTotalBytes: 17000000,
+              });
+              await label.filter({ hasText: '已完成 2 层 · 当前层 5.1 / 17 MB' }).waitFor();
+              assert.deepEqual(await bar.evaluate(el => [el.value, el.max, el.getAttribute('aria-label')]), [5100000, 17000000, '当前层下载进度']);
+              await phase('downloading', '正在下载官方新版镜像', { completedLayers: 3 });
+              await label.filter({hasText: /^已完成 3 层$/}).waitFor();
+              assert.equal(await bar.getAttribute('value'), null);
+              await phase('downloading', '正在下载官方新版镜像', { completedLayers: 7, totalLayers: 7 });
+              await label.filter({hasText: /^已完成 7 \/ 7 层$/}).waitFor();
+              assert.deepEqual(await bar.evaluate(el => [el.value, el.max]), [7, 7]);
               await phase('backing-up', '隔离资料备份中');
               await status.filter({ hasText: '正在备份资料' }).waitFor();
+              assert.equal(await bar.isVisible(), false);
               assert.equal(
                 await page.locator('[data-update-check]').isDisabled(),
                 true,

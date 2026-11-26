@@ -92,8 +92,8 @@ test('existing merged snapshots containing expired media restore but cannot be f
   assert.throws(()=>S.apply(restored,'message.forward',{targetRoleId:f.target.id,ids:[saved.id],mode:'merged'}),/已过期.*不能转发/);
 });
 
-test('retention defaults to seven days, preserves supported backup values and rejects unsupported choices',()=>{
-  assert.equal(S.initial().settings.mediaRetentionDays,7);
+test('new retention defaults to thirty days, preserves supported backup values and rejects unsupported choices',()=>{
+  assert.equal(S.initial().settings.mediaRetentionDays,30);
   const {state}=fixture();
   for(const days of [7,30,90,'forever']){state.settings.mediaRetentionDays=days;assert.equal(restore(state).settings.mediaRetentionDays,days);}
   const old=S.backupState(state);delete old.settings.mediaRetentionDays;const current=S.initial();current.settings.mediaRetentionDays=90;

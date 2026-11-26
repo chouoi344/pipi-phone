@@ -15,7 +15,7 @@ ANNOTATION = "io.pipi-phone.android"
 LATEST = "android-channel-latest"
 APK = re.compile(r"pipi-phone-android-([0-9]+(?:\.[0-9]+){1,3})-([1-9][0-9]{0,9})\.apk")
 TAG = re.compile(r"android-v[0-9]+(?:\.[0-9]+){1,3}|v[0-9]+\.[0-9]+\.[0-9]+")
-LAYER = "application/vnd.android.package-archive"
+LAYER = "application/octet-stream"
 CONFIG = "application/vnd.oci.image.config.v1+json"
 MANIFEST = "application/vnd.oci.image.manifest.v1+json"
 # OfficialUpdates.java requires the exact same signer set as the installed APK.

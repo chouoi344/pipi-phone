@@ -29,6 +29,6 @@ test('真实服务器与真实客户端：完整snapshot期间并发变更补齐
   const unchanged=await client.refresh();assert.equal(unchanged.unchanged,true);assert.equal(unchanged.state.messages.length,15);
 });
 test('真实服务器重启：旧cursor触发新epoch完整重置，普通旧snapshot不获替换标记',async t=>{
-  const f=await fixture(t),client=Sync.create({request:f.request});const before=await client.refresh();await f.restart();const after=await client.refresh();
+  const f=await fixture(t),client=Sync.create({request:route=>f.request(route)});const before=await client.refresh();await f.restart();const after=await client.refresh();
   assert.equal(client.replaces(after.state),true);assert.deepEqual(after.state,await f.request('/api/state'));assert.equal(client.replaces(before.state),false);
 });

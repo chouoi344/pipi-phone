@@ -334,7 +334,8 @@ function createApp(options={}){
   const tokenFile=path.join(dataDir,'setup-token.txt');
   if(setupToken&&setupAllowed&&setupTokenRequired()&&(!fs.existsSync(tokenFile)||fs.readFileSync(tokenFile,'utf8').trim()!==setupToken))fs.writeFileSync(tokenFile,setupToken+'\n',{mode:0o600});
   const host=options.host||process.env.HOST||'127.0.0.1',port=options.port??Number(process.env.PORT||18766);
-  const allowedHosts=new Set(['localhost','127.0.0.1','[::1]',host,...String(process.env.ALLOWED_HOSTS||'').split(',').map(x=>x.trim()).filter(Boolean)]);
+  const configuredHosts=String(options.allowedHosts??process.env.ALLOWED_HOSTS??'').split(',').map(name=>name.trim().toLowerCase()).filter(Boolean);
+  const allowedHosts=new Set(['localhost','127.0.0.1','[::1]',host,...configuredHosts]);
   const limits=RequestLimits.create(),rate=limits.consume;
   let inFlight=0,activeUploads=0,closed=false;
   function session(req){
@@ -376,7 +377,8 @@ function createApp(options={}){
     }
     const cleanHost=u.hostname.replace(/^\[|\]$/g,'');
     const ipAllowed=(host==='0.0.0.0'||host==='::')&&net.isIP(cleanHost)>0;
-    if(u.pathname!=='/'||u.search||u.hash||(!allowedHosts.has(u.hostname)&&!ipAllowed))S.fail('Host 未在允许列表中',403,'HOST');
+    if(u.pathname!=='/'||/[?#]/.test(raw))S.fail('无效 Host',400,'HOST');
+    if(configuredHosts.length&&!allowedHosts.has(u.hostname)&&!ipAllowed)S.fail('Host 未在允许列表中',403,'HOST');
     if(req.headers.origin!==undefined){
       let origin;
       try{
@@ -385,7 +387,7 @@ function createApp(options={}){
       catch{
         S.fail('Origin 无效',403,'ORIGIN');
       }
-      if(!['http:','https:'].includes(origin.protocol)||origin.host!==u.host||origin.pathname!=='/'||origin.search||origin.hash||origin.username||origin.password)S.fail('跨站请求已拒绝',403,'ORIGIN');
+      if(!['http:','https:'].includes(origin.protocol)||origin.host!==u.host||origin.pathname!=='/'||origin.search||origin.hash||origin.username||origin.password)S.fail('跨站请求已拒绝，请确认反向代理透传 Host 头',403,'ORIGIN');
     }
   }
   function json(res,status,value){
@@ -1448,6 +1450,10 @@ function createApp(options={}){
       if(e?.retryAfter)res.setHeader('Retry-After',String(e.retryAfter));
       // Expected failures carry a status; anything else is a server bug that must leave a trace in the log.
       if(!e?.status)console.error('Unexpected server error:',req.method,String(req.url||'').split('?')[0],e);
+      if(['HOST','ORIGIN'].includes(e?.code)&&!String(req.url).startsWith('/api/')){
+        res.writeHead(e.status,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});
+        return res.end('<!doctype html><meta charset=utf-8><title>访问被拒绝</title><h1>访问被拒绝</h1><p>请核对服务器允许的域名，并确认反向代理透传 Host 头。</p>');
+      }
       return json(res,e?.status||500,{
         error:e?.status?e.message:'服务器处理失败',code:e?.code||'SERVER_ERROR',...(e?.retryAfter?{retryAfter:e.retryAfter}:{}),...(e?.keyRevisions?{keyRevisions:e.keyRevisions}:{}),...(e?.includeState&&!closed?{
           state:S.publicState(read())

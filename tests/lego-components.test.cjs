@@ -257,7 +257,7 @@ test('schedule + voice + selfie + outreach + memory components collaborate clean
   assert.equal(s.engine.data.outreach.records[r.id].count,1);
 });
 
-test('public IP access: HOST=0.0.0.0 accepts public IP Host header while still rejecting foreign domains',async t=>{
+test('public IP access: HOST=0.0.0.0 accepts public IP and configured proxy domain names by default',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'pipi-ip-test-'));
   const app=createApp({dataDir:dir,host:'0.0.0.0',port:0});
   await app.listen();
@@ -272,5 +272,5 @@ test('public IP access: HOST=0.0.0.0 accepts public IP Host header while still r
   const ipRes=await reqHost(`203.0.113.88:${port}`);
   assert.equal(ipRes.status,200);
   const badDomainRes=await reqHost(`attacker.invalid:${port}`);
-  assert.equal(badDomainRes.status,403);
+  assert.equal(badDomainRes.status,200);
 });

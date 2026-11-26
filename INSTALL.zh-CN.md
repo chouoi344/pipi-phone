@@ -183,7 +183,7 @@ pipi.example.com {
 }
 ```
 
-Cloudflare Tunnel 可将源服务设为 `http://127.0.0.1:18766`。在同一网络环境直接转发时，应用设 `TRUST_PROXY=loopback`，并将外部域名加入 `ALLOWED_HOSTS`。使用容器或再接一级代理时，按实际上一跳配置可信来源。Cloudflare 域名自身有请求体上限。超限的大备份可在服务器本机或通过自己的内网入口恢复。[Cloudflare 上传限制](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/4xx-client-error/error-413/)
+Cloudflare Tunnel 可将源服务设为 `http://127.0.0.1:18766`。在同一网络环境直接转发时，应用设 `TRUST_PROXY=loopback`，按需在 `ALLOWED_HOSTS` 中列出允许的域名（用逗号分隔）。留空时接受合法域名，反向代理需保留原始 Host。使用容器或再接一级代理时，按实际上一跳配置可信来源。Cloudflare 域名自身有请求体上限。超限的大备份可在服务器本机或通过自己的内网入口恢复。[Cloudflare 上传限制](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/4xx-client-error/error-413/)
 
 ```yaml
 ingress:

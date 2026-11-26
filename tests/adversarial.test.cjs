@@ -110,12 +110,12 @@ test('emoji recents: exact token whitelist, bounded MRU and durable migration',a
   ok(await f.request('/api/restore',{backup:saved,confirm:true}));assert.deepEqual((await f.state()).emojiRecents,before.emojiRecents);
 });
 
-async function fixture(t,{privateProviders=true,setup=true,password=PASSWORD,requireSetupToken=false}={}) {
+async function fixture(t,{privateProviders=true,setup=true,password=PASSWORD,requireSetupToken=false,allowedHosts}={}) {
   const old=process.env.ALLOW_PRIVATE_PROVIDERS;
   if(privateProviders)process.env.ALLOW_PRIVATE_PROVIDERS='1';else delete process.env.ALLOW_PRIVATE_PROVIDERS;
   const dir=await mkdtemp(path.join(os.tmpdir(),'pipi-adversarial-'));
   let app;
-  try{app=createApp({dataDir:dir,host:'127.0.0.1',port:0,requireSetupToken});await app.listen();}catch(e){await rm(dir,{recursive:true,force:true});throw e;}
+  try{app=createApp({dataDir:dir,host:'127.0.0.1',port:0,requireSetupToken,allowedHosts});await app.listen();}catch(e){await rm(dir,{recursive:true,force:true});throw e;}
   let base=`http://127.0.0.1:${app.server.address().port}`;
   let cookie='',csrf='';
   async function request(route,body,options={}) {
@@ -128,7 +128,7 @@ async function fixture(t,{privateProviders=true,setup=true,password=PASSWORD,req
     if(json?.csrfToken&&!options.anonymous)csrf=json.csrfToken;
     return {status:res.status,json,text,headers:res.headers};
   }
-  const f={get app(){return app;},get base(){return base;},dir,restart:async()=>{await app.close();app=createApp({dataDir:dir,host:"127.0.0.1",port:0,requireSetupToken});await app.listen();base=`http://127.0.0.1:${app.server.address().port}`;},request,action:(type,payload={})=>request('/api/action',{type,payload}),state:async()=>{const r=await request('/api/state');ok(r);return r.json;},get cookie(){return cookie;},get csrf(){return csrf;}};
+  const f={get app(){return app;},get base(){return base;},dir,restart:async()=>{await app.close();app=createApp({dataDir:dir,host:"127.0.0.1",port:0,requireSetupToken,allowedHosts});await app.listen();base=`http://127.0.0.1:${app.server.address().port}`;},request,action:(type,payload={})=>request('/api/action',{type,payload}),state:async()=>{const r=await request('/api/state');ok(r);return r.json;},get cookie(){return cookie;},get csrf(){return csrf;}};
   t.after(async()=>{await app.close();await rm(dir,{recursive:true,force:true});if(old===undefined)delete process.env.ALLOW_PRIVATE_PROVIDERS;else process.env.ALLOW_PRIVATE_PROVIDERS=old;});
   if(setup){
     const r=await request('/api/setup',{password,displayName:'Test only'});ok(r);
@@ -205,8 +205,11 @@ test('authentication: setup, weak password, login, session revocation and protec
 });
 
 test('request boundary: CSRF, foreign Origin and Host are rejected without state changes',async t=>{
-  const f=await fixture(t);const before=await f.state();
+  const f=await fixture(t,{allowedHosts:'app.example.com'});const before=await f.state();
   const body={type:'profile.save',payload:{name:'ATTACK_CHANGED'}};
+  assert.equal((await rawRequest(f,'/api/status',{Host:'app.example.com'})).status,200);
+  const refused=await rawRequest(f,'/',{Host:'other.example.com'});
+  assert.equal(refused.status,403);assert.match(refused.headers['content-type'],/text\/html/);
   for(const headers of [{'X-CSRF-Token':''},{'X-CSRF-Token':'forged'},{Origin:'https://attacker.invalid'},{Origin:'null'},{Host:'attacker.invalid'},{Origin:''}])rejected(headers.Host?await rawRequest(f,'/api/action',headers,body):await f.request('/api/action',body,{headers}),JSON.stringify(headers));
   assert.deepEqual(await f.state(),before);
   rejected(await rawRequest(f,'/api/status',{Host:'attacker.invalid'}),'foreign Host GET');

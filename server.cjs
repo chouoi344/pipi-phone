@@ -232,7 +232,7 @@ function createApp(options={}){
     measureStorage();
     const {status,detail,startedAt,completedAt,beforeBytes,afterBytes,migratedCount,backupName}=readMigration()||{};
     return {
-      retention:state.settings.mediaRetentionDays??7,usage:storageUsage,calculating:Boolean(measuring),
+      retention:state.settings.mediaRetentionDays,usage:storageUsage,calculating:Boolean(measuring),
       lastCleanup:lastCleanup(cleanupKey),lastEarlyCleanup:lastCleanup(pressureKey),
       migration:{status,detail,startedAt,completedAt,beforeBytes,afterBytes,migratedCount,backupName}
     };
@@ -265,7 +265,7 @@ function createApp(options={}){
         return file&&file.mtimeMs<=at-Retention.day?file.size:0;
       },space.reserve+bytes-space.available);
       if(selected.length){
-        const next=mutate(s=>expireMedia(s,selected,s.settings.mediaRetentionDays??7,at,true)).state;
+        const next=mutate(s=>expireMedia(s,selected,s.settings.mediaRetentionDays,at,true)).state;
         recordCleanup(pressureKey,selected,next,at);
       }
       if(enough())return;
@@ -306,7 +306,7 @@ function createApp(options={}){
   async function periodicMediaCleanup(){
     try{
       if(closed||storageOperation||await updateMaintenance()||closed||storageOperation)return;
-      const state=read(),days=state.settings.mediaRetentionDays??7,at=mediaClock();
+      const state=read(),days=state.settings.mediaRetentionDays,at=mediaClock();
       const items=Retention.candidates(state,{days,startedAt:retentionStartedAt(),now:at});
       const oldRoleMedia=days!=='forever'&&retentionStartedAt()<=at-days*Retention.day&&state.engine.data.actions?.roleMedia?.some(item=>item.createdAt<=at-days*Retention.day);
       const next=items.length||oldRoleMedia?mutate(s=>expireMedia(s,items,days,at,false)).state:state;
@@ -906,7 +906,7 @@ function createApp(options={}){
         const retention=b.retention;
         if(!Retention.retentionChoices.includes(retention))S.fail('请选择有效的保存时长');
         if(storageOperation)S.fail('资料正在备份或恢复，请稍后重试',409,'BUSY');
-        const current=read(),before=current.settings.mediaRetentionDays??7,at=mediaClock();
+        const current=read(),before=current.settings.mediaRetentionDays,at=mediaClock();
         const shorter=retention!=='forever'&&(before==='forever'||retention<before);
         const items=shorter?Retention.candidates(current,{days:retention,startedAt:retentionStartedAt(),now:at}):[];
         const confirmationToken=shorter?digest(JSON.stringify([auth.hash,before,retention,items.map(item=>item.id)])):undefined;

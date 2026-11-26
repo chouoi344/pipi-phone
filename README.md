@@ -6,6 +6,8 @@
 
 网页网络请求现在有明确等待期限：普通操作 20 秒，模型相关操作 180 秒，上传及备份恢复连续 60 秒没有传输进度才会中止。网络恢复或切回前台会取消旧同步并重新补收消息，超时不会自动重发已提交的聊天或上传（P0-4，待发布）。
 
+朗读和语音转文字支持增量返回：新网页只接收这次消息的变化，旧客户端仍可接收完整资料（P1-5，待发布）。
+
 网页版本 **v0.13.21** · 安卓 App **0.1.12**（安装编号 14） · Node.js 24+ · AGPL-3.0-only
 
 [下载安卓 App](https://github.com/chouoi344/pipi-phone/releases/download/v0.13.20/pipi-phone-android-0.1.12-14.apk) · [快速开始](#快速开始) · [安装与升级](INSTALL.zh-CN.md) · [使用说明](docs/USAGE.zh-CN.md) · [更新记录](CHANGELOG.md) · [问题反馈](https://github.com/chouoi344/pipi-phone/issues)

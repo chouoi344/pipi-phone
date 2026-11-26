@@ -92,20 +92,24 @@ async function exerciseVoiceOverlay(page, {width, tap, capture}) {
 
 async function exerciseDraftRedraw(page, {skin, timing, width, tap, visible}) {
   // Release the real read receipt while composing to exercise the redraw from
-  // a late server response. All other requests continue normally.
+  // a late server response. All other requests continue normally. Intercept the
+  // public transport boundary: its implementation captures fetch at startup.
   const readReceipt = await page.evaluateHandle(() => {
-    const fetch = window.fetch;
+    const request = window.PipiNetwork.request;
     const receipt = {ready: false, delivered: false};
     const hold = new Promise(resolve => { receipt.release = resolve; });
-    window.fetch = async function(url, options) {
+    window.PipiNetwork.request = async function(url, options) {
       if (url !== '/api/action' || JSON.parse(options.body).type !== 'conversation.read') {
-        return fetch.apply(this, arguments);
+        return request.apply(this, arguments);
       }
-      window.fetch = fetch;
-      const response = await fetch.apply(this, arguments);
+      window.PipiNetwork.request = request;
+      const response = await request.apply(this, arguments);
       const readJson = response.json.bind(response);
       response.json = async () => {
         const payload = await readJson();
+        receipt.mode = payload.sync?.mode;
+        receipt.upsertCount = payload.sync?.changes?.upsertMessages?.length;
+        receipt.hasState = Object.prototype.hasOwnProperty.call(payload, 'state');
         receipt.ready = true;
         await hold;
         // The action handler consumes the resolved JSON before the next frame.
@@ -124,6 +128,12 @@ async function exerciseDraftRedraw(page, {skin, timing, width, tap, visible}) {
   await page.waitForFunction(count => [...document.querySelectorAll('#chat-messages [data-bubble]')]
     .filter(bubble => bubble.textContent === '收到测试消息。').length >= count, {}, replyCount);
   await page.waitForFunction(receipt => receipt.ready, {}, readReceipt);
+  const responseShape = await readReceipt.evaluate(receipt => ({mode: receipt.mode,
+    upsertCount: receipt.upsertCount, hasState: receipt.hasState}));
+  assert.equal(responseShape.mode, 'delta', 'exercise the real negotiated read-receipt delta');
+  assert.equal(responseShape.hasState, false, 'do not replace delta responses with full-state fixtures');
+  assert.ok(Number.isInteger(responseShape.upsertCount), 'read the actual delta message changes');
+  console.log('Read receipt ' + skin + '/' + timing + ': ' + JSON.stringify(responseShape));
   const focusComposer = () => page.evaluate(() => document.querySelector('#view #compose-text').focus());
   const prefix = timing === 'during-input' ? 'draft-' : '';
   let liftPointer;

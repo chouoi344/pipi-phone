@@ -84,7 +84,7 @@ final class ServerLogin {
         } finally { if (connection != null) connection.disconnect(); }
     }
 
-    private static boolean validSessionCookie(String cookie) {
+    static boolean validSessionCookie(String cookie) {
         if (cookie.length() > 4096 || cookie.indexOf('\r') >= 0 || cookie.indexOf('\n') >= 0) return false;
         String[] parts = cookie.split(";");
         if (!parts[0].matches("pipi_session=[a-f0-9]{64}")) return false;

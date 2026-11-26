@@ -17,11 +17,14 @@ public final class PhoneNotificationsJobService extends JobService {
         int current = ++runId;
         String serverOrigin = PhoneNotifications.origin(this);
         long generation = PhoneNotifications.prefs(this).getLong("generation", 0);
+        String sessionCookie = PhoneNotifications.cookie(serverOrigin);
         worker = new Thread(() -> {
             try {
                 long revision = PhoneNotifications.sync(this, serverOrigin, generation, () -> runId == current);
                 if (revision >= 0 && runId == current && !PhoneNotificationsService.running && PhoneNotifications.active(this, serverOrigin, generation)) PhoneNotifications.connectionStatus(this, "系统延迟检查已完成；下次检查时间由系统决定");
-            } catch (PhoneNotifications.AuthenticationExpired | SecurityException error) {
+            } catch (PhoneNotifications.AuthenticationExpired error) {
+                if (runId == current && PhoneNotifications.active(this, serverOrigin, generation)) PhoneNotifications.authenticationExpired(this, serverOrigin, generation, sessionCookie, "登录已失效，重新登录后恢复后台通知");
+            } catch (SecurityException error) {
                 if (runId == current && PhoneNotifications.active(this, serverOrigin, generation)) PhoneNotifications.disable(this, "登录或通知权限已失效，请重新开启");
             } catch (IOException | JSONException error) {
                 if (runId == current && !PhoneNotificationsService.running && PhoneNotifications.active(this, serverOrigin, generation)) PhoneNotifications.connectionStatus(this, "系统延迟检查暂未连接成功，将在系统下次检查时重试");

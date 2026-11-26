@@ -27,6 +27,8 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.List;
+import java.util.Objects;
 
 /** Explicitly enabled self-hosted notification transport; no push vendor SDK. */
 public final class PhoneNotifications {
@@ -104,6 +106,7 @@ public final class PhoneNotifications {
                     .putLong("generation", settings.getLong("generation", 0) + 1)
                     .putString("click_key", CompatNotificationBinding.newKey()).putString("click_instance", CompatNotificationBinding.newInstance())
                     .putString("click_cookie_digest", CompatNotificationBinding.cookieDigest(sessionCookie))
+                    .remove("resume_after_login").remove("resume_origin").remove("resume_cookie_digest")
                     .remove("cursor").putString("status", "正在建立后台连接").apply();
         }
         channels(activity);
@@ -134,9 +137,33 @@ public final class PhoneNotifications {
     }
 
     public static void onPageFinished(Context context) {
-        if (isEnabled(context) && (!origin(context).equals(prefs(context).getString("enabled_origin", ""))
-                || cookie(origin(context)) == null)) {
-            disable(context, "登录已退出，后台通知已关闭");
+        if (!isEnabled(context)) return;
+        if (!origin(context).equals(prefs(context).getString("enabled_origin", ""))) disable(context, "服务器已切换，请登录后重新开启后台通知");
+        else if (cookie(origin(context)) == null) authenticationExpired(context, origin(context), prefs(context).getLong("generation", 0), null, "登录已失效，重新登录后恢复后台通知");
+    }
+
+    static void authenticationExpired(Context context, String serverOrigin, long generation, String sentCookie, String reason) {
+        synchronized (STATE_LOCK) {
+            SharedPreferences settings = prefs(context);
+            if (!isEnabled(context) || settings.getLong("generation", 0) != generation
+                    || !serverOrigin.equals(origin(context)) || !serverOrigin.equals(settings.getString("enabled_origin", ""))
+                    || !Objects.equals(sentCookie, cookie(serverOrigin))) return;
+            boolean resume = isEnabled(context) && preference(context);
+            String previousOrigin = prefs(context).getString("enabled_origin", origin(context));
+            disable(context, reason);
+            if (resume) prefs(context).edit().putBoolean("resume_after_login", true).putString("resume_origin", previousOrigin).putString("resume_cookie_digest", CompatNotificationBinding.cookieDigest(sentCookie)).apply();
+        }
+    }
+
+    public static boolean resumeAfterLogin(Activity activity) {
+        synchronized (STATE_LOCK) {
+            SharedPreferences settings = prefs(activity);
+            String serverOrigin = origin(activity);
+            if (!settings.getBoolean("resume_after_login", false) || !preference(activity)
+                    || !serverOrigin.equals(settings.getString("resume_origin", ""))
+                    || !allowedOrigin(serverOrigin) || cookie(serverOrigin) == null || !canNotify(activity)
+                    || CompatNotificationBinding.cookieDigest(cookie(serverOrigin)).equals(settings.getString("resume_cookie_digest", ""))) return false;
+            return setEnabled(activity, true);
         }
     }
 
@@ -144,6 +171,7 @@ public final class PhoneNotifications {
         synchronized (STATE_LOCK) {
             SharedPreferences settings = prefs(context);
             settings.edit().putBoolean("enabled", false).putString("status", reason)
+                    .remove("resume_after_login").remove("resume_origin").remove("resume_cookie_digest")
                     .putLong("generation", settings.getLong("generation", 0) + 1)
                     .remove("cursor").remove("enabled_origin").remove("click_key").remove("click_instance").remove("click_cookie_digest").apply();
             context.getSystemService(JobScheduler.class).cancel(JOB_ID);
@@ -292,11 +320,25 @@ public final class PhoneNotifications {
 
     static final class AuthenticationExpired extends IOException {}
 
+    static void saveSessionCookie(Context context, HttpURLConnection connection, String serverOrigin, String sentCookie, long generation) {
+        synchronized (STATE_LOCK) {
+            if (!active(context, serverOrigin, generation) || !sentCookie.equals(cookie(serverOrigin))) return;
+            for (Map.Entry<String,List<String>> entry : connection.getHeaderFields().entrySet()) {
+                if (!"Set-Cookie".equalsIgnoreCase(entry.getKey())) continue;
+                for (String value : entry.getValue()) if (ServerLogin.validSessionCookie(value) && new ServerLogin.Session(value).installed(sentCookie)) {
+                    CookieManager cookies = CookieManager.getInstance();
+                    cookies.setCookie(serverOrigin + "/", value);
+                    cookies.flush();
+                }
+            }
+        }
+    }
+
     /** FGS and scheduled jobs share the cursor and the same serialization lock. */
     static long sync(Context context, String serverOrigin, long generation, RunningCheck stillRunning) throws IOException, JSONException {
         synchronized (SYNC_LOCK) {
             if (!stillRunning.isRunning() || !active(context, serverOrigin, generation)) return -1;
-            if (!canNotify(context)) throw new AuthenticationExpired();
+            if (!canNotify(context)) throw new SecurityException("通知权限未开启");
             String sessionCookie = cookie(serverOrigin);
             if (sessionCookie == null) throw new AuthenticationExpired();
             String cursor = prefs(context).getString("cursor", "");
@@ -308,6 +350,7 @@ public final class PhoneNotifications {
                 int code = connection.getResponseCode();
                 if (code == 401) throw new AuthenticationExpired();
                 if (code != 200) throw new IOException("HTTP " + code);
+                saveSessionCookie(context, connection, serverOrigin, sessionCookie, generation);
                 try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
                     byte[] buffer = new byte[8192];
                     int count;

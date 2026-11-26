@@ -421,7 +421,7 @@ public final class MainActivity extends Activity {
             token = UUID.randomUUID().toString();
             nativeRecordingToken = token;
         }
-        String script = "(function(){if(!document.head||document.querySelector('meta[name=\"pipi-recording\"]'))return;"
+        String script = "(function(){window.__pipiSessionResume=true;if(!document.head||document.querySelector('meta[name=\"pipi-recording\"]'))return;"
                 + "var m=document.createElement('meta');m.name='pipi-recording';m.content="
                 + JSONObject.quote(token) + ";document.head.appendChild(m);})()";
         view.evaluateJavascript(script, null);
@@ -429,6 +429,14 @@ public final class MainActivity extends Activity {
 
     private final class PhoneChromeClient extends WebChromeClient {
         @Override public boolean onJsPrompt(WebView view, String url, String message, String command, JsPromptResult result) {
+            if (message.startsWith("pipi-session:")) {
+                String token = message.substring("pipi-session:".length());
+                boolean trusted = origin.isAppPage(url) && origin.isAppPage(view.getUrl()) && ownsRecordingToken(token)
+                        && assets != null && assets.allowsBusiness();
+                if (trusted && "begin".equals(command)) { PhoneNotifications.resumeAfterLogin(MainActivity.this); updateSettingsStatus(); }
+                result.confirm(trusted ? "ok" : "denied");
+                return true;
+            }
             if (message.startsWith("pipi-client-compat:")) {
                 String token = message.substring("pipi-client-compat:".length());
                 final AssetBundle currentAssets = assets;
@@ -950,6 +958,7 @@ public final class MainActivity extends Activity {
         PhoneNotifications.setVisible(this,true);FcmTransport.setVisible(this,true);
         if (assets != null && assets.beginReverification()) verifyCompatibility(assets,origin,connectionGeneration,false,false);
         openPendingChat();enableLoginNotifications();
+        if (pageReady && origin.isAppPage(web.getUrl()) && assets != null && assets.allowsBusiness()) { PhoneNotifications.resumeAfterLogin(this); updateSettingsStatus(); }
     }
     @Override protected void onPause() {
         recordGestureDeadline = 0;

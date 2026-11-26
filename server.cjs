@@ -48,6 +48,7 @@ function releaseScryptSlot(){
   if(next){scryptSemaphore.count++;next();}
 }
 function createApp(options={}){
+  const sessionLifetime=30*86400000,sessionRenewAfter=86400000;
   const proxy=require('./lib/trusted-proxy.cjs').create(options.trustProxy??process.env.TRUST_PROXY??'');
   const updateDir=options.updates?.updateDir??process.env.PIPI_UPDATE_DIR;
   const updates=createUpdateService({
@@ -339,15 +340,24 @@ function createApp(options={}){
   const allowedHosts=new Set(['localhost','127.0.0.1','[::1]',host,...configuredHosts]);
   const limits=RequestLimits.create(),rate=limits.consume;
   let inFlight=0,activeUploads=0,closed=false;
-  function session(req){
+  function session(req,res){
     const cookie=String(req.headers.cookie||'');
     const match=cookie.match(/(?:^|;\s*)pipi_session=([a-f0-9]{64})(?:;|$)/);
     if(!match)return null;
     const hash=digest(match[1]);
-    const row=db.prepare('SELECT * FROM sessions WHERE hash=? AND expires>?').get(hash,Date.now());
+    const at=Date.now(),row=db.prepare('SELECT * FROM sessions WHERE hash=? AND expires>?').get(hash,at);
+    if(row&&res)renewSession(req,res,row,hash,match[1],at);
     return row?{
       ...row,hash
     }:null;
+  }
+  function renewSession(req,res,row,hash,token,at=Date.now()){
+    if(!res.headersSent&&at-(row.expires-sessionLifetime)>=sessionRenewAfter){
+      row.expires=at+sessionLifetime;
+      db.prepare('UPDATE sessions SET expires=? WHERE hash=?').run(row.expires,hash);
+      res.setHeader('Set-Cookie',`pipi_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000${proxy.context(req).secure||process.env.COOKIE_SECURE==='1'?'; Secure':''}`);
+      for(const client of clients)if(client.hash===hash)client.expires=row.expires;
+    }
   }
   // Static files revalidate with ETag, so a return visit reuses the cached page instead of reloading it.
   // Everything else (API responses, backups, the issuer page) carries private data and must never be cached.
@@ -468,13 +478,14 @@ function createApp(options={}){
     if(!S.obj(value))S.fail('请求须为 JSON 对象');
     return value;
   }
-  function authorized(req,mutating=false){
+  function authorized(req,mutating=false,res){
     const auth=session(req);
     if(!auth)S.fail('请先登录',401,'AUTH_REQUIRED');
     if(mutating){
       if(!req.headers.origin)S.fail('写入请求必须携带同源 Origin',403,'ORIGIN');
       if(!safeEqual(req.headers['x-csrf-token'],auth.csrf))S.fail('CSRF 校验失败，请刷新后重试',403,'CSRF');
     }
+    if(res)renewSession(req,res,auth,auth.hash,String(req.headers.cookie).match(/(?:^|;\s*)pipi_session=([a-f0-9]{64})(?:;|$)/)[1]);
     req[requestDeadline]?.('authenticated');
     return auth;
   }
@@ -489,8 +500,8 @@ function createApp(options={}){
   function makeSession(req,res){
     const token=crypto.randomBytes(32).toString('hex'),csrf=crypto.randomBytes(24).toString('hex');
     db.prepare('DELETE FROM sessions WHERE expires<?').run(Date.now());
-    db.prepare('INSERT INTO sessions(hash,csrf,expires) VALUES(?,?,?)').run(digest(token),csrf,Date.now()+7*86400000);
-    res.setHeader('Set-Cookie',`pipi_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800${proxy.context(req).secure||process.env.COOKIE_SECURE==='1'?'; Secure':''}`);
+    db.prepare('INSERT INTO sessions(hash,csrf,expires) VALUES(?,?,?)').run(digest(token),csrf,Date.now()+sessionLifetime);
+    res.setHeader('Set-Cookie',`pipi_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000${proxy.context(req).secure||process.env.COOKIE_SECURE==='1'?'; Secure':''}`);
     return {csrfToken:csrf,appSessionScope:androidSessionScope(digest(token))};
   }
   function androidSessionScope(hash){return digest('pipi-android-cache-v1:'+hash);}
@@ -518,7 +529,9 @@ function createApp(options={}){
     res.write(`event: revision\ndata: ${JSON.stringify({revision:read().revision})}\n\n`);
     for(const value of runtime.typingState())res.write(`event: typing\ndata: ${JSON.stringify(value)}\n\n`);
     const heartbeat=setInterval(()=>{
-      if(!db.prepare('SELECT hash FROM sessions WHERE hash=? AND expires>?').get(auth.hash,Date.now())){res.end();return;}
+      const current=db.prepare('SELECT expires FROM sessions WHERE hash=? AND expires>?').get(auth.hash,Date.now());
+      if(!current){res.end();return;}
+      client.expires=current.expires;
       res.write(': heartbeat\n\n');
     },15000);heartbeat.unref();
     res.on('close',()=>{clearInterval(heartbeat);clients.delete(client);});
@@ -537,7 +550,7 @@ function createApp(options={}){
     if(!p.startsWith('/api/'))return staticFile(req,res,p,u.searchParams);
     if(req.method==='GET'&&p==='/api/android-shell-manifest')return json(res,200,{...await AndroidAssets.manifest(),clientProtocol:ClientSync.protocol});
     if(req.method==='GET'&&p==='/api/status'){
-      const auth=session(req);
+      const auth=session(req,res);
       return json(res,200,{
         setupRequired:!getMeta('password'),authenticated:!!auth,...(auth?{
           csrfToken:auth.csrf,appSessionScope:androidSessionScope(auth.hash),appearance:appearance()
@@ -591,7 +604,7 @@ function createApp(options={}){
         });
       });
     }
-    const mutating=!['GET','HEAD'].includes(req.method),auth=authorized(req,mutating);
+    const mutating=!['GET','HEAD'].includes(req.method),auth=authorized(req,mutating,res);
     if(req.method==='GET'&&p==='/api/account')return json(res,200,account(auth));
     if(mutating&&p!=='/api/logout')assertWritable();
     if(req.method==='GET'&&p==='/api/android-updates/latest'){

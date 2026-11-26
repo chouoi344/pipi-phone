@@ -78,7 +78,7 @@ public final class FcmTransport {
         if(registering||!requested(context)||!PhoneNotifications.isEnabled(context))return;
         registering=true;
         final String origin=PhoneNotifications.origin(context),cookie=PhoneNotifications.cookie(origin);
-        final long generation=prefs(context).getLong("generation",0);
+        final long generation=prefs(context).getLong("generation",0), notificationGeneration=PhoneNotifications.prefs(context).getLong("generation",0);
         worker.execute(()->{
             try {
                 if(cookie==null)throw new PhoneNotifications.AuthenticationExpired();
@@ -107,7 +107,7 @@ public final class FcmTransport {
                     PhoneNotifications.useFcm(context,registered.getString("cursor"));
                 }
             }catch(PhoneNotifications.AuthenticationExpired expired){
-                if(prefs(context).getLong("generation",0)==generation)PhoneNotifications.disable(context,"登录已失效，后台通知已关闭");
+                if(prefs(context).getLong("generation",0)==generation)PhoneNotifications.authenticationExpired(context,origin,notificationGeneration,cookie,"登录已失效，重新登录后恢复后台通知");
             }catch(Exception error){
                 if(unchanged(context,origin,generation,cookie)){
                     if(active(context)){
@@ -132,7 +132,7 @@ public final class FcmTransport {
     public static void setVisible(Context context,boolean value) {
         visible=value;
         if(!requested(context))return;
-        if(PhoneNotifications.cookie(PhoneNotifications.origin(context))==null){PhoneNotifications.disable(context,"登录已退出，后台通知已关闭");return;}
+        if(PhoneNotifications.cookie(PhoneNotifications.origin(context))==null){PhoneNotifications.authenticationExpired(context,PhoneNotifications.origin(context),PhoneNotifications.prefs(context).getLong("generation",0),null,"登录已失效，重新登录后恢复后台通知");return;}
         connect(context);
     }
     public static void onNewToken(Context context) { if(requested(context))connect(context); }

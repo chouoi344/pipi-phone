@@ -44,6 +44,9 @@ final class PhoneNotifications {
  static boolean active(Object context,String server,long version){return enabled&&server.equals(origin)&&version==generation;}
  static void channels(Object context){} static android.app.PendingIntent openApp(Object context,String role){return new android.app.PendingIntent();}
  static android.app.Notification.Builder builder(Object context,String channel){return new android.app.Notification.Builder();}
+ static void rememberPreference(Object context,boolean value){}
+ static void authenticationExpired(Object context,String server,long version,String sentCookie,String text){if(active(context,server,version)&&java.util.Objects.equals(cookie,sentCookie))disable(context,text);}
+ static void saveSessionCookie(Object context,HttpURLConnection connection,String server,String sentCookie,long version){}
  static void connectionStatus(Object context,String text){status=text;} static void disable(Object context,String text){disables.incrementAndGet();enabled=false;generation++;status=text;}
  static class AuthenticationExpired extends IOException {}
  static long sync(Object context,String server,long version,RunningCheck check) throws IOException,org.json.JSONException {syncs.incrementAndGet();synced.add(version);return synchronization.run(version,check);}

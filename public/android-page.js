@@ -159,6 +159,10 @@
     const cache = readCache();
     if (scope && scope !== value || cache && cache.scope !== value) clearSession();
     scope = value; saved = cache?.scope === value ? cache : null; offline = false;
+    if (window.__pipiSessionResume) {
+      const token = document.querySelector('meta[name="pipi-recording"]')?.content;
+      if (token) window.prompt('pipi-session:' + token, 'begin');
+    }
   }
   function clearSession() {
     const requestedChat = pendingChat; forgetDeviceCache(); pendingChat = requestedChat;

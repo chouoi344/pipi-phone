@@ -1,0 +1,55 @@
+name: Sync a stable release to Alibaba Cloud
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Already published stable tag to sync without rebuilding, e.g. v0.13.24'
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+      build_digest:
+        description: 'Before release: copy this build digest without advertising it yet'
+        required: false
+        default: ''
+        type: string
+    secrets:
+      ACR_USERNAME:
+        required: true
+      ACR_PASSWORD:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    if: github.repository == 'chouoi344/pipi-phone' && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    concurrency:
+      group: pipi-acr-publisher
+      queue: max
+    steps:
+      # Use the workflow revision, not the historical tag being backfilled.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install multi-architecture registry client
+        run: |
+          if ! command -v skopeo >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y skopeo
+          fi
+      - name: Verify and mirror the immutable release
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          BUILD_DIGEST: ${{ inputs.build_digest }}
+          GH_TOKEN: ${{ github.token }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        run: python3 -B scripts/sync-acr.py

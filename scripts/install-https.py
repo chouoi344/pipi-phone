@@ -94,7 +94,9 @@ def configure_proxy_network():
         if network is None:
             sys.exit("未找到可用的私网网段，请在 .env 中指定 PIPI_HTTPS_PREFIX。")
         prefix = str(network.network_address).rsplit(".", 1)[0]
-    with env_file.open("a") as env:
+    # The root updater reads this file on every run. Create it with explicit
+    # owner-only permissions even when /opt supplies a default group ACL.
+    with os.fdopen(os.open(env_file, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), "a") as env:
         leading = "\n" if current and not current.endswith("\n") else ""
         env.write(f"{leading}PIPI_HTTPS_PREFIX={prefix}\n")
 

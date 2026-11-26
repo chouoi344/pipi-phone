@@ -13,6 +13,9 @@ const Media = require('../lib/media-store.cjs');
 
 async function exerciseAlbum(page, friendId, tap) {
   await page.evaluate(id => Pipi.showView('role-config', id), friendId);
+  // The loading view already has category buttons, which are replaced when the
+  // role arrives. Wait for the live configuration before clicking its photo tab.
+  await page.waitForSelector('#view [data-life-action=saveAll]:enabled');
   await tap('#view [data-life-category=photo]');
   await page.waitForSelector('#view .life-album-deck img');
   const cover = await page.$eval('#view .life-album-deck', el => {
@@ -260,13 +263,16 @@ async function run() {
       await page.waitForFunction(() => !document.querySelector('.navigation-snapshot'));
       await visible(selector);
       await page.$eval(selector, button => button.scrollIntoView({block: 'nearest'}));
-      await page.waitForFunction(query => {
+      const hit = await page.waitForFunction(query => {
         const button = document.querySelector(query);
         if (!button) return false;
         const box = button.getBoundingClientRect();
-        return button.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
+        const x = box.left + box.width / 2, y = box.top + box.height / 2;
+        return button.contains(document.elementFromPoint(x, y)) && {x, y};
       }, {}, selector);
-      await page.click(selector);
+      const {x, y} = await hit.jsonValue();
+      await hit.dispose();
+      await page.mouse.click(x, y);
     };
     await tap('#dismiss-notice');
     await page.waitForSelector('.first-notice', {hidden: true});

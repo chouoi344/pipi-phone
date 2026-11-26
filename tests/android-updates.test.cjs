@@ -14,6 +14,7 @@ function fixture(t,extra={}){
   let value=[release()],content=bytes,at=1000000;
   const calls=[];
   const fetchImpl=async(url,options)=>{
+    if(url.includes('.personal.cr.aliyuncs.com/'))return new Response(null,{status:404});
     calls.push({url,options});
     assert.equal(options.redirect,'manual');
     assert.equal(new Headers(options.headers).get('cookie'),null);

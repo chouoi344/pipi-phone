@@ -102,25 +102,44 @@ class DomesticPublication(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             (base / "verified-platforms" / "blobs" / "sha256").mkdir(parents=True)
-            with (patch.object(sync, "inspect", side_effect=[raw, b"amd64", b"arm64"]),
+            staged = base / "staged"
+            selected = sync.runtime_descriptors(raw, digest)
+            with (patch.object(sync, "inspect", side_effect=[b"amd64", b"arm64"]),
+                  patch.object(sync, "registry", side_effect=[b"amd64", b"arm64"]),
                   patch.object(sync, "existing_digest", return_value=None), patch.object(sync, "copy") as cp,
                   patch.object(sync, "verify_image"), patch("subprocess.run"),
                   patch("subprocess.check_output", return_value="0.13.24\n")):
-                self.assertEqual(sync.mirror_images("v0.13.24", digest, "logged-in", "anon", base), raw)
+                sync.stage_images("v0.13.24", selected, staged, "anon")
+                self.assertEqual(sync.mirror_images("v0.13.24", digest, raw, selected, staged,
+                                                    "logged-in", "anon", base), raw)
             root = base / "verified-platforms"
             child = json.loads((root / "index.json").read_bytes())["manifests"][0]
             runtime_index = json.loads((root / "blobs" / "sha256" / child["digest"].split(":")[1]).read_bytes())
             self.assertEqual(runtime_index["manifests"], [children[0], children[2]])
-            self.assertEqual(len(cp.call_args_list), 5)
+            self.assertEqual(len(cp.call_args_list), 7)
             for i, arch in enumerate(("amd64", "arm64")):
                 d = sync.sha256(arch.encode())
-                self.assertEqual(cp.call_args_list[i*2].args[:2],
-                                 ("docker://" + sync.SOURCE + "@" + d, "docker://" + sync.MIRROR + ":v0.13.24-" + arch))
-                self.assertEqual(cp.call_args_list[i*2+1].args[0], "docker://" + sync.MIRROR + "@" + d)
-                self.assertEqual(cp.call_args_list[i*2+1].args[2], "anon")
+                local = "oci:" + str(staged) + ":" + arch
+                self.assertEqual(cp.call_args_list[i].args, ("docker://" + sync.SOURCE + "@" + d, local, "anon"))
+                self.assertEqual(cp.call_args_list[2+i*2].args,
+                                 (local, "docker://" + sync.MIRROR + ":v0.13.24-" + arch, "logged-in"))
+                self.assertEqual(cp.call_args_list[3+i*2].args[0], "docker://" + sync.MIRROR + "@" + d)
+                self.assertEqual(cp.call_args_list[3+i*2].args[2], "anon")
             with self.assertRaisesRegex(ValueError, "ambiguous"):
                 repeated = sync.json_bytes({"manifests": children + [children[0]]})
                 sync.runtime_descriptors(repeated, sync.sha256(repeated))
+
+    def test_stage_skips_exact_mirror_and_rejects_changed_source(self):
+        child = sync.sha256(b"amd64")
+        selected = {"amd64": {"digest": child}}
+        with (patch.object(sync, "existing_digest", return_value=child),
+              patch.object(sync, "copy") as cp):
+            sync.stage_images("v0.13.27", selected, Path("local"), "anon")
+            cp.assert_not_called()
+        with (patch.object(sync, "existing_digest", return_value=None), patch.object(sync, "copy"),
+              patch.object(sync, "registry", return_value=b"wrong-platform")):
+            with self.assertRaisesRegex(ValueError, "staged platform"):
+                sync.stage_images("v0.13.27", selected, Path("local"), "anon")
 
 
 if __name__ == "__main__":

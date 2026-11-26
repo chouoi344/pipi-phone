@@ -1,4 +1,5 @@
 """Copy the official release without rebuilding, then publish its domestic update record."""
+import argparse
 import base64
 import hashlib
 import json
@@ -93,7 +94,8 @@ def existing_digest(ref, auth):
 
 
 def copy(source, destination, auth):
-    registry("copy", "--all", "--preserve-digests", "--retry-times", "3", "--authfile", auth, source, destination)
+    subprocess.run(["skopeo", "copy", "--all", "--preserve-digests", "--retry-times", "3", "--authfile",
+                    str(auth), source, destination], check=True)
 
 
 def read_tag(tag, auth):
@@ -127,21 +129,40 @@ def runtime_descriptors(source_index, digest):
     return children
 
 
-def mirror_images(tag, digest, auth, anonymous, base):
-    raw = inspect(SOURCE + "@" + digest, anonymous)
-    children = runtime_descriptors(raw, digest)
+def stage_images(tag, children, staged, anonymous):
+    for arch, descriptor in children.items():
+        child = descriptor["digest"]
+        target = MIRROR + ":" + tag + "-" + arch
+        current = existing_digest(target, anonymous)
+        if current == child:
+            print(f"Already mirrored linux/{arch}: {child}", flush=True)
+            continue
+        if current is not None:
+            raise ValueError("Refusing to overwrite a fixed platform tag: " + target)
+        print(f"Downloading GHCR linux/{arch} to local OCI storage: {child}", flush=True)
+        copy("docker://" + SOURCE + "@" + child, "oci:" + str(staged) + ":" + arch, anonymous)
+        raw = registry("inspect", "--raw", "oci:" + str(staged) + ":" + arch)
+        if sha256(raw) != child:
+            raise ValueError("Locally staged platform differs from the official digest")
+        print(f"Staged and verified GHCR linux/{arch}: {child}", flush=True)
+
+
+def mirror_images(tag, digest, raw, children, staged, auth, anonymous, base):
     layout = base / "verified-platforms"
     for arch, descriptor in children.items():
         child = descriptor["digest"]
         target = MIRROR + ":" + tag + "-" + arch
         current = existing_digest(target, auth)
         if current is None:
-            copy("docker://" + SOURCE + "@" + child, "docker://" + target, auth)
+            print(f"Uploading local OCI linux/{arch} to Hangzhou: {child}", flush=True)
+            copy("oci:" + str(staged) + ":" + arch, "docker://" + target, auth)
+            print(f"Uploaded linux/{arch}: {target}", flush=True)
         elif current != child:
             raise ValueError("Refusing to overwrite a fixed platform tag: " + target)
         if sha256(inspect(target, anonymous)) != child:
             raise ValueError("Anonymous platform manifest differs from the official image")
         # Pull by digest with no credentials and verify all referenced blobs.
+        print(f"Verifying anonymous Hangzhou download for linux/{arch}: {child}", flush=True)
         copy("docker://" + MIRROR + "@" + child, "oci:" + str(layout) + ":" + arch, anonymous)
         print(f"Verified public linux/{arch}: {MIRROR}@{child}", flush=True)
 
@@ -223,6 +244,9 @@ def publish_channel(record, tags, read, write):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("phase", nargs="?", choices=("stage", "publish", "both"), default="both")
+    phase = parser.parse_args().phase
     tag = os.environ["RELEASE_TAG"]
     if not tag.startswith("v"):
         raise ValueError("Expected vX.Y.Z")
@@ -234,17 +258,29 @@ def main():
         digest = record["image"].split("@")[1]
     if not DIGEST.fullmatch(digest):
         raise ValueError("Expected a valid build digest")
-    user, password = os.environ.pop("ACR_USERNAME"), os.environ.pop("ACR_PASSWORD")
-    if not user or not password:
-        raise ValueError("Set ACR_USERNAME and ACR_PASSWORD in GitHub Actions secrets")
-
     with tempfile.TemporaryDirectory() as temporary:
         base = Path(temporary)
         auth, anonymous = base / "auth.json", base / "anonymous.json"
         anonymous.write_bytes(b'{"auths":{}}')
+        staging_root = base if phase == "both" else Path(os.environ["RUNNER_TEMP"])
+        staged = staging_root / ("pipi-oci-" + digest.split(":")[1])
+        if record is None:
+            # Do not let a manual request pair an older/newer or unrelated GHCR
+            # object with an official version tag. Revalidate after staging too.
+            raw = inspect(SOURCE + ":" + tag, anonymous)
+        else:
+            raw = inspect(SOURCE + "@" + digest, anonymous)
+        children = runtime_descriptors(raw, digest)
+        if phase in ("stage", "both"):
+            stage_images(tag, children, staged, anonymous)
+        if phase == "stage":
+            return
+        user, password = os.environ.pop("ACR_USERNAME"), os.environ.pop("ACR_PASSWORD")
+        if not user or not password:
+            raise ValueError("Set ACR_USERNAME and ACR_PASSWORD in GitHub Actions secrets")
         registry("login", "--authfile", auth, "--username", user, "--password-stdin", HOST, data=password.encode())
         # No registry credentials are sent to any other host. The source is public.
-        source_index = mirror_images(tag, digest, auth, anonymous, base)
+        source_index = mirror_images(tag, digest, raw, children, staged, auth, anonymous, base)
         if record is None:
             return
         tags = json.loads(registry("list-tags", "--authfile", auth, "docker://" + MIRROR))["Tags"]

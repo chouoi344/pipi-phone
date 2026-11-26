@@ -4,8 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Already published stable tag to sync without rebuilding, e.g. v0.13.24'
+        description: 'Public stable tag to sync, or an existing GHCR tag to prewarm'
         required: true
+        type: string
+      build_digest:
+        description: 'Optional: prewarm only. Must match the current immutable digest of the GHCR version tag'
+        required: false
         type: string
   workflow_call:
     inputs:
@@ -30,9 +34,15 @@ jobs:
   sync:
     if: github.repository == 'chouoi344/pipi-phone' && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      BUILD_DIGEST: ${{ inputs.build_digest }}
+      GH_TOKEN: ${{ github.token }}
     concurrency:
-      group: pipi-acr-publisher
+      # Manual prewarming writes only the verified image, never a channel tag.
+      # It may repair missing layers while an earlier publication is retrying.
+      group: ${{ (github.event_name == 'workflow_dispatch' && github.workflow == 'Sync a stable release to Alibaba Cloud' && inputs.build_digest != '' && format('pipi-acr-prewarm-{0}', inputs.release_tag)) || 'pipi-acr-publisher' }}
       queue: max
     steps:
       # Use the workflow revision, not the historical tag being backfilled.
@@ -45,11 +55,10 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y skopeo
           fi
-      - name: Verify and mirror the immutable release
+      - name: Stage missing GHCR platform images to local OCI storage
+        run: python3 -B scripts/sync-acr.py stage
+      - name: Upload staged OCI images to Hangzhou and verify by independent anonymous download
         env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          BUILD_DIGEST: ${{ inputs.build_digest }}
-          GH_TOKEN: ${{ github.token }}
           ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
-        run: python3 -B scripts/sync-acr.py
+        run: python3 -B scripts/sync-acr.py publish

@@ -6,7 +6,7 @@
 
 网页版本 **v0.13.21** · 安卓 App **0.1.12**（安装编号 14） · Node.js 24+ · AGPL-3.0-only
 
-[下载安卓 App](https://github.com/chouoi344/pipi-phone/releases/download/v0.13.20/pipi-phone-android-0.1.12-14.apk) · [快速开始](#快速开始) · [安装与升级](INSTALL.zh-CN.md) · [使用说明](https://github.com/chouoi344/pipi-phone/blob/388bfb3abe09c8ac5a98b82d1d6ce25f531c49be/docs/USAGE.zh-CN.md) · [更新记录](CHANGELOG.md) · [问题反馈](https://github.com/chouoi344/pipi-phone/issues)
+[下载安卓 App](https://github.com/chouoi344/pipi-phone/releases/download/v0.13.20/pipi-phone-android-0.1.12-14.apk) · [快速开始](#快速开始) · [安装与升级](INSTALL.zh-CN.md) · [使用说明](docs/USAGE.zh-CN.md) · [更新记录](CHANGELOG.md) · [问题反馈](https://github.com/chouoi344/pipi-phone/issues)
 
 </div>
 
@@ -29,8 +29,8 @@
     <th>皮肤选择</th>
   </tr>
   <tr>
-    <td align="center"><img src="https://raw.githubusercontent.com/chouoi344/pipi-phone/388bfb3abe09c8ac5a98b82d1d6ce25f531c49be/docs/images/classic-home.png" width="280" alt="全新安装的经典版首页，聊天和通讯录为空"></td>
-    <td align="center"><img src="https://raw.githubusercontent.com/chouoi344/pipi-phone/388bfb3abe09c8ac5a98b82d1d6ce25f531c49be/docs/images/skin-picker.png" width="280" alt="经典版默认使用，水滴版卡片提供激活入口"></td>
+    <td align="center"><img src="docs/images/classic-home.png" width="280" alt="全新安装的经典版首页，聊天和通讯录为空"></td>
+    <td align="center"><img src="docs/images/skin-picker.png" width="280" alt="经典版默认使用，水滴版卡片提供激活入口"></td>
   </tr>
 </table>
 
@@ -87,16 +87,16 @@ Windows 也可以双击 `start.cmd`，Linux / macOS 可运行 `./start.sh`；启
 2. 在「小手机 → 对话设置」选择对话主模型，使用对话模型旁的连接测试检查可用性。按需要为语音、图片和记忆等用途配置模型。
 3. 从聊天首页「创建新朋友」添加好友，在「我 → 我的人设」维护与绑定人设。进入好友的「聊天信息 → 角色配置」调整音色、照片与日常设置。
 
-首次安装的通讯录和聊天记录为空。默认关闭新好友的自动朋友圈，主动联系、日程与其他功能可以按需要开启。详细参数见[使用说明](https://github.com/chouoi344/pipi-phone/blob/388bfb3abe09c8ac5a98b82d1d6ce25f531c49be/docs/USAGE.zh-CN.md)。
+首次安装的通讯录和聊天记录为空。默认关闭新好友的自动朋友圈，主动联系、日程与其他功能可以按需要开启。详细参数见[使用说明](docs/USAGE.zh-CN.md)。
 
 ## 更新与数据
 
-当前网页版本为 **0.13.21**，安卓 App 沿用 **0.1.12**（安装编号 14），无需重新安装 App。打开「我 → 设置 → 关于屁屁机」，图标下方是服务器的网页版本。在安卓手机上点「安卓 App 更新」，可以查看这台手机的 App 版本。升级已有安装前，先导出备份，保留原部署目录、数据卷与环境变量。[0.13.0 数据升级说明](https://github.com/chouoi344/pipi-phone/blob/388bfb3abe09c8ac5a98b82d1d6ce25f531c49be/%E5%8D%87%E7%BA%A7%E8%AF%B4%E6%98%8E_0.13.0.md) · [更新记录](CHANGELOG.md)
+当前网页版本为 **0.13.21**，安卓 App 沿用 **0.1.12**（安装编号 14），无需重新安装 App。打开「我 → 设置 → 关于屁屁机」，图标下方是服务器的网页版本。在安卓手机上点「安卓 App 更新」，可以查看这台手机的 App 版本。升级已有安装前，先导出备份，保留原部署目录、数据卷与环境变量。[0.13.0 数据升级说明](升级说明_0.13.0.md) · [更新记录](CHANGELOG.md)
 
 - **备份与恢复**　在「我 → 设置 → 聊天记录管理」导出 TAR 备份，可恢复 TAR 和旧版 JSON。导出默认包含模型 API Key、图片和语音，可取消相应选项。含密钥的备份请妥善保管。
 - **媒体保存**　聊天图片和语音默认保存 7 天，可在「存储空间」调整。服务器剩余空间不足时，会按时间清理最旧的聊天媒体。
 - **资料保留**　恢复备份会替换目标安装的业务资料。普通升级继续使用原资料目录。`docker compose down -v` 会删除数据卷。
-- **网页更新**　在「网页程序更新」检查新版，点「立即更新」。旧版公网 HTTPS 安装若显示「未启用一键更新」，可在原服务器执行一次启用命令。[旧版启用命令和网页更新说明](https://github.com/chouoi344/pipi-phone/blob/388bfb3abe09c8ac5a98b82d1d6ce25f531c49be/docs/WEB-UPDATE.zh-CN.md)
+- **网页更新**　在「网页程序更新」检查新版，点「立即更新」。旧版公网 HTTPS 安装若显示「未启用一键更新」，可在原服务器执行一次启用命令。[旧版启用命令和网页更新说明](docs/WEB-UPDATE.zh-CN.md)
 - **安卓更新**　新版服务器可提供 GitHub 正式发布的安卓安装包。打开「安卓 App 更新」，按手机的系统提示确认安装。这项功能可在网页一键更新服务关闭时使用。[安卓发布与更新说明](android/README.md#在-app-里更新)
 
 ## 常见问题
@@ -138,10 +138,10 @@ docker compose logs --tail 100 pipi-phone
 | 文档 | 内容 |
 | --- | --- |
 | [安装与升级](INSTALL.zh-CN.md) | 首次部署、HTTPS、反向代理、模型接入与密码重置 |
-| [完整使用说明](https://github.com/chouoi344/pipi-phone/blob/388bfb3abe09c8ac5a98b82d1d6ce25f531c49be/docs/USAGE.zh-CN.md) | 角色、人设、语音、模型参数、记忆和各项功能细节 |
-| [升级说明](https://github.com/chouoi344/pipi-phone/blob/388bfb3abe09c8ac5a98b82d1d6ce25f531c49be/%E5%8D%87%E7%BA%A7%E8%AF%B4%E6%98%8E_0.13.0.md) | 数据迁移、空间要求与回退方式 |
-| [网页更新](https://github.com/chouoi344/pipi-phone/blob/388bfb3abe09c8ac5a98b82d1d6ce25f531c49be/docs/WEB-UPDATE.zh-CN.md) | 更新服务配置、版本检查与回退 |
-| [0.13.0 审查报告](https://github.com/chouoi344/pipi-phone/blob/388bfb3abe09c8ac5a98b82d1d6ce25f531c49be/%E5%AE%A1%E6%9F%A5%E6%8A%A5%E5%91%8A_v0.13.0.md) | 上一版本的检查范围、真机步骤与已知限制 |
+| [完整使用说明](docs/USAGE.zh-CN.md) | 角色、人设、语音、模型参数、记忆和各项功能细节 |
+| [升级说明](升级说明_0.13.0.md) | 数据迁移、空间要求与回退方式 |
+| [网页更新](docs/WEB-UPDATE.zh-CN.md) | 更新服务配置、版本检查与回退 |
+| [0.13.0 审查报告](审查报告_v0.13.0.md) | 上一版本的检查范围、真机步骤与已知限制 |
 
 开发检查可运行 `node --test tests/*.test.cjs`，也可用 `docker compose -f compose.test.yaml run --rm tests` 在隔离容器中执行。自动测试使用临时资料和本地模拟服务，真实模型与实体手机的验证范围以审查报告为准。
 

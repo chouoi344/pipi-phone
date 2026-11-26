@@ -20,11 +20,11 @@
 
 ## 已有实例升级
 
-使用公网 HTTPS 安装的服务器，请打开「我 → 设置 → 关于屁屁机 → 网页程序更新」，点「检查更新 → 立即更新」。若旧服务器显示「未启用一键更新」，请在原部署目录执行一次[旧版 HTTPS 启用命令](https://github.com/chouoi344/pipi-phone/blob/388bfb3abe09c8ac5a98b82d1d6ce25f531c49be/docs/WEB-UPDATE.zh-CN.md#旧版公网-https-安装)。这条路径会沿用原来的资料卷和证书。下面的手动替换步骤仅适用于自行管理程序和数据卷的部署。
+使用公网 HTTPS 安装的服务器，请打开「我 → 设置 → 关于屁屁机 → 网页程序更新」，点「检查更新 → 立即更新」。若旧服务器显示「未启用一键更新」，请在原部署目录执行一次[旧版 HTTPS 启用命令](docs/WEB-UPDATE.zh-CN.md#旧版公网-https-安装)。这条路径会沿用原来的资料卷和证书。下面的手动替换步骤仅适用于自行管理程序和数据卷的部署。
 
 0.13.21 的新网页兼容旧宿主更新服务。旧宿主的独立复核仍依赖原来的匿名 API；要完整使用新的官方更新目录，需要在没有更新任务进行或等待处理时，停止原更新服务，备份并同步原部署目录的 `scripts/compose-updater.cjs` 和 `lib/updates.cjs`，再启动同一个服务。网页容器升级不会替换这两个文件。保留原 `.env.updates`、`.pipi-updater/` 和 `.pipi-update-channel/`，继续使用原项目名、端口和资料卷。单独重跑 `install-https.py --enable-updates` 不会下载新版宿主脚本，也不会重启正在运行的旧服务。
 
-先从原程序导出备份，并保留原数据目录或数据卷。0.13.0 启动时会先保存迁移前的备份，再把旧内嵌图音频整理成文件。目录、空间要求和旧版本恢复见[0.13.0 升级说明](https://github.com/chouoi344/pipi-phone/blob/388bfb3abe09c8ac5a98b82d1d6ce25f531c49be/%E5%8D%87%E7%BA%A7%E8%AF%B4%E6%98%8E_0.13.0.md)。使用 Docker Compose 的用户仍可按[网页更新说明](https://github.com/chouoi344/pipi-phone/blob/388bfb3abe09c8ac5a98b82d1d6ce25f531c49be/docs/WEB-UPDATE.zh-CN.md)启用网页更新。
+先从原程序导出备份，并保留原数据目录或数据卷。0.13.0 启动时会先保存迁移前的备份，再把旧内嵌图音频整理成文件。目录、空间要求和旧版本恢复见[0.13.0 升级说明](升级说明_0.13.0.md)。使用 Docker Compose 的用户仍可按[网页更新说明](docs/WEB-UPDATE.zh-CN.md)启用网页更新。
 
 真机反馈版可直接解压安装。升级时沿用原数据目录或 Docker 数据卷，重启后刷新网页。聊天备份恢复仅在确实丢失某项存储密钥时提示重新填写，具体缺失的模型可在模型页查看。
 
@@ -205,4 +205,4 @@ ingress:
 
 ## 版本检查来源
 
-关于页默认检查官方仓库 `chouoi344/pipi-phone` 的正式 Release，环境变量 `PIPI_UPDATE_REPOSITORY` 可覆盖来源。默认 Compose 只启用版本检查，一键安装需按 [网页更新说明](https://github.com/chouoi344/pipi-phone/blob/388bfb3abe09c8ac5a98b82d1d6ce25f531c49be/docs/WEB-UPDATE.zh-CN.md) 配置宿主机更新服务。
+关于页默认检查官方仓库 `chouoi344/pipi-phone` 的正式 Release，环境变量 `PIPI_UPDATE_REPOSITORY` 可覆盖来源。默认 Compose 只启用版本检查，一键安装需按 [网页更新说明](docs/WEB-UPDATE.zh-CN.md) 配置宿主机更新服务。

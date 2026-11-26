@@ -85,8 +85,7 @@ test('识别语音和生成回答时保持好友名，只在分段送达期间�
     assert.equal(f.events.some(e=>e.typing),false);
     answer({message:{content:'好。一会见。'},model:f.config,modelId:'isolated'});
     await until(live);
-    assert.equal(snapshot(),true);assert.equal(count(),0);
-    await until(()=>count()===1);
+    assert.equal(snapshot(),true);assert.equal(count(),1);
     assert.equal(live(),true);
     await until(()=>unblockAfterLast);
     assert.equal(count(),2);assert.equal(live(),false);assert.equal(snapshot(),false);

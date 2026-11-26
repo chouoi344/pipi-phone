@@ -61,7 +61,7 @@ Ubuntu 云服务器首次安装需要 Git、curl、Python 3、Docker 和 Compose
 cd /opt && repo=https://github.com/chouoi344/pipi-phone && release=$(curl --http1.1 -fsSLI -o /dev/null -w '%{url_effective}' "$repo/releases/latest") && git -c http.version=HTTP/1.1 clone --depth 1 --branch "${release##*/}" "$repo.git" pipi-phone && cd pipi-phone && python3 scripts/install-https.py
 ```
 
-安装完成后，终端会显示 `https://你的公网IP/`。在手机浏览器打开它，填写名字和至少 8 个字符的访问密码。安卓 App 也粘贴这个完整网址，使用同一个密码。浏览器首次录音时，点「允许使用麦克风」。服务器会自动申请并续期免费证书。
+安装完成后，终端会显示 `https://你的公网IP/`。服务启动后，请立即在手机浏览器打开它，填写名字和至少 8 个字符的访问密码。安卓 App 也粘贴这个完整网址，使用同一个密码。浏览器首次录音时，点「允许使用麦克风」。服务器会自动申请并续期免费证书。
 
 标准安装会准备网页更新服务所需的 Node.js，业务资料保存在 Docker 数据卷中。以后要升级服务器，请打开「我 → 设置 → 关于屁屁机 → 网页程序更新」。
 

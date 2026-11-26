@@ -90,7 +90,7 @@ python3 scripts/install-https.py
 - 新装后在原目录使用普通 `docker compose` 命令，安装脚本创建的 `compose.override.yaml` 会自动加载 HTTPS 配置。`.env.https` 记录证书对应的 IP。若 Docker 报网段重叠，请在原目录 `.env` 设置 `PIPI_HTTPS_PREFIX` 为该服务器空闲的私网前三段，例如 `172.29.187`，再重跑安装。
 - 只在电脑本机试用，无需公网证书。在未启用上述 HTTPS 配置的源码目录执行 `docker compose up -d --build`，打开 `http://127.0.0.1:18766/`。
 
-首次设置账号默认只需填写名字和密码。如需启用一次性设置令牌，Docker 部署可在 `.env` 设置 `REQUIRE_SETUP_TOKEN=1` 并重启。启用后，令牌保存在数据目录的 `setup-token.txt`，在部署目录执行下面的命令读取：
+服务启动后请立即打开网页设置访问密码。公网部署如需一次性设置令牌，在首次启动前于部署目录的 `.env` 写入 `REQUIRE_SETUP_TOKEN=1`，再执行 `docker compose up -d`。启用后，令牌保存在数据目录的 `setup-token.txt`，在部署目录执行下面的命令读取：
 
 ```sh
 docker compose exec pipi-phone cat /app/data/setup-token.txt

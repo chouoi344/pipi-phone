@@ -65,7 +65,7 @@ async function main(){
     assert.equal(submitted.previousVersion,old);assert.equal(submitted.version,next);
     const finished=await worker.tick();assert.equal(finished.phase,'succeeded',JSON.stringify(finished));
     const after=await container();assert.notEqual(before.Id,after.Id);assert.notEqual(before.Image,after.Image);assert.equal(volume(before),volume(after));assert.equal(after.Config.Image,target);
-    await status.filter({hasText:'更新完成'}).waitFor();await page.locator('[data-update-reload]').click();
+    await status.filter({hasText:'更新完成'}).waitFor();await Promise.all([page.waitForEvent('domcontentloaded'),page.locator('[data-update-reload]').click()]);
     await page.locator('body').waitFor();await page.waitForFunction(()=>!document.querySelector('#auth-form')&&document.querySelector('#view [data-nav=me],#view [data-update-entry],#view [data-action=about]'));
     assert.equal(new URL(page.url()).origin,origin);
     const afterData=await browserData();assert.deepEqual(afterData,beforeData);

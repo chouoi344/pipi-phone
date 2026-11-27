@@ -48,8 +48,5 @@ jobs:
       - name: Click update in the old site, replace its container, and verify the retained session and content
         # The shipping worker runs as root to read UID 1000 owned, mode 0600 request.json.
         run: |
-          sudo env GATE_OLD_IMAGE="$GATE_OLD_IMAGE" GATE_NEXT_IMAGE="$GATE_NEXT_IMAGE" \\
-            PIPI_PLAYWRIGHT_MODULE="$PIPI_PLAYWRIGHT_MODULE" PIPI_BROWSER_EXECUTABLE="$PIPI_BROWSER_EXECUTABLE" \\
-            GITHUB_RUN_ID="$GITHUB_RUN_ID" GITHUB_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT" \\
-            "$(command -v node)" .ci-gate/upgrade.cjs
+          sudo env GATE_OLD_IMAGE="$GATE_OLD_IMAGE" GATE_NEXT_IMAGE="$GATE_NEXT_IMAGE" PIPI_PLAYWRIGHT_MODULE="$PIPI_PLAYWRIGHT_MODULE" PIPI_BROWSER_EXECUTABLE="$PIPI_BROWSER_EXECUTABLE" GITHUB_RUN_ID="$GITHUB_RUN_ID" GITHUB_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT" "$(command -v node)" .ci-gate/upgrade.cjs
 

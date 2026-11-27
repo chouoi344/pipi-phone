@@ -106,11 +106,13 @@ async function exerciseDraftRedraw(page, {skin, timing, width, tap, visible}) {
         return request.apply(this, arguments);
       }
       window.PipiNetwork.request = request;
+      receipt.roleId = JSON.parse(options.body).payload.roleId;
       const response = await request.apply(this, arguments);
       const readJson = response.json.bind(response);
       response.json = async () => {
         const payload = await readJson();
         receipt.mode = payload.sync?.mode;
+        receipt.revision = payload.sync?.revision;
         receipt.upsertCount = payload.sync?.changes?.upsertMessages?.length;
         receipt.hasState = Object.prototype.hasOwnProperty.call(payload, 'state');
         receipt.ready = true;
@@ -174,7 +176,11 @@ async function exerciseDraftRedraw(page, {skin, timing, width, tap, visible}) {
       'the held editor survives until the user lifts their finger');
     await liftPointer();
   }
-  await page.waitForFunction(editor => !editor.isConnected, {}, editorBeforeReceipt);
+  await page.waitForFunction(receipt => {
+    const current = Pipi.getState();
+    return receipt.delivered && current.revision >= receipt.revision &&
+      current.roles.find(role => role.id === receipt.roleId)?.unread === 0;
+  }, {}, readReceipt);
   assert.equal(await page.$eval('#view #compose-text', input => input.textContent), prefix);
   if (!prefix) {
     await page.keyboard.sendCharacter('dr');

@@ -1,0 +1,1 @@
+{"version":"0.14.3","image":"ghcr.io/chouoi344/pipi-phone@sha256:5812a38d586a25cf2087ce5eece1026cd7b16054e06c7d23f52ee3ca65444b9a","publishedAt":"2026-11-27T20:49:57Z","notes":"- 有新版本时，点「检查更新」会显示新版号和「立即更新」按钮。上次成功升级的记录曾遮住这次的检查结果。\n- 安卓 App 0.1.20（安装编号 22）同步修复 App 内的「网页程序更新」。\n"}

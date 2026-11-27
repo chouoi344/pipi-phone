@@ -4,8 +4,8 @@ def phoneRoot = rootProject.projectDir.parentFile
 def packagedWeb = layout.buildDirectory.dir('generated/phoneWeb')
 def packagedInfo = layout.buildDirectory.dir('generated/phoneInfo')
 def pipiFcm = providers.gradleProperty('pipiFcm').orElse('false').get().toBoolean()
-def pipiAndroidVersionName = providers.gradleProperty('pipiAndroidVersionName').orElse('0.1.19').get()
-def pipiAndroidVersionCode = providers.gradleProperty('pipiAndroidVersionCode').orElse('21').get().toInteger()
+def pipiAndroidVersionName = providers.gradleProperty('pipiAndroidVersionName').orElse('0.1.20').get()
+def pipiAndroidVersionCode = providers.gradleProperty('pipiAndroidVersionCode').orElse('22').get().toInteger()
 if (!(pipiAndroidVersionName ==~ /[0-9]+(\.[0-9]+){1,3}/) || pipiAndroidVersionCode <= 0) {
     throw new GradleException('Android version must use a numeric versionName and positive versionCode')
 }

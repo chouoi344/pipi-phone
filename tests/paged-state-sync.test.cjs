@@ -108,6 +108,18 @@ test('paging requires both features, a full reply from an older login becomes he
   }finally{configure([]);}
 });
 
+test('update checks keep the new release alongside an older completed job without requesting chat data',async()=>{
+  const response={
+    currentVersion:'0.14.1',state:'available',release:{version:'0.14.2'},
+    job:{phase:'succeeded',message:'已更新到 0.14.1，原资料继续保留'}
+  };
+  for(const paged of [true,false]){
+    const {client,calls}=fixture(3,{paged});
+    assert.strictEqual(await client.accept(response),response);
+    assert.deepEqual(calls,[]);
+  }
+});
+
 test('JSON backup remains complete when the browser has loaded only heads; restoring refreshes the paged state separately',async()=>{
   const f=fixture();await f.client.refresh();
   const archive={format:'pipi-phone',version:1,state:{messages:[...f.rows.a,...f.rows.b]}};

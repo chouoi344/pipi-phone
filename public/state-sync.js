@@ -121,8 +121,11 @@
     function accept(result){
       // Legacy JSON exports contain the entire archive, including records outside the browser cache.
       if(result.format==='pipi-phone')return Promise.resolve(result);
-      if(pages&&!result.sync&&result.state)return enqueue(async fetch=>({...result,state:await refreshNow(fetch)}),true);
-      if(!result.sync)return result.state?enqueue(async()=>{observe(result.state);return result;},true):Promise.resolve(result);
+      if(!result.sync){
+        if(!Array.isArray(result.state?.messages))return Promise.resolve(result);
+        if(pages)return enqueue(async fetch=>({...result,state:await refreshNow(fetch)}),true);
+        return enqueue(async()=>{observe(result.state);return result;},true);
+      }
       return enqueue(async fetch=>{
         const delta=envelope(result.sync);
         if(delta.mode==='reset')await bootstrap(fetch,pages&&cursor&&delta.epoch!==serverEpoch?null:delta);

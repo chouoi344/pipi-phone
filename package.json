@@ -1,6 +1,6 @@
 {
   "name": "pipi-phone",
-  "version": "0.14.3",
+  "version": "0.14.4",
   "private": true,
   "description": "Self-hosted WeChat-style AI companion phone prototype",
   "license": "AGPL-3.0-only",

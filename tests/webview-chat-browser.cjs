@@ -46,8 +46,23 @@ async function exerciseVoiceOverlay(page, {width, tap, capture}) {
     };
     return {commands, restore() { meta.remove(); window.prompt = prompt; }};
   });
+  const fieldBox = () => page.$eval('#compose-form .compose-field', field => {
+    const {x, y, width, height} = field.getBoundingClientRect();
+    return {x, y, width, height};
+  });
+  const textBox = await fieldBox();
   await tap('[data-action=toggle-voice]');
   await page.waitForSelector('#view #compose-text', {hidden: true});
+  await capture('voice-idle');
+  const holdStyle = await page.$eval('[data-record]', button => {
+    const style = getComputedStyle(button);
+    return {background: style.backgroundColor, border: style.borderTopWidth, shadow: style.boxShadow};
+  });
+  assert.deepEqual(holdStyle, {background: 'rgba(0, 0, 0, 0)', border: '0px', shadow: 'none'},
+    'only the existing composer field should draw the voice input surface');
+  const voiceBox = await fieldBox();
+  for (const key of Object.keys(textBox)) assert.ok(Math.abs(textBox[key] - voiceBox[key]) <= 1,
+    'switching input mode moved the field: ' + JSON.stringify({textBox, voiceBox}));
   const center = async selector => {
     const {x, y, width, height} = await (await page.$(selector)).boundingBox();
     return {x: x + width / 2, y: y + height / 2};

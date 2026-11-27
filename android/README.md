@@ -2,7 +2,7 @@
 
 把 APK 装到手机，就能登录自己的小手机。好友、模型、图片、语音和聊天记录继续使用原服务器。聊天页面和两套皮肤随安装包一起交付，Android 负责系统返回、切后台、保存草稿、选择文件和消息通知。
 
-网页 0.14.3 与安卓 0.1.20（编号 22）修复了「网页程序更新」在有新版时仍显示旧的「更新完成」的问题。已安装的用户可打开「我 → 设置 → 关于屁屁机 → 安卓 App 更新」。自行签名的 App 后续需要使用自己的原签名覆盖安装。[下载安卓 0.1.20 安装包](https://github.com/chouoi344/pipi-phone/releases/download/android-v0.1.20/pipi-phone-android-0.1.20-22.apk)
+网页 0.14.4 与安卓 0.1.21（编号 23）让「按住说话」沿用聊天输入栏的外观，切换语音时保留当前皮肤的边框和底色。已安装的用户可打开「我 → 设置 → 关于屁屁机 → 安卓 App 更新」。自行签名的 App 后续需要使用自己的原签名覆盖安装。[下载安卓 0.1.21 安装包](https://github.com/chouoi344/pipi-phone/releases/download/android-v0.1.21/pipi-phone-android-0.1.21-23.apk)
 
 ## 第一次使用
 
@@ -53,7 +53,7 @@ adb -s emulator-5556 reverse tcp:18766 tcp:18766
 ### 发布安卓新版
 
 1. 在 `app/build.gradle` 中提高安卓版本号和安装版本编号。例如从 0.1.2、编号 3 升到 0.1.3、编号 4。沿用先前的签名构建。
-2. 下方脚本会准备可直接上传的文件，此源码生成 `app/build/outputs/apk/release-assets/pipi-phone-android-0.1.20-22.apk`。每个安装版本编号只上传一份 APK。要兼容旧服务器，请取消安卓独立发布的「Set as the latest release」。
+2. 下方脚本会准备可直接上传的文件，此源码生成 `app/build/outputs/apk/release-assets/pipi-phone-android-0.1.21-23.apk`。每个安装版本编号只上传一份 APK。要兼容旧服务器，请取消安卓独立发布的「Set as the latest release」。
 3. 在「安卓 App 更新」检查。服务器优先访问阿里云杭州仓库，连接异常时尝试 GitHub；小手机的登录资料只用于用户自己的服务器。手机会核对文件内容、包名、版本和签名，再打开安卓安装确认。
 
 带部署者自定义推送配置的安装包使用 `pipi-phone-custom-push` 文件名前缀，由部署者分发同一项目、同一签名的新版，以保留原有推送配置。

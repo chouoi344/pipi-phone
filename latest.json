@@ -1,1 +1,1 @@
-{"version":"0.14.3","image":"ghcr.io/chouoi344/pipi-phone@sha256:5812a38d586a25cf2087ce5eece1026cd7b16054e06c7d23f52ee3ca65444b9a","publishedAt":"2026-11-27T20:49:57Z","notes":"- 有新版本时，点「检查更新」会显示新版号和「立即更新」按钮。上次成功升级的记录曾遮住这次的检查结果。\n- 安卓 App 0.1.20（安装编号 22）同步修复 App 内的「网页程序更新」。\n"}
+{"version":"0.14.4","image":"ghcr.io/chouoi344/pipi-phone@sha256:28333d367a8a8052ef2b840729fce2477ecdd218a5c6af49b696b5cb8ffed042","publishedAt":"2026-11-27T22:06:22Z","notes":"- 切换到「按住说话」时沿用文字输入框的边框、圆角和底色，水滴皮肤保留原来的透光效果，右侧加号保持原位。\n- 安卓 App 0.1.21（安装编号 23）同步这项显示修复。\n"}

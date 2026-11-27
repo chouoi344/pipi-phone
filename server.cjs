@@ -24,10 +24,21 @@ const scrypt=promisify(crypto.scrypt),VERSION=require('./package.json').version;
 const ICON_VERSION='0.13.13';
 const MAX_BACKUP_BYTES=88*1024*1024;
 const zlib=require('node:zlib');
-const compressibleStatic=new Set(['.html','.js','.css','.svg','.webmanifest']),staticCache=new Map();
+const compressibleStatic=new Set(['.html','.js','.css','.svg','.webmanifest']);
 const brotliAsync=promisify(zlib.brotliCompress),gzipAsync=promisify(zlib.gzip);
 // Static files never change while running, so spend more CPU once (quality 9) and serve the cached bytes afterwards.
 const staticCompress=(bytes,encoding)=>encoding==='br'?brotliAsync(bytes,{params:{[zlib.constants.BROTLI_PARAM_QUALITY]:9,[zlib.constants.BROTLI_PARAM_SIZE_HINT]:bytes.length}}):gzipAsync(bytes,{level:9});
+// Actions listed here only change metadata. New actions compare message contents by default.
+const metadataActions=new Set([
+  'profile.save','settings.save','status.save','status.end','emoji.use',
+  'conversation.read','conversation.unread','conversation.pin','conversation.mute','conversation.hide',
+  'persona.save','persona.delete','personaFolder.save','personaFolder.delete','role.save',
+  'rolePersona.save','rolePersona.delete','rolePersona.bind','rolePersona.move',
+  'sticker.add','sticker.delete','sticker.semantic.save','role.stickers.add',
+  'message.favorite','favorite.save','favorite.delete','favorite.deleteMany','memory.save','memory.delete',
+  'moment.create','moment.like','moment.comment','moment.comment.delete','moment.delete','moment.notifications.read',
+  'ledger.save','ledger.delete','farm.plant','farm.harvest','farm.water'
+]);
 const UPDATE_MAINTENANCE_PHASES=new Set(['backing-up','installing','verifying','rolling-back']);
 const safeEqual=(a,b)=>{
   const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));
@@ -58,6 +69,7 @@ function createApp(options={}){
     updateDir
   });
   const androidUpdates=createAndroidUpdateService(options.androidUpdates);
+  let publicRelease;
   const updateMaintenance=()=>updateDir
     ? updates.status().then(status=>UPDATE_MAINTENANCE_PHASES.has(status.job?.phase),()=>false)
     : false;
@@ -90,10 +102,16 @@ function createApp(options={}){
   catch(error){db.close();throw error;}
   // Older stored settings can predate timezone validation. Check once per changed value.
   let previousZone, storedZone;
+  // Benchmark-only callback. Normal deployments do not read a clock or retain timing data.
+  const probe=options.storageProbe;
+  const tick=()=>probe?performance.now():0;
+  const note=(name,start,kind)=>{if(probe)probe(name,performance.now()-start,kind);};
   const parse=(json,beforeDefaults)=>{
-    const state=JSON.parse(json);
+    const started=tick(),state=JSON.parse(json);
+    note('parse',started);
     // Capture stored values before time-dependent defaults (for example status expiry) change them.
     beforeDefaults?.(state);
+    const defaultsAt=tick();
     state.profile.cover??='';
     state.stickers??=[];
     state.emojiRecents??=[];
@@ -115,13 +133,25 @@ function createApp(options={}){
     }
     Object.defineProperty(defaults,Symbol.for('pipi.mediaDir'),{value:dataDir});
     if(options.lifePreview)Object.defineProperty(defaults,Symbol.for('pipi.lifePreview'),{value:true});
+    note('defaults',defaultsAt);
     return defaults;
   };
-  const storedJson=()=>db.prepare('SELECT json FROM app WHERE id=1').get().json;
-  const read=()=>parse(storedJson());
+  const storedJson=()=>{
+    const start=tick(),json=db.prepare('SELECT json FROM app WHERE id=1').get().json;
+    note('select',start);return json;
+  };
+  const read=()=>{
+    const start=tick(),state=parse(storedJson());
+    note('read.total',start);return state;
+  };
   const syncJournal=ClientSync.createJournal({revision:read().revision,...options.clientSync});
   const clientSync=ClientSync.createReader({db,parse,state:S,journal:syncJournal});
-  const stateResponse=(req,state,extra={})=>req.headers['x-pipi-state-mode']==='delta'?{...extra,sync:clientSync.view(req.headers['x-pipi-sync-cursor'])}:{...extra,state:S.publicState(typeof state==='function'?state():state)};
+  function syncResponse(req,cursor){
+    const sync=clientSync.view(cursor);
+    if(req.headers['x-pipi-message-coverage']==='pages')sync.messageCount=clientSync.messageCount(sync.revision);
+    return sync;
+  }
+  const stateResponse=(req,state,extra={})=>req.headers['x-pipi-state-mode']==='delta'?{...extra,sync:syncResponse(req,req.headers['x-pipi-sync-cursor'])}:{...extra,state:S.publicState(typeof state==='function'?state():state)};
   const androidFcm=require('./lib/android-fcm.cjs').create({
     credentialFile:process.env.PIPI_FCM_SERVICE_ACCOUNT_FILE,...options.fcm,getMeta,setMeta,getState:read,
     sessionValid:hash=>Boolean(db.prepare('SELECT hash FROM sessions WHERE hash=? AND expires>?').get(hash,Date.now())),
@@ -161,23 +191,35 @@ function createApp(options={}){
     }
   }
   function mutate(fn,{messages=true}={}){
-    let notificationSnapshot,syncBefore;
+    const started=tick();
+    if(probe)probe('mutate.start',0);
+    let notificationSnapshot,syncBefore,appendKind;
     const result=transaction(()=>{
-      const json=storedJson(),state=S.limitBaseline(parse(json,stored=>{syncBefore=syncJournal.capture(stored,{messages});}),Buffer.byteLength(json));
+      const json=storedJson(),state=parse(json,stored=>{
+        const start=tick();syncBefore=syncJournal.capture(stored,{messages});note('journal.before',start);
+      });
+      let start=tick();
+      S.limitBaseline(state,Buffer.byteLength(json));note('limit.baseline',start);
       notificationSnapshot=androidFcm.snapshot(state);
-      const previous=Media.mediaSnapshot(state),value=fn(state);
-      Media.externalize(dataDir,state,{previous});
+      start=tick();const previous=Media.mediaSnapshot(state);note('media.snapshot',start);
+      const count=probe&&state.messages.length;
+      start=tick();const value=fn(state);note('modify',start);
+      if(probe&&state.messages.length===count+1)appendKind=state.messages.at(-1).sender;
+      start=tick();Media.externalize(dataDir,state,{previous});note('media.externalize',start);
       checkProviderUrls(state);
-      S.limit(state);
+      start=tick();S.limit(state);note('limit',start);
       state.revision++;
-      db.prepare('UPDATE app SET json=? WHERE id=1').run(JSON.stringify(state));
+      const write=db.prepare('UPDATE app SET json=? WHERE id=1');
+      start=tick();const serialized=JSON.stringify(state);note('serialize',start);
+      start=tick();write.run(serialized);note('write',start);
       return {
         state,value
       };
     });
-    syncJournal.commit(syncBefore,result.state);
+    const journalAt=tick();syncJournal.commit(syncBefore,result.state);note('journal.after',journalAt);
     publish('revision',{revision:result.state.revision});
     androidFcm.publish(notificationSnapshot,result.state);
+    note('mutate.total',started,appendKind);
     return result;
   }
   const {migrateLegacy,diskSpace,prepareLargeLegacyBackup}=require('./lib/media-migration.cjs');
@@ -359,7 +401,7 @@ function createApp(options={}){
       for(const client of clients)if(client.hash===hash)client.expires=row.expires;
     }
   }
-  // Static files revalidate with ETag, so a return visit reuses the cached page instead of reloading it.
+  // Public HTML revalidates. Static asset responses set their own content-based caching policy.
   // Everything else (API responses, backups, the issuer page) carries private data and must never be cached.
   function cacheControl(pathname,method){
     if(method!=='GET'&&method!=='HEAD')return 'no-store';
@@ -526,7 +568,7 @@ function createApp(options={}){
     if(clients.size>=32)S.fail('实时连接过多，请关闭多余页面',429,'RATE_LIMIT');
     res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache','Connection':'keep-alive','X-Accel-Buffering':'no'});
     const client={res,hash:auth.hash,expires:auth.expires};clients.add(client);
-    res.write(`event: revision\ndata: ${JSON.stringify({revision:read().revision})}\n\n`);
+    res.write(`event: revision\ndata: ${JSON.stringify({revision:clientSync.currentRevision()})}\n\n`);
     for(const value of runtime.typingState())res.write(`event: typing\ndata: ${JSON.stringify(value)}\n\n`);
     const heartbeat=setInterval(()=>{
       const current=db.prepare('SELECT expires FROM sessions WHERE hash=? AND expires>?').get(auth.hash,Date.now());
@@ -548,7 +590,7 @@ function createApp(options={}){
     }
     const p=u.pathname;
     if(!p.startsWith('/api/'))return staticFile(req,res,p,u.searchParams);
-    if(req.method==='GET'&&p==='/api/android-shell-manifest')return json(res,200,{...await AndroidAssets.manifest(),clientProtocol:ClientSync.protocol});
+    if(req.method==='GET'&&p==='/api/android-shell-manifest')return json(res,200,{...publicRelease.android,clientProtocol:ClientSync.protocol});
     if(req.method==='GET'&&p==='/api/status'){
       const auth=session(req,res);
       return json(res,200,{
@@ -587,9 +629,7 @@ function createApp(options={}){
           fs.unlinkSync(path.join(dataDir,'setup-token.txt'));
         }
         catch{}
-        return json(res,200,{
-          ...makeSession(req,res),state:S.publicState(read()),appearance:appearance()
-        });
+        return json(res,200,stateResponse(req,read,{...makeSession(req,res),appearance:appearance()}));
       }
       return limits.attempt(failureKey,10,async()=>{
         const stored=getMeta('password');
@@ -599,9 +639,7 @@ function createApp(options={}){
         if(closed)S.fail('服务器正在关闭',503,'CLOSING');
         if(getMeta('password')!==stored)S.fail('密码已更新，请重新登录',401,'INVALID_PASSWORD');
         limits.clear(failureKey);
-        return json(res,200,{
-          ...makeSession(req,res),state:S.publicState(read()),appearance:appearance()
-        });
+        return json(res,200,stateResponse(req,read,{...makeSession(req,res),appearance:appearance()}));
       });
     }
     const mutating=!['GET','HEAD'].includes(req.method),auth=authorized(req,mutating,res);
@@ -720,12 +758,17 @@ function createApp(options={}){
       // Background refresh sends the revision it already has; an unchanged revision skips re-sending the whole state.
       const since=u.searchParams.get('since');
       if(since!==null){
-        const revision=db.prepare("SELECT json_extract(json,'$.revision') AS revision FROM app WHERE id=1").get()?.revision;
+        const revision=clientSync.currentRevision();
         if(revision!==null&&revision!==undefined&&String(revision)===since)return json(res,200,{revision,unchanged:true});
       }
       return json(res,200,S.publicState(read()));
     }
-    if(req.method==='GET'&&p==='/api/sync')return json(res,200,clientSync.view(u.searchParams.get('cursor')));
+    if(req.method==='GET'&&p==='/api/sync')return json(res,200,syncResponse(req,u.searchParams.get('cursor')));
+    if(req.method==='GET'&&p==='/api/messages/global-search'){
+      const query=S.text(u.searchParams.get('query'),1000).trim(),limit=S.integer(Number(u.searchParams.get('limit')??50),1,100),beforeId=S.text(u.searchParams.get('beforeId')??undefined,100);
+      if(!query)S.fail('请输入搜索内容');
+      return json(res,200,clientSync.globalSearch({query,limit,beforeId}));
+    }
     if(req.method==='GET'&&['/api/messages','/api/messages/search','/api/messages/by-id'].includes(p)){
       const roleId=S.text(u.searchParams.get('roleId'),100);if(!roleId)S.fail('请选择会话');
       if(p==='/api/messages/by-id'){
@@ -963,7 +1006,7 @@ function createApp(options={}){
             return require('./lib/engine/memory-store.cjs').deleteCard(dataDir,s,memory.roleId,memory.id);
           }
           return S.apply(s,type,b.payload===undefined?{}:b.payload);
-        },{messages:!['profile.save','settings.save'].includes(type)});
+        },{messages:!metadataActions.has(type)});
         if(['rolePersona.bind','rolePersona.save','rolePersona.delete','role.save'].includes(type))runtime.checkChatPersonas(result.state);
         if(type==='role.delete')require('./lib/engine/memory-store.cjs').removeRole(dataDir,null,b.payload?.id);
         if(type==='role.save'&&result.state.roles.find(r=>r.id===b.payload?.id)?.permissions.blocked)runtime.cancel(b.payload.id);
@@ -1085,20 +1128,20 @@ function createApp(options={}){
       }
       case '/api/engine/models':{
         if(req.headers['sec-fetch-site']&&req.headers['x-pipi-model-page']!=='card-save')S.fail('模型页面已更新，请刷新页面后再保存',409,'PROVIDER_CONFIG_CHANGED');
-        const result=mutate(s=>Models.save(s,b.ai,{stationPreset:b.stationPreset===true,checkSubmittedKeys:true}));return json(res,200,stateResponse(req,result.state));
+        const result=mutate(s=>Models.save(s,b.ai,{stationPreset:b.stationPreset===true,checkSubmittedKeys:true}),{messages:false});return json(res,200,stateResponse(req,result.state));
       }
       case '/api/engine/models/card':{
-        const result=mutate(s=>Models.saveCard(s,b));return json(res,200,stateResponse(req,result.state));
+        const result=mutate(s=>Models.saveCard(s,b),{messages:false});return json(res,200,stateResponse(req,result.state));
       }
       case '/api/engine/models/assign':{
-        const result=mutate(s=>Models.saveAssignments(s,b.assign));return json(res,200,stateResponse(req,result.state));
+        const result=mutate(s=>Models.saveAssignments(s,b.assign),{messages:false});return json(res,200,stateResponse(req,result.state));
       }
       case '/api/engine/models/station':{
         const unconfiguredGroups=[];
-        const result=mutate(s=>Models.configureStation(s,b.keys,{unconfiguredGroups,expectedKeyRevisions:b.expectedKeyRevisions??{}}));return json(res,200,stateResponse(req,result.state,{unconfiguredGroups}));
+        const result=mutate(s=>Models.configureStation(s,b.keys,{unconfiguredGroups,expectedKeyRevisions:b.expectedKeyRevisions??{}}),{messages:false});return json(res,200,stateResponse(req,result.state,{unconfiguredGroups}));
       }
       case '/api/engine/models/source/delete':{
-        const result=mutate(s=>Models.removeSource(s,b.sourceId,{expectedKeyRevisions:{[b.sourceId]:b.expectedKeyRevision}}));return json(res,200,stateResponse(req,result.state));
+        const result=mutate(s=>Models.removeSource(s,b.sourceId,{expectedKeyRevisions:{[b.sourceId]:b.expectedKeyRevision}}),{messages:false});return json(res,200,stateResponse(req,result.state));
       }
       case '/api/engine/models/list':{
         rate('ai:'+clientAddress,40);
@@ -1395,7 +1438,6 @@ function createApp(options={}){
     }
   }
   function staticFile(req,res,pathname,searchParams){
-    if(pathname==='/life-preview.html'&&!options.lifePreview)S.fail('独立验收页仅在隔离实例开放',404,'NOT_FOUND');
     if(!['GET','HEAD'].includes(req.method))S.fail('页面不存在',404);
     let decoded;
     try{
@@ -1405,53 +1447,41 @@ function createApp(options={}){
       S.fail('路径无效');
     }
     if(decoded.includes('\0')||decoded.includes('\\')||decoded.split('/').some(x=>x.startsWith('.')&&x!==''))S.fail('页面不存在',404);
-    const root=path.resolve(__dirname,'public'),file=path.resolve(root,'.'+decoded+(decoded.endsWith('/')?'index.html':''));
-    if(!file.startsWith(root+path.sep))S.fail('页面不存在',404);
-    let stat;
-    try{
-      const real=fs.realpathSync(file);
-      if(!real.startsWith(fs.realpathSync(root)+path.sep))S.fail('页面不存在',404);
-      stat=fs.statSync(real);
-      if(!stat.isFile())S.fail('页面不存在',404);
-    }
-    catch(e){
-      if(e.status)throw e;
-      S.fail('页面不存在',404);
-    }
+    const file=decoded.endsWith('/')?decoded+'index.html':decoded;
+    if(file==='/life-preview.html'&&!options.lifePreview)S.fail('独立验收页仅在隔离实例开放',404,'NOT_FOUND');
+    const asset=publicRelease.files.get(file);
+    if(!asset)S.fail('页面不存在',404);
     const types={
       '.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.webp':'image/webp','.ico':'image/x-icon','.webmanifest':'application/manifest+json','.woff2':'font/woff2'
     };
     const contentType=types[path.extname(file)];
     if(!contentType)S.fail('文件类型不允许',404);
-    const ext=path.extname(file),baseTag=`${stat.size}-${Math.trunc(stat.mtimeMs)}`;
-    // Text assets are compressed once per file version and kept in memory; on a small server this cuts the first load from ~1.5MB to a few hundred KB.
-    const encoding=compressibleStatic.has(ext)&&stat.size>1024?JsonResponse.negotiate(req.headers['accept-encoding']).encoding:null;
+    const ext=path.extname(file),version=searchParams.get('v');
+    const encoding=compressibleStatic.has(ext)&&asset.bytes.length>1024?JsonResponse.negotiate(req.headers['accept-encoding']).encoding:null;
     if(compressibleStatic.has(ext))res.setHeader('Vary','Accept-Encoding');
-    if(['.woff2','.svg','.css','.js'].includes(ext)){
-      const etag=`"${baseTag}${encoding?'-'+encoding:''}"`;
-      const versionedIcon=/^\/vendor\/(?:fake-world\/(?:icons|masks)|native-icons)\/[^/]+\.svg$/.test(pathname)&&searchParams.get('v')===ICON_VERSION;
-      res.setHeader('Cache-Control',versionedIcon?'public, max-age=604800, immutable':'public, max-age=0, must-revalidate');
-      res.setHeader('ETag',etag);
-      if(req.headers['if-none-match']===etag){res.writeHead(304);res.end();return;}
-    }
-    if(encoding)return compressedStatic(file,baseTag,encoding).then(payload=>{
+    const etag=`"${asset.version}${encoding?'-'+encoding:''}"`;
+    let cache='public, max-age=0, must-revalidate';
+    if(ext!=='.html'&&version===asset.version)cache='public, max-age=31536000, immutable';
+    else if(version===ICON_VERSION&&/^\/vendor\/(?:fake-world\/(?:icons|masks)|native-icons)\/[^/]+\.svg$/.test(file))cache='public, max-age=604800, immutable';
+    res.setHeader('Cache-Control',cache);
+    res.setHeader('ETag',etag);
+    if(req.headers['if-none-match']===etag){res.writeHead(304);res.end();return;}
+    if(encoding)return compressedStatic(asset,encoding).then(payload=>{
       if(res.destroyed||res.writableEnded)return;
       res.writeHead(200,{'Content-Type':contentType,'Content-Length':payload.length,'Content-Encoding':encoding});
       res.end(req.method==='HEAD'?undefined:payload);
     });
-    res.writeHead(200,{
-      'Content-Type':contentType,'Content-Length':stat.size
-    });
-    if(req.method==='HEAD')res.end();
-    else fs.createReadStream(file).on('error',()=>res.destroy()).pipe(res);
+    res.writeHead(200,{'Content-Type':contentType,'Content-Length':asset.bytes.length});
+    res.end(req.method==='HEAD'?undefined:asset.bytes);
   }
-  function compressedStatic(file,tag,encoding){
-    const key=file+'|'+encoding,hit=staticCache.get(key);
-    if(hit?.tag===tag)return hit.payload;
-    const payload=fs.promises.readFile(file).then(bytes=>staticCompress(bytes,encoding));
-    staticCache.set(key,{tag,payload});
-    payload.catch(()=>{if(staticCache.get(key)?.payload===payload)staticCache.delete(key);});
-    return payload;
+  function compressedStatic(asset,encoding){
+    const variants=asset.encoded??=new Map();
+    if(!variants.has(encoding)){
+      const payload=staticCompress(asset.bytes,encoding);
+      variants.set(encoding,payload);
+      payload.catch(()=>variants.delete(encoding));
+    }
+    return variants.get(encoding);
   }
   const server=http.createServer((req,res)=>{
     let deadline;
@@ -1483,7 +1513,7 @@ function createApp(options={}){
   try{stickerQueue.recover();}catch(error){console.error('Unable to resume sticker analysis during startup:',error?.stack||String(error));}
   return {
     server,db,dataDir,async listen(listenPort=port,listenHost=host){
-      await AndroidAssets.manifest();
+      publicRelease=await AndroidAssets.release(options.publicDir);
       return new Promise((resolve,reject)=>{
         server.once('error',reject);
         server.listen(listenPort,listenHost,()=>{

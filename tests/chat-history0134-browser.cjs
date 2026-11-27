@@ -40,7 +40,14 @@ async function run(browser, width, skin) {
     const target = chat.locator(`[data-message="${messages[12].id}"]`);
     const selector = id => `[data-message="${id}"]`;
     const waitChat = () => chat.waitFor();
+    // Exercise the full-history client used by older servers without message paging.
+    await page.route('**/api/status',async request=>{
+      const response=await request.fetch(),data=await response.json();
+      data.clientProtocol.features=data.clientProtocol.features.filter(feature=>feature!=='messages-v1');
+      await request.fulfill({response,json:data});
+    });
     await page.goto('http://127.0.0.1:'+app.server.address().port);
+    await page.locator('#dismiss-notice').click();
     await page.locator('[name=displayName]').fill('历史验收账号');
     await page.locator('[name=password]').fill(password);
     await page.locator('[name=confirmPassword]').fill(password);

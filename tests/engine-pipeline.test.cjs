@@ -75,8 +75,8 @@ test('所有角色事件可见，现实账本和其他好友人设不可见',asy
   const f=fixture({messages:[m('1','user','早上好'),m('2','assistant','早'),m('3','system','pat',{createdAt:8*3600000,meta:{kind:'pat',author:'me',target:'role'}}),m('4','user','红包',{type:'redpacket',createdAt:8*3600000+1000,meta:{amountCents:1234,note:'开心',transactionId:'t'}}),m('5','user','',{type:'voice',createdAt:8*3600000+2000,meta:{transcript:'语音正文'}}),m('6','system','secret recalled',{createdAt:8*3600000+3000,meta:{kind:'recalled',recalledText:'SECRET_RECALLED'}}),m('7','user','回复',{createdAt:8*3600000+4000,meta:{quote:{sender:'assistant',content:'引'.repeat(90)}}}),m('8','user','IMAGE_DATA',{type:'image',createdAt:8*3600000+5000}),m('9','user','SECRET_OTHER_MESSAGE',{roleId:'other',createdAt:8*3600000+6000})]});
   f.state().wallet.transactions.push({id:'t',status:'refunded'});
   await P.run(f.opts);const text=JSON.stringify(f.requests[0].messages);
-  for(const value of ['用户拍了拍你','12.34元','已退还','（语音）','用户撤回了一条消息','当前时间：2026-11-15 星期日 17:00','用户发了一张图片，你看不到内容','本会话人设','款项编号：t'])assert.ok(text.includes(value),value);
-  assert.ok(!text.includes('[消息编号：'));
+  for(const value of ['[系统记录] 用户拍了拍角色','12.34元','已退还','（语音）','用户撤回了一条消息','当前时间：2026-11-15 星期日 17:00','用户发了一张图片，你看不到内容','本会话人设'])assert.ok(text.includes(value),value);
+  assert.ok(!text.includes('[消息编号：'));assert.ok(!text.includes('交易标识：t'));
   for(const value of ['SECRET_OTHER_ROLE','SECRET_OTHER_PERSONA','SECRET_OTHER_MEMORY','SECRET_OTHER_MESSAGE','SECRET_LEDGER','SECRET_RECALLED','IMAGE_DATA','引'.repeat(61)])assert.ok(!text.includes(value),value);
 });
 test('停用时间间隔提示后，旧开启设置不会向角色追加间隔提示词',async()=>{
@@ -468,4 +468,19 @@ test('裁剪方式在备用预算保留最新连发、系统设定和完整工�
   const second=prepared[1];assert.equal(second.find(m=>m.role==='tool').content,'裁剪动作结果');
   assert.equal(second.find(m=>m.tool_calls).tool_calls[0].extra_content.google.thought_signature,'preserved');
   assert.deepEqual(f.state().messages,messages);assert.deepEqual(f.state().engine.summaries,{});
+});
+
+test('本轮动作之后切换到纯文字模型，只发送一句自然的动作说明',async()=>{
+  const f=fixture({capabilities:['text','tool_use'],messages:[m('1','user','拍一下我')]}),fallback={...f.config,capabilities:['text']};
+  const call={id:'call',type:'function',function:{name:'pat_user',arguments:'{}'}};
+  let rounds=0,prepared;
+  f.api.call=async(s,r)=>{
+    if(!rounds++)return {message:{content:null,tool_calls:[call]},model:f.config,modelId:'chat'};
+    prepared=await r.prepareMessages(fallback,r.messages);
+    return {message:{content:'好啦。'},model:fallback,modelId:'fallback'};
+  };
+  await P.run({...f.opts,tools:[{type:'function',function:{name:'pat_user'}}],executeTool:async()=>({messageId:'internal-message'})});
+  assert.ok(prepared.some(m=>m.role==='system'&&m.content.includes('本轮已经处理的动作：已拍了拍对方。')));
+  assert.ok(!prepared.some(m=>m.role==='tool'||m.tool_calls));
+  assert.doesNotMatch(JSON.stringify(prepared),/pat_user|internal-message/);
 });

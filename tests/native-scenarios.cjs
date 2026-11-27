@@ -30,6 +30,7 @@ module.exports=async function nativeScenarios(t){
     const s=await evaluate('[...document.querySelectorAll("#view button,#view a,#view [role=menuitem]")].filter(e=>e.getClientRects().length).map(e=>e.textContent).join(" ")');assert.doesNotMatch(s,/API\s*Key|Base\s*URL|模型配置|角色设定|人设管理|共同记忆|主动消息|AI\s*设置/i,label+' leaks configuration');
   };
   await check('setup form creates isolated account',async()=>{
+    if(await evaluate('!!document.querySelector("#dismiss-notice")')){await click('#dismiss-notice');await wait('!document.querySelector(".first-notice")');}
     await fill('[name=displayName]','UI Test Only');await fill('[name=password]','short');await fill('[name=confirmPassword]','short');await click('#auth-form [type=submit]');await wait('!!document.querySelector(".auth-error").textContent');assert.equal(await evaluate('!!document.querySelector(".bottom-tabs")'),false);await fill('[name=password]','Headless-only-password_2026!');await fill('[name=confirmPassword]','MISMATCH_QA_SETUP');await click('#auth-form [type=submit]');await wait('document.querySelector(".auth-error").textContent.includes("不一致")');await fill('[name=confirmPassword]','Headless-only-password_2026!');await click('#auth-form [type=submit]');await wait('!!document.querySelector(".bottom-tabs")');assert.equal(await evaluate('Pipi.getState().profile.name'),'UI Test Only');
   });
   const initialRole=await evaluate('Pipi.getState().roles[0].id');

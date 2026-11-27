@@ -32,3 +32,22 @@ test('真实服务器重启：旧cursor触发新epoch完整重置，普通旧sna
   const f=await fixture(t),client=Sync.create({request:route=>f.request(route)});const before=await client.refresh();await f.restart();const after=await client.refresh();
   assert.equal(client.replaces(after.state),true);assert.deepEqual(after.state,await f.request('/api/state'));assert.equal(client.replaces(before.state),false);
 });
+
+test('真实分页客户端以各好友预览启动，已读页应用增量，删除预览后自动确定前一条',async t=>{
+  const f=await fixture(t),paths=[],client=Sync.create({paged:true,pageSize:3,request:(route,{headers})=>{
+    paths.push(route);return f.request(route,undefined,headers);
+  }});
+  const login=await client.accept(await f.request('/api/login',{password:'Synthetic-sync-client-2026!'},client.headers()));
+  assert.equal(typeof login.csrfToken,'string');assert.equal(login.state.messages.length,2);
+  const [a,b]=login.state.roles,p=client.paging;
+  assert.equal(p.totalCount(),15);p.setActive(a.id);await p.enter(a.id);assert.equal(p.rows(a.id).length,3);
+  await p.older(a.id);assert.equal(p.rows(a.id).length,6);
+  const oldHead=login.state.messages.find(m=>m.roleId===b.id);
+  const removed=await client.accept(await f.action('message.delete',{id:oldHead.id},client.headers()));
+  assert.ok(removed.state.messages.some(m=>m.roleId===b.id&&m.id!==oldHead.id));
+  assert.equal(removed.state.messages.filter(m=>m.roleId===b.id).length,1);assert.equal(p.totalCount(),14);
+  assert.ok(p.delta(removed.state).deletedIds.includes(oldHead.id));assert.equal(p.delta(removed.state).fresh.length,0);
+  await f.restart();const result=await client.refresh();assert.ok(p.delta(result.state).reset);
+  assert.equal(p.rows(a.id).length,3);assert.equal(p.info(b.id).loaded,false);
+  assert.ok(!paths.some(route=>route.startsWith('/api/state')));
+});

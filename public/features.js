@@ -470,7 +470,7 @@
       bar.style.bottom = `${Math.max(0, shellRect ? window.innerHeight - shellRect.bottom : 0, window.innerHeight - (viewport ? viewport.height + viewport.offsetTop : window.innerHeight))}px`;
       bar.classList.toggle('keyboard-open', Boolean(viewport && window.innerHeight - viewport.height > 120));
     };
-    closeComment = () => { controller.abort(); bar.remove(); closeComment = () => {}; };
+    closeComment = () => { controller.abort(); bar.remove(); closeComment = () => {}; Promise.resolve().then(()=>P().flushPendingRender?.()); };
     window.visualViewport?.addEventListener('resize', position, { signal });
     window.visualViewport?.addEventListener('scroll', position, { signal });
     window.addEventListener('resize', position, { signal });

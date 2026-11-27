@@ -7,6 +7,7 @@ const http=require('node:http');
 const os=require('node:os');
 const path=require('node:path');
 const {createApp}=require('../server.cjs');
+const restoreWhenIdle=require('./fixtures/restore-when-idle.cjs');
 
 test('opt-in model key backup is private and restores only to matching sources',async t=>{
   let providerRequests=0;
@@ -36,10 +37,10 @@ test('opt-in model key backup is private and restores only to matching sources',
         signal:AbortSignal.timeout(5000)
       });
       const value=await response.json();
-      assert.equal(response.status,expect,value.error);
+      if(expect!==null)assert.equal(response.status,expect,value.error);
       if(response.headers.has('set-cookie'))cookie=response.headers.get('set-cookie').split(';')[0];
       if(value.csrfToken)csrf=value.csrfToken;
-      return {value,headers:response.headers};
+      return {status:response.status,value,headers:response.headers};
     }
     await request('/api/setup',{displayName:name,password:'Model-key-HTTP-fixture-only!'});
     return {request};
@@ -89,7 +90,11 @@ test('opt-in model key backup is private and restores only to matching sources',
   assert.equal(backup.version,legacy.version);
   assert.deepEqual(backup.modelKeys,ids.map((sourceId,i)=>({sourceId,baseUrl:originalUrl,key:exportedKeys[i]})));
   noKeys(backup.state);
-  const restore=(data,expect=200)=>target.request('/api/restore',{backup:data,confirm:true},{expect});
+  const restore=async(data,expect=200)=>{
+    const result=await restoreWhenIdle(()=>target.request('/api/restore',{backup:data,confirm:true},{expect:null}));
+    assert.equal(result.status,expect,result.value.error);
+    return result;
+  };
   const {value:before}=await target.request('/api/state');
   noKeys((await target.request('/api/restore',{backup,confirm:false},{expect:400})).value);
   const malformed=structuredClone(backup);

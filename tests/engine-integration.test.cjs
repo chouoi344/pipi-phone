@@ -468,7 +468,7 @@ test('voice tool uses the friend voice, ends on success and requests a text repl
     const replies=f.requests.slice(requestFrom).map(r=>r.body.messages?.at(-1)).filter(m=>m?.role==='tool'&&m.tool_call_id==='voice');
     assert.equal(replies.length,1);
     const result=JSON.parse(replies[0].content);
-    assert.equal(result.delivered,'failed');
+    assert.equal(result.ok,false);assert.equal(result.delivered,undefined);
     assert.match(result.error,/普通文字/);
   };
   const send=async(phase,expected)=>{

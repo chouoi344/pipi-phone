@@ -19,7 +19,7 @@
     const [start, end] = values.map(value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3)));
     return start < end ? minute >= start && minute < end : start > end && (minute >= start || minute < end);
   }
-  function observeState(previous, next) {
+  function observeState(previous, next, candidates = next.messages) {
     if (!previous) { rebase(next); return; }
     if (!seeded) remember(previous);
     const after = latestAt;
@@ -27,7 +27,7 @@
     const silent = document.hidden || quiet(next), showing = notification && roles.get(notification.dataset.roleId);
     if (notification && (silent || !showing || !(showing.unread > 0) || showing.muted || showing.deleted || showing.permissions?.blocked || adapter.visibleChat(showing.id))) dismiss();
     let message;
-    for (const candidate of next.messages) {
+    for (const candidate of candidates) {
       latestAt = Math.max(latestAt, candidate.createdAt);
       if (!incoming(candidate) || seen.has(candidate.id)) continue;
       seen.add(candidate.id);
@@ -93,7 +93,7 @@
   const pageNames = new Set(['chats', 'chat', 'contacts', 'discover', 'me']);
   const snapshots = new Map();
   let adapter, scope = '', saved = null, restored = false, gesture = null, saveTimer, storageWarned = false;
-  let pendingChat = '', offlineRole = '', offline = false;
+  let pendingChat = '', offlineRole = '', offline = false, pickedPhoto = null;
   const view = () => document.getElementById('view');
   const pageKey = page => JSON.stringify([page.name, page.arg]);
   const text = (value, limit) => typeof value === 'string' ? value.slice(0, limit) : '';
@@ -120,7 +120,7 @@
     for (const chat of (Array.isArray(input?.chats) ? input.chats : []).slice(-8)) {
       if (typeof chat?.roleId !== 'string' || chat.roleId.length > 200) continue;
       output.chats.push({roleId:chat.roleId, name:text(chat.name, 120), top:number(chat.top), bottom:chat.bottom === true,
-        anchor:text(chat.anchor, 200), offset:Number.isFinite(chat.offset) ? chat.offset : 0,
+        anchor:text(chat.anchor, 200), afterAnchor:text(chat.afterAnchor, 200), offset:Number.isFinite(chat.offset) ? chat.offset : 0,
         limit:Number.isSafeInteger(chat.limit) ? Math.min(10000, Math.max(120, chat.limit)) : 120,
         endId:text(chat.endId, 200), messages:(Array.isArray(chat.messages) ? chat.messages : []).slice(-100)
           .filter(message => typeof message?.id === 'string' && typeof message.content === 'string')
@@ -150,7 +150,7 @@
   }
   function forgetDeviceCache() {
     clearTimeout(saveTimer); endGesture(); window.PipiChatNotice.clear();
-    localStorage.removeItem(storageKey); snapshots.clear(); saved = null; scope = ''; restored = false; pendingChat = ''; offline = false;
+    localStorage.removeItem(storageKey); snapshots.clear(); pickedPhoto = null; saved = null; scope = ''; restored = false; pendingChat = ''; offline = false;
     adapter?.clear();
     return true;
   }
@@ -182,6 +182,23 @@
   }
   function scheduleCheckpoint() {
     clearTimeout(saveTimer); saveTimer = setTimeout(checkpoint, 220);
+  }
+  function updateReadings(readings,delta){
+    if(!delta||!readings.size)return;
+    const deleted=new Set(delta.deletedIds),updated=new Map((delta.upserts||[]).map(m=>[m.id,m]));
+    if(!delta.reset&&!deleted.size&&!updated.size)return;
+    for(const [roleId,chat] of readings){
+      if(!delta.reset&&!chat.messages.some(m=>deleted.has(m.id)||updated.has(m.id)))continue;
+      const messages=[];
+      for(const old of chat.messages){
+        if(deleted.has(old.id))continue;
+        const m=updated.get(old.id);
+        if(m){if(m.type==='text'&&['user','assistant'].includes(m.sender))messages.push({id:m.id,sender:m.sender,content:m.content});}
+        else if(!delta.reset)messages.push(old);
+      }
+      readings.set(roleId,{...chat,messages});
+    }
+    scheduleCheckpoint();
   }
   function restore() {
     if (restored || !scope) return null;
@@ -245,9 +262,37 @@
     if (opened) window.PipiChatNotice.dismiss();
     return opened;
   }
+  function pickerTarget() {
+    const input = document.querySelector('input[data-android-chat-photo]'), roleId = input?.dataset.androidChatPhoto;
+    if (!roleId || !scope || !adapter?.visibleChat(roleId)) return null;
+    checkpoint();
+    return {scope,roleId};
+  }
+  async function finishPickedPhoto() {
+    if (!pickedPhoto || !restored || offline || !adapter?.ready()) return;
+    const photo = pickedPhoto;
+    pickedPhoto = null;
+    const stillHere = () => scope === photo.scope && adapter.visibleChat(photo.roleId);
+    try {
+      if (!stillHere()) throw new Error('已离开原聊天，照片没有发送');
+      const response = await fetch(photo.path,{cache:'no-store'});
+      if (!response.ok) throw new Error('所选照片已失效，请重新选择');
+      const blob = await response.blob();
+      if (!stillHere()) throw new Error('已离开原聊天，照片没有发送');
+      await adapter.restorePickedFile(blob);
+    } catch (error) { adapter.warn(error.message); }
+  }
+  function receivePickedPhoto(originalScope,roleId,path) {
+    if (!/^\/__android\/picked-photo\/[a-f0-9-]{36}\.photo$/.test(path) || !/^[a-f0-9]{64}$/.test(originalScope)
+        || typeof roleId !== 'string' || !roleId || roleId.length > 200) return false;
+    pickedPhoto = {scope:originalScope,roleId,path};
+    void finishPickedPhoto();
+    return true;
+  }
   function ready() {
     restored = true;
     if (pendingChat) { const roleId = pendingChat; pendingChat = ''; openChat(roleId); }
+    void finishPickedPhoto();
     scheduleCheckpoint();
   }
   function navigated() {
@@ -295,5 +340,5 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden) { checkpoint(); endGesture(); } });
   window.addEventListener('pagehide', checkpoint);
   window.addEventListener('online', () => { if (offline) adapter.retry(); });
-  window.PipiAndroidPage = Object.freeze({back, checkpoint, openChat, forgetDeviceCache, clearSession, beginSession, restore, leaving, ready, navigated, observeState:window.PipiChatNotice.observeState, showOffline, connect(value) { adapter = value; window.PipiChatNotice.connect(value); }});
+  window.PipiAndroidPage = Object.freeze({back, checkpoint, updateReadings, pickerTarget, receivePickedPhoto, openChat, forgetDeviceCache, clearSession, beginSession, restore, leaving, ready, navigated, observeState:window.PipiChatNotice.observeState, showOffline, connect(value) { adapter = value; window.PipiChatNotice.connect(value); }});
 })();

@@ -6,9 +6,9 @@
  */
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="chat"] {
   --waterdrop-glass: linear-gradient(165deg,rgba(255,255,255,.32) 0%,rgba(255,255,255,.12) 42%,rgba(255,255,255,.08) 72%,rgba(255,255,255,.28) 100%);
-  --waterdrop-glass-self: linear-gradient(165deg,rgba(255,255,255,.42) 0%,rgba(244,254,249,.20) 45%,rgba(238,252,246,.15) 72%,rgba(255,255,255,.34) 100%);
+  --waterdrop-glass-self: linear-gradient(165deg,rgba(255,255,255,.32) 0%,rgba(255,255,255,.12) 42%,rgba(255,255,255,.08) 72%,rgba(255,255,255,.28) 100%);
   --waterdrop-glass-shadow: inset 0 1.5px 1.5px rgba(255,255,255,.95),inset 1.5px 0 2.5px rgba(255,255,255,.52),inset 0 -3px 5.5px rgba(255,255,255,.68),inset 0 -1px 1px rgba(255,255,255,.88),inset 0 4px 10px rgba(20,32,48,.035),0 6px 16px rgba(15,25,40,.095),0 1.5px 3px rgba(15,25,40,.045);
-  font-family: -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-family: var(--ui-font);
   color: #191c22;
   background-image: var(--waterdrop-chat-wallpaper,var(--waterdrop-sakura-wallpaper));
   background-size: cover;
@@ -16,7 +16,7 @@ html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="chat"] {
 }
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="chat"].has-custom-wallpaper {
   --waterdrop-glass: linear-gradient(165deg,rgba(255,255,255,.80) 0%,rgba(255,255,255,.66) 44%,rgba(255,255,255,.62) 72%,rgba(255,255,255,.78) 100%);
-  --waterdrop-glass-self: linear-gradient(165deg,rgba(250,255,252,.84) 0%,rgba(242,253,247,.70) 44%,rgba(238,252,245,.66) 72%,rgba(250,255,252,.82) 100%);
+  --waterdrop-glass-self: linear-gradient(165deg,rgba(255,255,255,.80) 0%,rgba(255,255,255,.66) 44%,rgba(255,255,255,.62) 72%,rgba(255,255,255,.78) 100%);
 }
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="chat"] > .topbar {
   position: relative;
@@ -140,6 +140,7 @@ html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="chat"] >
   background: transparent !important;
   padding: 10px 12px 14px;
 }
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="chat"] .system-message,
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="chat"] .message-date {
   width: fit-content;
   margin: 6px auto 14px;
@@ -153,15 +154,7 @@ html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="chat"] .
   text-shadow: none;
   box-shadow: 0 1px 4px rgba(15,25,40,.06);
 }
-html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="chat"].has-custom-wallpaper .system-message {
-  width: fit-content;
-  max-width: 86%;
-  margin: 10px auto 16px;
-  padding: 3px 11px;
-  border-radius: 999px;
-  background: rgba(255,255,255,.78);
-  color: #313842;
-}
+html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="chat"] .system-message { max-width: 86%; }
 html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="chat"] .chat-messages .message-row {
   gap: 9px;
   margin-bottom: 12px;
@@ -386,4 +379,22 @@ html[data-skin="waterdrop"] :is(#view,.navigation-snapshot)[data-route="chat"] .
 html[data-skin="waterdrop"] #overlay .chat-background-preview[data-skin-wallpaper] {
   background-image: var(--waterdrop-sakura-wallpaper);
   color: #4c5663;
+}
+
+/* Reduce painting only inside the moving list; the fixed header and composer keep their blur. */
+html[data-skin="waterdrop"][data-glass="lite"] .chat-messages {
+  --waterdrop-glass: linear-gradient(162deg,rgba(255,255,255,.66),rgba(255,255,255,.42) 48%,rgba(255,255,255,.56));
+  --waterdrop-glass-self: var(--waterdrop-glass);
+}
+html[data-skin="waterdrop"][data-glass="lite"] .has-custom-wallpaper .chat-messages {
+  --waterdrop-glass: linear-gradient(162deg,rgba(255,255,255,.90),rgba(255,255,255,.80) 52%,rgba(255,255,255,.88));
+}
+html[data-skin="waterdrop"][data-glass="lite"] .chat-messages .message-bubble,
+html[data-skin="waterdrop"][data-glass="lite"] .chat-messages .message-quote,
+html[data-skin="waterdrop"][data-glass="lite"] .chat-messages .voice-transcript {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+html[data-skin="waterdrop"][data-glass="lite"] :is(#view,.navigation-snapshot)[data-route="chat"] .chat-messages .payment-card.message-transfer:not(.payment-redpacket) {
+  background: linear-gradient(148deg,rgba(255,214,194,.82),rgba(255,178,158,.68)) !important;
 }

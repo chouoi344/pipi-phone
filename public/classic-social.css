@@ -1,6 +1,5 @@
 /* Classic WeChat. The wide layout frames the app; touch screens keep their full usable area. */
 body.wechat-classic, .wechat-classic .phone-shell {
-  --ui-font:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
   --ink:#191a1d; --muted:#646b74; --line:#e7e7e7; --bg:#ededed; --green:#07c160; --green-dark:#078544; --unread-badge-bg:#d93630;
   --icon-primary:var(--ink); --icon-secondary:#4c4c4c; --icon-muted:#b2b2b2; --icon-inverse:#fff; --icon-active:var(--green-dark);
   font-family:var(--ui-font); font-synthesis:weight style; -webkit-font-smoothing:antialiased;

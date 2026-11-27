@@ -153,9 +153,17 @@ final class BlobDownloads {
     }
 
     void cancel() {
+        cancel(true);
+    }
+
+    void rendererGone() {
+        cancel(false);
+    }
+
+    private void cancel(boolean discardPageBlob) {
         generation++;preparing=false;Download download=current;current=null;
         if(download==null)return;
-        discard(download.token);
+        if(discardPageBlob)discard(download.token);
         io.execute(()->{
             try{closeStream(download);}
             catch(IOException error){android.util.Log.e("PipiPhone","关闭导出文件失败",error);}

@@ -11,12 +11,16 @@ async function fixture(t,options={}){
   async function raw(route,body,{anonymous=false,headers={}}={}){return fetch(base+route,{method:body===undefined?'GET':'POST',headers:{Connection:'close',...(anonymous?{}:{Cookie:cookie}),...(body===undefined?{}:{Origin:base,'X-CSRF-Token':csrf,'Content-Type':Buffer.isBuffer(body)?'application/x-tar':'application/json'}),...headers},...(body===undefined?{}:{body:Buffer.isBuffer(body)?body:JSON.stringify(body)})});}
   async function request(route,body,options){const response=await raw(route,body,options),value=await response.json();if(response.headers.has('set-cookie'))cookie=response.headers.get('set-cookie').split(';')[0];if(value.csrfToken)csrf=value.csrfToken;return {status:response.status,value};}
   async function json(route,body){const r=await request(route,body);assert.equal(r.status,200,JSON.stringify(r.value));return r.value;}
+  async function restore(bytes){
+    const r=await restoreWhenIdle(()=>request('/api/restore/tar',bytes));
+    assert.equal(r.status,200,JSON.stringify(r.value));return r.value;
+  }
   await json('/api/setup',{password,displayName:'备份前的名称'});
   const state=JSON.parse(app.db.prepare('SELECT json FROM app WHERE id=1').get().json);S.apply(state,'role.save',{name:'旧好友'});
   const image=Media.saveImage(dataDir,png),sound=Media.saveAudio(dataDir,wav());
   S.message(state,state.roles[0],'user',image,'image',{meta:{caption:'图片说明'}});S.message(state,state.roles[0],'user','语音正文','voice',{meta:{audio:sound,durationMs:30,transcript:'原语音转写'}});
   app.db.prepare('UPDATE app SET json=? WHERE id=1').run(JSON.stringify(state));
-  return {dataDir,app,base,raw,request,json,image,sound,get cookie(){return cookie;},get csrf(){return csrf;},advance(ms){now+=ms;},read:()=>app.db.prepare('SELECT json FROM app WHERE id=1').get().json,write:s=>app.db.prepare('UPDATE app SET json=? WHERE id=1').run(JSON.stringify(s)),async close(){await app.close();app=null;},async archive(includeKeys=true,includeMedia=true){const prepared=await json('/api/backup/prepare',{includeKeys,includeMedia}),response=await raw('/api/backup/download?token='+prepared.token);assert.equal(response.status,200);const bytes=Buffer.from(await response.arrayBuffer());assert.equal(bytes.length,prepared.estimatedBytes);assert.equal(response.headers.get('content-length'),String(bytes.length));return {prepared,bytes};}};
+  return {dataDir,app,base,raw,request,json,restore,image,sound,get cookie(){return cookie;},get csrf(){return csrf;},advance(ms){now+=ms;},read:()=>app.db.prepare('SELECT json FROM app WHERE id=1').get().json,write:s=>app.db.prepare('UPDATE app SET json=? WHERE id=1').run(JSON.stringify(s)),async close(){await app.close();app=null;},async archive(includeKeys=true,includeMedia=true){const prepared=await json('/api/backup/prepare',{includeKeys,includeMedia}),response=await raw('/api/backup/download?token='+prepared.token);assert.equal(response.status,200);const bytes=Buffer.from(await response.arrayBuffer());assert.equal(bytes.length,prepared.estimatedBytes);assert.equal(response.headers.get('content-length'),String(bytes.length));return {prepared,bytes};}};
 }
 async function entries(bytes){const result=[];await Tar.unpack(Readable.from([bytes]),async(entry,contents)=>{const chunks=[];for await(const chunk of contents)chunks.push(chunk);result.push({...entry,bytes:Buffer.concat(chunks)});});return result;}
 async function pack(list){const chunks=[];for await(const chunk of Tar.pack(list.map(entry=>({name:entry.name,size:entry.bytes.length,open:()=>Readable.from([entry.bytes])}))))chunks.push(chunk);return Buffer.concat(chunks);}
@@ -26,7 +30,7 @@ test('streaming TAR includes manifest first, exact Content-Length and valid file
   const source=await fixture(t),target=await fixture(t),{bytes}=await source.archive(),files=await entries(bytes),manifest=JSON.parse(files[0].bytes);
   assert.equal((await source.json('/api/status')).streamingBackup,true);assert.equal(files[0].name,'manifest.json');assert.equal(files[1].name,'state.json.gz');assert.equal(manifest.includeKeys,true);assert.equal(manifest.includeMedia,true);
   for(const row of manifest.media){const file=files.find(entry=>entry.name==='media/'+row.name);assert.equal(file.bytes.length,row.size);assert.equal(crypto.createHash('sha256').update(file.bytes).digest('hex'),row.sha256);}
-  const restored=await target.json('/api/restore/tar',bytes);assert.equal(restored.state.profile.name,'备份前的名称');assert.deepEqual(Media.resolveImageBytes(target.dataDir,source.image).buffer,png);assert.deepEqual(Media.resolveAudioBytes(target.dataDir,source.sound).buffer,wav());
+  const restored=await target.restore(bytes);assert.equal(restored.state.profile.name,'备份前的名称');assert.deepEqual(Media.resolveImageBytes(target.dataDir,source.image).buffer,png);assert.deepEqual(Media.resolveAudioBytes(target.dataDir,source.sound).buffer,wav());
   assert.equal(typeof restored.clearedModelKeys,'boolean');assert.ok(Number.isInteger(restored.restoredModelKeys));assert.deepEqual(pendingFiles(target),[]);
 });
 
@@ -55,7 +59,7 @@ test('text-only TAR marks missing chat media expired and preserves permanent ref
   const {bytes}=await source.archive(false,false),files=await entries(bytes);assert.equal(files.length,2);
   // Remove this independent fixture's own matching files so references really are unavailable.
   for(const file of fs.readdirSync(path.join(target.dataDir,'media')))fs.unlinkSync(path.join(target.dataDir,'media',file));
-  const result=await target.json('/api/restore/tar',bytes),image=result.state.messages.find(row=>row.type==='image'),voice=result.state.messages.find(row=>row.type==='voice');
+  const result=await target.restore(bytes),image=result.state.messages.find(row=>row.type==='image'),voice=result.state.messages.find(row=>row.type==='voice');
   assert.equal(image.content,'');assert.equal(image.meta.expired.kind,'image');assert.equal(voice.meta.expired.kind,'voice');assert.equal(voice.meta.transcript,'原语音转写');assert.equal(voice.content,'语音正文');
   assert.equal(result.state.profile.avatar,source.image);assert.equal(result.state.favorites[0].content,source.image);
   assert.equal((await target.request('/api/action',{type:'profile.save',payload:{bio:'恢复后仍可修改'}})).status,200);
@@ -128,7 +132,7 @@ test('TAR restores long-term memory and optional keys with both databases return
   state.settings.ai.sources.find(row=>row.id==='pipi').key='DUMMY_TAR_PRIVATE_KEY';
   const card=Memory.upsertCard(source.dataDir,state,roleId,{content:'完整保留的独立长期记忆'});Memory.saveProfile(source.dataDir,state,roleId,{preferences:{爱好:'陶艺'}});source.write(state);
   const noKeys=await source.archive(false,true),payload=JSON.parse(require('node:zlib').gunzipSync((await entries(noKeys.bytes)).find(row=>row.name==='state.json.gz').bytes));assert.equal(JSON.stringify(payload).includes('DUMMY_TAR_PRIVATE_KEY'),false);
-  const {bytes}=await source.archive(true,true),result=await target.json('/api/restore/tar',bytes);assert.equal(result.restoredModelKeys,1);
+  const {bytes}=await source.archive(true,true),result=await target.restore(bytes);assert.equal(result.restoredModelKeys,1);
   assert.equal(Memory.getCard(target.dataDir,JSON.parse(target.read()),roleId,card.id).content,'完整保留的独立长期记忆');assert.deepEqual(Memory.getProfile(target.dataDir,JSON.parse(target.read()),roleId).preferences.爱好,['陶艺']);
   assert.equal(target.app.db.prepare('PRAGMA journal_mode').get().journal_mode,'wal');assert.equal(target.app.db.prepare('PRAGMA database_list').all().some(row=>row.name==='memory_backup'),false);
 });

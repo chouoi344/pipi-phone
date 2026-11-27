@@ -17,16 +17,16 @@ function wavFixture(sample=0){
   return 'data:audio/wav;base64,'+payload.toString('base64');
 }
 
-test('local fonts: correct MIME and conditional caching without caching private state',async t=>{
-  const f=await fixture(t);
-  for(const name of ['InterVariable.woff2','NotoSansSC-common.woff2','NotoSansSC-extended.woff2']){
-    const response=await f.request('/fonts/'+name,undefined,{method:'HEAD'});
-    assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'font/woff2');
-    assert.ok(Number(response.headers.get('content-length'))>100000);
-    const etag=response.headers.get('etag');assert.ok(etag);
-    const cached=await f.request('/fonts/'+name,undefined,{headers:{'If-None-Match':etag}});
-    assert.equal(cached.status,304);assert.equal(cached.text,'');
-    assert.equal(cached.headers.get('cache-control'),'public, max-age=0, must-revalidate');
+test('interface uses device fonts without font downloads; private state stays uncached',async t=>{
+  const f=await fixture(t),page=await f.request('/');
+  assert.equal(page.status,200);
+  assert.doesNotMatch(page.text,/as="font"|\/fonts\/|\.woff2?\b/i);
+  const styles=[...page.text.matchAll(/<link\b[^>]*rel="stylesheet"[^>]*href="([^"]+)"/g)].map(match=>match[1]);
+  assert.ok(styles.length>0);
+  for(const href of styles){
+    const sheet=await f.request(href);
+    assert.equal(sheet.status,200,href);
+    assert.doesNotMatch(sheet.text,/@font-face|url\([^)]*\.(?:woff2?|ttf|otf)\b/i,href);
   }
   assert.equal((await f.request('/api/state')).headers.get('cache-control'),'no-store');
 });

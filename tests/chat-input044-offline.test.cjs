@@ -24,39 +24,40 @@ function fixture(initialBubbles=[]){
   function node(properties={}){return {isConnected:true,scrollTop:0,style:{},dataset:{},listeners:new Map(),querySelector:()=>null,querySelectorAll:()=>[],addEventListener(name,callback){this.listeners.set(name,callback);},closest:()=>null,focus(){focuses++;document.activeElement?.blur();document.activeElement=this;},blur(){if(document.activeElement===this)document.activeElement=null;this.onblur?.();},...properties};}
   function buildComposer(model){
     const old=nodes.footer;if(old){if(old.contains(document.activeElement))document.activeElement?.blur();for(const item of old.children)item.isConnected=false;old.isConnected=false;}
-    const form=node(),input=model.panel==='voice'?null:node({id:'compose-text',text:model.text,inputMode:model.panel==='emoji'?'none':'text',scrollHeight:160,hasSelection:false}),emoji=model.panel==='emoji'?node():null;
+    const form=node(),input=node({hidden:model.panel==='voice',children:[],childNodes:[],id:'compose-text',text:model.text,inputMode:model.panel==='emoji'?'none':'text',scrollHeight:160,hasSelection:false}),emoji=model.panel==='emoji'?node():null;
     if(input)input.parentElement={classList:{toggle(){}}};
     if(input)Object.defineProperty(input,'innerHTML',{get(){return this.text;},set(value){this.text=value;}});
-    const footer=node({children:[form,input,emoji].filter(Boolean),querySelector(selector){return selector==='#compose-text'?input:selector==='.emoji-scroll'?emoji:null;},contains(item){return this.children.includes(item);}});
+    const footer=node({children:[form,input,emoji].filter(Boolean),querySelector(selector){return selector==='#compose-text'?input:selector==='.emoji-scroll'?nodes.emoji:null;},contains(item){return this.children.includes(item);}});
     for(const child of footer.children)child.closest=selector=>selector==='.chat-composer'?footer:null;
     Object.defineProperty(footer,'outerHTML',{set(value){updates++;buildComposer(value);}});
     Object.assign(nodes,{form,input,emoji,footer});
   }
   const view={querySelector(selector){return {'#compose-form':nodes.form,'#compose-text':nodes.input,'.chat-composer':nodes.footer,'.emoji-scroll':nodes.emoji,'#chat-messages':nodes.list}[selector]||null;},querySelectorAll(selector){return selector==='[data-bubble]'?(nodes.bubbles||[]):[];}};
   document.getElementById=id=>view.querySelector('#'+id);
-  const context=vm.createContext({window,history,document,view,Event,AbortController,console,getSelection:()=>null,setTimeout:callback=>{jobs.push(callback);return callback;},clearTimeout:callback=>{const i=jobs.indexOf(callback);if(i>=0)jobs.splice(i,1);},requestAnimationFrame:callback=>{jobs.push(callback);return jobs.length;},cancelAnimationFrame(){},overlay:{classList:{remove(){}},replaceChildren(){}},buildComposer,
+  const context=vm.createContext({window,history,document,view,Event,AbortController,console,getSelection:()=>null,setTimeout:callback=>{jobs.push(callback);return callback;},clearTimeout:callback=>{const i=jobs.indexOf(callback);if(i>=0)jobs.splice(i,1);},requestAnimationFrame:callback=>{jobs.push(callback);return jobs.length;},cancelAnimationFrame(){},compiledEmoji:()=>({expression:null,map:new Map()}),overlay:{classList:{remove(){}},replaceChildren(){}},buildComposer,
+    patchFields(model){updates++;nodes.input.text=model.text;nodes.input.hidden=model.panel==='voice';nodes.input.inputMode=model.panel==='emoji'?'none':'text';nodes.emoji=model.panel==='emoji'?(nodes.emoji||node()):null;},
     buildScreen(name,model){if(name==='chat'){nodes.list=node({scrollHeight:3000,clientHeight:600,querySelectorAll:()=>[]});nodes.bubbles=initialBubbles;if(model.selecting){if(nodes.footer){nodes.footer.isConnected=false;for(const child of nodes.footer.children)child.isConnected=false;}Object.assign(nodes,{form:null,input:null,emoji:null,footer:null});}else buildComposer(model);}else{if(nodes.footer?.contains(document.activeElement))document.activeElement?.blur();nodes={};}},
     showMenu(){menus++;},showPayment(){payments++;}});
   vm.runInContext(`let imageVariants=false,composeImageMeta=null;
     let route={name:'chat',arg:'alice'},modalOpen=false,modalCloseCallback=null,modalSaveInProgress=false,modalReturnFocus=null,overlayBackPending=false,overlayCloseQueued=false,childDialog=null,childDialogSequence=0,queuedView=null,queuedBack=false;
     const navStack=[],drafts=new Map(),chatScrolls=new Map(),overlayBackWaiters=[],composerHistories=new Map(),pressTimers=new Set();
     const chatDraftKey='pipi.chat-drafts',storage=new Map(),sessionStorage={setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)};
-    let bootStale=false;
+    let bootStale=false,chatPageTask=null;
     ${roleRoutesSource}
     function scheduleRender(){}function flushRender(){}
     const newChatMessageIds=new Set();let speechSession=null,slowReplyRole='',chatProgressSequence=0,composerPanelFrom=null,chatsReturn=0,contactsReturn=null;
-    function stopSpeech(){}function syncChatProgress(){}function startPageTransition(){}function animateComposerPanel(){}
+    function stopSpeech(){}function activateChatPages(){}function syncChatProgress(){}function startPageTransition(){}function animateComposerPanel(){}
     let composeText='',composeImage='',composeStickerId='',quoteId='',panel='',composerSelection={start:0,end:0},composerScroll={input:0,emoji:0},morePage=0,emojiPage=0,emojiTab='all',emojiSearch='',emojiExpandedHeight=0;
     let chatSelection=null,globalSearchTerm='';function syncVisibleChatRead(){}let composeComposing=false,searchComposing=false,deferredComposerUpdate=false,pointerComposerUpdatePending=false,recordHeld=false,recordingSession=null,recording=false,sending=false,dictationBusy=false,forceBottomRole='',focusMessageId='',searchOpen=false,searchTerm='';
     const state={messages:[],settings:{}};const afterOverlayBack=()=>overlayBackPending?new Promise(resolve=>overlayBackWaiters.push(resolve)):Promise.resolve();
     function resetComposerPointerState(){}function composerPointerBusy(){return false;}function roleById(id){return {id};}function bindActionButtons(){}function syncComposerControls(){}function stopRecording(){}
     function readComposerText(input){return input.text;}function readComposerSelection(input){return input.hasSelection?{...input.caret}:{...composerSelection};}
     function setComposerSelection(input,start,end=start){composerSelection={start,end};input.caret={start,end};input.hasSelection=true;}
-    function richText(text){return text;}function rememberComposerEdit(){}function sendMessage(){}function messageMenu(){showMenu();}function safeImage(){return false;}function toast(){}
+    function patchComposer(){patchFields(renderComposer());}function richText(text){return text;}function rememberComposerEdit(){}function sendMessage(){}function messageMenu(){showMenu();}function safeImage(){return false;}function toast(){}
     function renderComposer(){return {text:composeText,panel,selecting:!!chatSelection};}
     function refresh(){buildScreen(route.name,renderComposer());if(route.name==='chat'){bindChat();scrollChat();}}
     window.PipiFeatures={walletTransaction:showPayment};
-    ${['trackModalHistory','openChildDialog','closeChildDialog','closeModal','showView','goBack','captureChatLayout','restoreChatLayout','persistChatDrafts','pressTimer','resizeComposeInput','paintComposer','syncComposerDraft','updateComposer','changeComposerMode','insertComposerText','scrollChat','startMessageSelection','finishMessageSelection','toggleSelectedMessage','handleAction','bindChatThumbnails','bindChat','bindComposer'].map(productFunction).join('\n')}
+    ${['trackModalHistory','openChildDialog','closeChildDialog','closeModal','showView','goBack','chatNearBottom','captureChatLayout','restoreChatLayout','persistChatDrafts','pressTimer','resizeComposeInput','paintComposer','syncComposerDraft','updateComposer','changeComposerMode','insertComposerText','scrollChat','startMessageSelection','finishMessageSelection','toggleSelectedMessage','handleAction','bindChatThumbnails','bindChat','bindComposer'].map(productFunction).join('\n')}
     ${popLine}
     refresh();
     globalThis.api={showView,goBack,handleAction,changeComposerMode,bindChat,startMessageSelection,finishMessageSelection,toggleSelectedMessage,selected:()=>chatSelection?[...chatSelection.ids]:null,setGlobalSearch:value=>{globalSearchTerm=value;},globalSearch:()=>globalSearchTerm,
@@ -99,7 +100,7 @@ test('chat input: mode buttons blur the keyboard and switch exclusively; keyboar
   const f=fixture();f.api.edit({text:'甲乙丙',selection:{start:1,end:2}});f.nodes.input.focus();
   await f.api.handleAction('toggle-panel');assert.equal(f.api.inspect().panel,'more');assert.equal(f.document.activeElement,null);
   await f.api.handleAction('toggle-emoji');assert.equal(f.api.inspect().panel,'emoji');assert.equal(f.document.activeElement,null);
-  await f.api.handleAction('toggle-voice');assert.equal(f.api.inspect().panel,'voice');assert.equal(f.nodes.input,null);
+  await f.api.handleAction('toggle-voice');assert.equal(f.api.inspect().panel,'voice');assert.equal(f.nodes.input.hidden,true);
   await f.api.handleAction('toggle-voice');assert.equal(f.api.inspect().panel,'');assert.equal(f.document.activeElement,f.nodes.input);assert.deepEqual(f.result(f.api.inspect().selection),{start:1,end:2});
   await f.api.handleAction('toggle-emoji');assert.equal(f.document.activeElement,null);await f.api.handleAction('toggle-emoji');assert.equal(f.document.activeElement,f.nodes.input);assert.equal(f.api.inspect().panel,'');
 });

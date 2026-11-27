@@ -8,14 +8,15 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const source=fs.readFileSync(path.join(__dirname,'../public/app.js'),'utf8');
-function productFunction(name){
-  const match=new RegExp('^  (?:async )?function '+name+'\\(','m').exec(source);assert.ok(match,name);
-  const rest=source.slice(match.index+match[0].length),end=/\n  (?:async )?function /.exec(rest);assert.ok(end,name+' boundary');
-  return source.slice(match.index,match.index+match[0].length+end.index);
+const motionSource=fs.readFileSync(path.join(__dirname,'../public/ui-motion.js'),'utf8');
+function productFunction(name,script=source){
+  const match=new RegExp('^  (?:async )?function '+name+'\\(','m').exec(script);assert.ok(match,name);
+  const rest=script.slice(match.index+match[0].length),end=/\n  (?:async )?function /.exec(rest);assert.ok(end,name+' boundary');
+  return script.slice(match.index,match.index+match[0].length+end.index);
 }
 function fixture(messages=[]){
   let now=1000,sequence=0,refreshes=0,menus=0,payments=0;const jobs=new Map(),calls=[],requests=[],navigation=[],readers=[],toasts=[];
-  const tokenList=()=>({tokens:new Set(),add(value){this.tokens.add(value);},contains(value){return this.tokens.has(value);}});
+  const tokenList=()=>({tokens:new Set(),add(value){this.tokens.add(value);},remove(value){this.tokens.delete(value);},contains(value){return this.tokens.has(value);}});
   const node=dataset=>({dataset,isConnected:true,classList:tokenList(),closest(){return null;}});
   const avatars=['self','contact'].map((target,i)=>{const el=node({chatAvatar:target}),row=node({message:'message-'+i});row.querySelector=()=>el;el.closest=()=>row;el.row=row;return el;});
   const bubbles=messages.map(m=>{const el=node({bubble:m.id});if(m.imageBubble)el.classList.add('image-bubble');return el;});
@@ -32,8 +33,9 @@ function fixture(messages=[]){
     function safeImage(){return false;}function lightbox(){}function playAudio(){}function speakMessage(){}function changeComposerMode(){}
     function richText(text){return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
     function openPage(title,html){modalOpen=true;captureReader(title,html);}function closeModal(){modalOpen=false;}
-    const window={PipiFeatures:{walletTransaction(){countPayment();}}};
-    ${['patChat','readTextMessage','cancelAvatarTaps','pressTimer','bindChatThumbnails','bindChat'].map(productFunction).join('\n')}
+    const reduceMotion={matches:false}; ${productFunction("patAvatar",motionSource)}
+    const window={navigator:{vibrate:ms=>globalThis.vibration=ms},PipiMotion:{patAvatar},PipiFeatures:{walletTransaction(){countPayment();}}};
+    ${['patChat','readTextMessage','cancelAvatarTaps','pressTimer','bindChatThumbnails','bindChat'].map(name=>productFunction(name)).join('\n')}
     bindChat();globalThis.api={patChat,bindChat,cancelAvatarTaps,route:()=>route,modal:()=>modalOpen,closeModal};`,scope);
   const advance=ms=>{now+=ms;for(const [id,job]of [...jobs])if(job.at<=now){jobs.delete(id);job.callback();}};
   const event=(extra={})=>({button:0,clientX:20,clientY:20,detail:1,preventDefault(){this.prevented=true;},...extra});
@@ -45,7 +47,7 @@ for(const [index,name,arg]of [[0,'profile',undefined],[1,'role','alice']])test('
   const f=fixture();f.tap(f.avatars[index]);f.advance(279);assert.deepEqual(f.navigation,[]);f.advance(1);assert.deepEqual(f.navigation,[{name,arg}]);assert.deepEqual(f.calls,[]);
 });
 for(const [index,target]of [[0,'self'],[1,'contact']])test('avatar double tap persists '+target+' once and never navigates',async()=>{
-  const f=fixture(),el=f.avatars[index];f.tap(el);f.advance(100);f.tap(el,2);el.ondblclick(f.event({detail:2}));f.advance(1000);
+  const f=fixture(),el=f.avatars[index];f.tap(el);f.advance(100);f.tap(el,2);el.ondblclick(f.event({detail:2}));assert.ok(el.classList.contains('avatar-patting'));assert.equal(f.scope.vibration,20);f.advance(1000);
   assert.deepEqual(f.calls,[{type:'message.pat',payload:{roleId:'alice',target}}]);assert.deepEqual(f.navigation,[]);await f.settle();assert.equal(f.refreshes,1);assert.ok(el.classList.contains('avatar-patting'));
 });
 test('triple tap and repeated double taps while a request is in flight cannot repeat the action',async()=>{
@@ -121,6 +123,13 @@ test('dragging and cancelling payment cards cannot open a transaction',()=>{
   for(const gesture of ['drag','cancel']){const f=fixture([{id:'payment',type:'redpacket',content:'packet',meta:{transactionId:'tx'}}]),el=f.bubbles[0];el.onpointerdown(f.event());if(gesture==='drag')el.onpointermove(f.event({clientX:55}));else el.onpointercancel();el.onpointerup();el.onclick();assert.equal(f.payments,0);}
 });
 
+function offlineSearchScope(inputs) {
+  const area={isConnected:true,innerHTML:''};
+  const scope=vm.createContext({...inputs,addEventListener(){},area,view:{querySelector:()=>area},navigator:{onLine:true},URLSearchParams,clearTimeout});
+  vm.runInContext('globalThis.window=globalThis',scope);
+  vm.runInContext(require('node:fs').readFileSync(require('node:path').join(__dirname,'../public/history-search.js'),'utf8'),scope);
+  return scope;
+}
 function searchFixture(){
   const messages=[
     {id:'photo',roleId:'alice',sender:'assistant',type:'image',content:'photo',createdAt:new Date(2026,10,12,14).getTime()},
@@ -129,11 +138,11 @@ function searchFixture(){
     {id:'packet',roleId:'alice',sender:'assistant',type:'redpacket',content:'packet',createdAt:new Date(2026,10,12,15).getTime()},
     {id:'other',roleId:'bob',sender:'user',type:'image',content:'holiday',createdAt:new Date(2026,10,13,14).getTime()},
   ];
-  const scope=vm.createContext({messages});
+  const scope=offlineSearchScope({messages});
   vm.runInContext(`const state={messages,profile:{name:'me'}},route={arg:'alice'},icons={search:''};let chatSearch='',chatSearchFilter='all',chatSearchDate='';
     function roleById(id){return {id,name:'Alice'};}function roleName(r){return r.name;}function header(){return '';}function avatar(){return '';}function esc(value){return String(value);}function richText(value){return value;}function preview(m){return m.content;}function shortTime(){return '';}function safeImage(value){return value==='safe';}
-    ${productFunction('renderChatSearch')}
-    globalThis.render=(term,filter,date)=>{chatSearch=term;chatSearchFilter=filter;chatSearchDate=date;return renderChatSearch();};`,scope);
+    ${productFunction('loadedSearchMessages')}${productFunction('bindHistorySearch')}
+    globalThis.render=(term,filter,date)=>{chatSearch=term;chatSearchFilter=filter;chatSearchDate=date;bindHistorySearch();return area.innerHTML;};`,scope);
   return (...values)=>[...scope.render(...values).matchAll(/data-search-message="([^"]+)"/g)].map(m=>m[1]);
 }
 test('chat search starts empty and keeps keywords inside the current conversation',()=>{
@@ -147,16 +156,16 @@ test('chat search payment category includes both transaction types and date alon
 });
 
 test('global search includes older hidden-conversation text and preserves contact matching separately',()=>{
-  const scope=vm.createContext({});vm.runInContext(`const state={profile:{name:'me'},roles:[{id:'alice',name:'Alice',hidden:true}],messages:[{id:'old',roleId:'alice',sender:'assistant',type:'text',content:'old needle',createdAt:1},{id:'latest',roleId:'alice',sender:'user',type:'text',content:'new message',createdAt:2}]};let globalSearchTerm='needle';
+  const scope=offlineSearchScope({});vm.runInContext(`const route={name:'global-search'},state={profile:{name:'me'},roles:[{id:'alice',name:'Alice',hidden:true}],messages:[{id:'old',roleId:'alice',sender:'assistant',type:'text',content:'old needle',createdAt:1},{id:'latest',roleId:'alice',sender:'user',type:'text',content:'new message',createdAt:2}]};let globalSearchTerm='needle';
     const icons={search:''};function roleById(id){return state.roles.find(r=>r.id===id);}function roleName(r){return r.name;}function avatar(){return '';}function shortTime(){return '';}function richText(x){return x;}function esc(x){return String(x);}function preview(m){return m.content;}function header(){return '';}function iconButton(){return '';}function tabbar(){return '';}
-    ${productFunction('renderGlobalSearch')}
-    globalThis.render=renderGlobalSearch;`,scope);
+    ${productFunction('renderGlobalSearch')}${productFunction('loadedSearchMessages')}${productFunction('bindHistorySearch')}
+    globalThis.render=()=>{bindHistorySearch();return renderGlobalSearch()+area.innerHTML;};`,scope);
   const html=scope.render();assert.match(html,/data-global-message="old"/);assert.doesNotMatch(html,/data-global-message="latest"/);assert.match(html,/联系人/);assert.match(html,/聊天记录/);assert.match(html,/cancel-global-search/);assert.doesNotMatch(html,/bottom-tabs|nav-title|new-menu/);
 });
 
 function readFixture(hidden=false,name='chat'){
   const calls=[],pending=[],toasts=[],document={hidden},scope=vm.createContext({document,calls,pending,toasts});
-  vm.runInContext(`let state=null,route={name:${JSON.stringify(name)},arg:'alice'},modalOpen=false,childDialog=null,pendingRender=false,refreshes=0;const readRequests=new Set();function trackNewChatMessages(){}function roleById(id){return state?.roles.find(r=>r.id===id);}function refresh(){refreshes++;}
+  vm.runInContext(`let state=null,route={name:${JSON.stringify(name)},arg:'alice'},modalOpen=false,childDialog=null,pendingRender=false,refreshes=0;const pendingSends=new Map(),readRequests=new Set();function trackNewChatMessages(){}function roleById(id){return state?.roles.find(r=>r.id===id);}function refresh(){refreshes++;}
     function toast(text){toasts.push(text);}function act(type,payload){calls.push({type,...payload});return new Promise((resolve,reject)=>pending.push({resolve:()=>{state.roles.find(r=>r.id===payload.roleId).unread=0;resolve();},reject}));}
     let composeComposing=false,searchComposing=false,recordingSession=null;
     const view={querySelector:()=>null};function captureChatLayout(){}function restoreChatLayout(){}

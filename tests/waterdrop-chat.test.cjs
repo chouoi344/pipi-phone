@@ -41,7 +41,7 @@ function fixture({reduced = false, skin = 'waterdrop'} = {}) {
   function render(messages, roleId = 'alice') {
     view.dataset.chatRole = roleId;
     rows = messages.filter(message => message.roleId === roleId && message.sender !== 'system').map(message => {
-      const body = {children: [], append(label) {label.parent = this; this.children.push(label);}};
+      const body = {children: [], append(label) {label.parent = label.parentElement = this; this.children.push(label);}};
       return {dataset: {message: message.id}, body, querySelector: () => body, animate: (frames, options) => animations.push({id: message.id, frames, options})};
     });
     engine.decorate(view);

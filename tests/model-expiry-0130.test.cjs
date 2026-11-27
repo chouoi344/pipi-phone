@@ -48,7 +48,7 @@ test('同一模型自动重试刷新已缓存图像正文，保留同消息的�
   t.mock.method(timers,'setTimeout',async()=>{f.expire(message.id,'image');});
   await Pipeline.run({getState:f.getState,mutate:f.mutate,roleId:f.roleId,dataDir:f.dataDir,now:f.now});
   assert.match(JSON.stringify(requests[0]),/image_url/);assert.match(JSON.stringify(requests[1]),/\[图片已过期\]/);assert.doesNotMatch(JSON.stringify(requests[1]),/image_url|base64/);
-  assert.equal(requests[1].find(m=>m.role==='tool').content,'{"ok":true,"tag":"KEEP_TOOL_RESULT"}');assert.equal(requests.length,2);assert(Media.resolveImageBytes(f.dataDir,f.original));
+  assert.equal(requests[1].find(m=>m.role==='tool').content,'{"ok":true,"result":"已拍了拍对方。"}');assert.equal(requests.length,2);assert(Media.resolveImageBytes(f.dataDir,f.original));
 });
 
 test('转述模型重试遇到过期即停止发图，聊天改用过期标记',async t=>{

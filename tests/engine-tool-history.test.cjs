@@ -52,15 +52,15 @@ test('工具历史按好友隔离，按轮数裁剪时调用和结果一起退�
   assert.ok(Object.keys(f.state().engine.data.execution.history).length>0);
 });
 
-test('不支持工具的模型读取文字形式的历史，不收到工具协议字段',async()=>{
+test('不支持工具的模型保留聊天记录，省去历史工具协议及其文字转录',async()=>{
   const f=fixture();await f.act();f.config.capabilities=['text'];
   await P.run({...f.opts,targetId:f.user('回顾一下').id});const sent=f.requests.at(-1);
   assert.ok(!sent.some(m=>m.tool_calls||m.role==='tool'));
-  assert.ok(JSON.stringify(sent).includes('已完成的事'));
-  assert.ok(JSON.stringify(sent).includes('remember_action'));
+  assert.ok(JSON.stringify(sent).includes('已办好'));assert.ok(!JSON.stringify(sent).includes('已完成的事'));
+  assert.ok(!JSON.stringify(sent).includes('remember_action'));
 });
 
-test('总结输入包含工具请求和结果，摘要边界后不重复注入旧工具历史',async()=>{
+test('总结输入保留双方说过的话，省去协议记录，摘要边界后不重复注入',async()=>{
   const f=fixture();const {target}=await f.act();
   f.state().messages.find(m=>m.id===target.id).content='旧聊天'.repeat(1000);
   f.config.maxContextTokens=700;
@@ -69,8 +69,8 @@ test('总结输入包含工具请求和结果，摘要边界后不重复注入�
   const previous=f.opts.modelApi.call;
   f.opts.modelApi.call=async(s,r)=>{if(r.purpose==='compress'){summaryInput=JSON.stringify(r.messages);return {message:{content:'已经办好一件事'},model:f.config,modelId:f.config.id};}return previous(s,r);};
   await P.run({...f.opts,targetId:f.user('新问题').id});
-  assert.ok(summaryInput.includes('remember_action'));
-  assert.ok(summaryInput.includes('已完成的事'));
+  assert.ok(!summaryInput.includes('remember_action'));
+  assert.ok(summaryInput.includes('已办好'));assert.ok(!summaryInput.includes('已完成的事'));
   assert.ok(!f.requests.at(-1).some(m=>m.tool_calls||m.role==='tool'));
   assert.ok(f.state().engine.summaries[f.roleId]);
 });

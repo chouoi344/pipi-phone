@@ -85,6 +85,7 @@ public final class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private final ExecutorService downloads = Executors.newSingleThreadExecutor();
+    private final ExecutorService pickedImages = Executors.newSingleThreadExecutor();
     private final Map<String, byte[]> pendingRecordings = new ConcurrentHashMap<>();
     private volatile String nativeRecordingToken;
     private SharedPreferences prefs;
@@ -99,6 +100,11 @@ public final class MainActivity extends Activity {
     private Switch notificationsSwitch;
     private TextView notificationStatus, resourceStatus;
     private ValueCallback<Uri[]> fileCallback;
+    private String pickerScope, pickerRole;
+    private int pickerGeneration;
+    private volatile String pickerOrigin;
+    private volatile RecoveredChatPhoto recoveredPhoto;
+    private WebView recoveredPhotoPage;
     private PermissionRequest recordingRequest;
     private VoiceCapture voiceCapture;
     private long recordGestureDeadline;
@@ -110,6 +116,7 @@ public final class MainActivity extends Activity {
     private Intent pendingNotificationIntent;
     private String bundleStatus = "尚未连接服务器";
     private boolean pageReady, backInFlight, changingNotificationSwitch, initialConnect, paused, notificationsAfterLogin;
+    private boolean recoveringRenderer;
     private String notificationPermissionOrigin;
     private int topInset, bottomInset, leftInset, rightInset, connectionGeneration, loginGeneration;
     private float edgeDownX, edgeDownY, edgeProgress;
@@ -147,7 +154,13 @@ public final class MainActivity extends Activity {
             updateEntryScript = new String(script.toByteArray(),StandardCharsets.UTF_8);
         } catch (IOException error) { throw new IllegalStateException("Cannot read app update entry",error); }
         createWebView();
-        PickedImageProvider.clearCache(this);
+        if (state != null && origin.value.equals(state.getString("photo_origin"))) {
+            pickerOrigin = origin.value;
+            pickerScope = state.getString("photo_scope");
+            pickerRole = state.getString("photo_role");
+            recoveredPhoto = RecoveredChatPhoto.restore(this,state.getString("photo_cache"));
+        }
+        if (recoveredPhoto == null) PickedImageProvider.clearCache(this);
         voiceCapture = new VoiceCapture(this, handler, () -> {
             if (!isDestroyed() && web != null && origin.isAppPage(web.getUrl())) {
                 web.evaluateJavascript("window.dispatchEvent(new Event('pipi-recording-interrupted'))", null);
@@ -295,10 +308,36 @@ public final class MainActivity extends Activity {
     }
 
     private final class PhoneWebClient extends WebViewClient {
+        @Override public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+            if (view != web) return true;
+            boolean retry = !recoveringRenderer;
+            recoveringRenderer = true;
+            connectionGeneration++;
+            pageReady = backInFlight = false;
+            fileCallback = null;
+            recordingRequest = null;
+            blobDownloads.rendererGone();
+            voiceCapture.cancel();
+            pendingRecordings.clear();
+            nativeRecordingToken = null;
+            surface.removeView(view);
+            surface.removeView(loading);
+            view.destroy();
+            createWebView();
+            surface.requestApplyInsets();
+            if (retry) connect(null);
+            else showError("手机网页组件连续退出，请点重新连接");
+            return true;
+        }
         @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             Uri uri = request.getUrl();
             if ("GET".equals(request.getMethod()) && origin.owns(uri)) {
                 String path = uri.getPath();
+                if (path != null && path.startsWith(RecoveredChatPhoto.PREFIX)) {
+                    RecoveredChatPhoto photo = recoveredPhoto;
+                    return photo != null && origin.value.equals(pickerOrigin) && !request.isForMainFrame()
+                            && uri.getQuery() == null && uri.getFragment() == null ? photo.consume(path) : RecoveredChatPhoto.missing();
+                }
                 if (path != null && path.startsWith("/__android/recording/")) {
                     String id = path.substring("/__android/recording/".length());
                     byte[] wav = pendingRecordings.remove(id);
@@ -350,6 +389,7 @@ public final class MainActivity extends Activity {
                             : "服务器提供的页面可能与当前系统网页组件不兼容，或页面脚本没有加载成功。请更新服务器网页程序或系统网页组件后重新连接。"));
                     return;
                 }
+                recoveringRenderer = false;
                 pageReady = true; applyInsets(); installNativeRecordingToken(view, url);
                 web.evaluateJavascript(updateEntryScript,null);
                 appUpdater.onPageReady();
@@ -359,6 +399,7 @@ public final class MainActivity extends Activity {
                     FcmTransport.onPageFinished(MainActivity.this);
                     openPendingChat();
                     enableLoginNotifications();
+                    offerRecoveredPhoto();
                 }
             });
         }
@@ -507,8 +548,25 @@ public final class MainActivity extends Activity {
             configureImagePicker(choose, params);
             choose.addCategory(Intent.CATEGORY_OPENABLE);
             choose.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            try { startActivityForResult(choose,PICK_FILE); }
-            catch (ActivityNotFoundException error) { fileCallback.onReceiveValue(null); fileCallback = null; toast("手机没有可用的文件选择器"); }
+            pickerGeneration++;
+            pickerOrigin = pickerRole = pickerScope = null;
+            if (recoveredPhoto != null) recoveredPhoto.file.delete();
+            recoveredPhoto = null;
+            final String server = origin.value;
+            view.evaluateJavascript("window.PipiAndroidPage&&window.PipiAndroidPage.pickerTarget&&window.PipiAndroidPage.pickerTarget()", raw -> {
+                if (fileCallback != callback || web != view || !server.equals(origin.value) || !origin.isAppPage(view.getUrl())) return;
+                if (raw != null && raw.startsWith("{")) {
+                    try {
+                        JSONObject target = new JSONObject(raw);
+                        String scope = target.optString("scope"), role = target.optString("roleId");
+                        if (scope.matches("[a-f0-9]{64}") && !role.isEmpty() && role.length() <= 200) {
+                            pickerOrigin = server; pickerRole = role; pickerScope = scope;
+                        }
+                    } catch (JSONException error) { android.util.Log.w("PipiPhone","无法记录聊天选图位置"); }
+                }
+                try { startActivityForResult(choose,PICK_FILE); }
+                catch (ActivityNotFoundException error) { fileCallback.onReceiveValue(null); fileCallback = null; toast("手机没有可用的文件选择器"); }
+            });
             return true;
         }
         @Override public void onPermissionRequest(PermissionRequest request) {
@@ -972,6 +1030,8 @@ public final class MainActivity extends Activity {
         CookieManager.getInstance().flush();PhoneNotifications.setVisible(this,false);FcmTransport.setVisible(this,false);super.onPause();
     }
     @Override protected void onSaveInstanceState(Bundle out) {
+        out.putString("photo_origin",pickerOrigin); out.putString("photo_role",pickerRole); out.putString("photo_scope",pickerScope);
+        if (recoveredPhoto != null) out.putString("photo_cache",recoveredPhoto.file.getName());
         appUpdater.save(out);checkpoint();Bundle history=new Bundle();web.saveState(history);out.putBundle("web_state",history);out.putString("server_origin",origin.value);super.onSaveInstanceState(out);
     }
     @Override public void onConfigurationChanged(Configuration config) {super.onConfigurationChanged(config);configureWindow();surface.requestApplyInsets();}
@@ -980,7 +1040,7 @@ public final class MainActivity extends Activity {
         voiceCapture.cancel();
         pendingRecordings.clear();
         appUpdater.close();
-        connectionGeneration++;loginGeneration++;blobDownloads.cancel();network.shutdown();downloads.shutdown();handler.removeCallbacksAndMessages(null);
+        connectionGeneration++;loginGeneration++;blobDownloads.cancel();network.shutdown();downloads.shutdown();pickedImages.shutdown();handler.removeCallbacksAndMessages(null);
         if(connectionForm!=null)connectionForm.dismiss();
         if(fileCallback!=null)fileCallback.onReceiveValue(null);
         if(recordingRequest!=null)recordingRequest.deny();
@@ -1031,7 +1091,7 @@ public final class MainActivity extends Activity {
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
         if (appUpdater.result(request,result)) return;
-        if(request==PICK_FILE && fileCallback!=null) {
+        if(request==PICK_FILE) {
             final ValueCallback<Uri[]> callback = fileCallback;
             fileCallback = null;
             ArrayList<Uri> selected=new ArrayList<>();
@@ -1040,18 +1100,40 @@ public final class MainActivity extends Activity {
                 if(clips!=null)for(int i=0;i<clips.getItemCount();i++)addSelectedUri(selected,clips.getItemAt(i).getUri());
                 else addSelectedUri(selected,data.getData());
             }
-            if (selected.isEmpty()) {
+            if (callback == null) {
+                if (selected.isEmpty()) return;
+                if (pickerScope == null || pickerRole == null || !origin.value.equals(pickerOrigin)) {
+                    toast("页面已重新打开，请重新选择图片"); return;
+                }
+                final int selection = pickerGeneration;
+                final String server = pickerOrigin;
+                final Uri selectedPhoto = selected.get(0);
+                pickedImages.execute(() -> {
+                    try {
+                        Uri uri = Build.VERSION.SDK_INT >= 28 ? normalizePickedImageUri(selectedPhoto) : selectedPhoto;
+                        RecoveredChatPhoto photo = RecoveredChatPhoto.copy(this,uri);
+                        handler.post(() -> {
+                            if (isDestroyed() || selection != pickerGeneration || !server.equals(origin.value) || !server.equals(pickerOrigin)) { photo.file.delete(); return; }
+                            recoveredPhoto = photo; recoveredPhotoPage = null; offerRecoveredPhoto();
+                        });
+                    } catch (IOException | RuntimeException error) {
+                        handler.post(() -> { if (!isDestroyed()) toast("恢复所选照片失败：" + error.getMessage()); });
+                    }
+                });
+            } else if (selected.isEmpty()) {
                 callback.onReceiveValue(null);
             } else if (Build.VERSION.SDK_INT >= 28) {
-                downloads.execute(() -> {
+                final WebView pickingPage = web;
+                final int generation = connectionGeneration;
+                pickedImages.execute(() -> {
                     PickedImageProvider.clearCache(this);
                     Uri[] resolved = new Uri[selected.size()];
                     for (int i = 0; i < selected.size(); i++) {
                         resolved[i] = normalizePickedImageUri(selected.get(i));
                     }
                     handler.post(() -> {
-                        if (!isDestroyed()) callback.onReceiveValue(resolved);
-                        else callback.onReceiveValue(null);
+                        if (!isDestroyed() && pickingPage == web)
+                            callback.onReceiveValue(generation == connectionGeneration ? resolved : null);
                     });
                 });
             } else {
@@ -1064,6 +1146,18 @@ public final class MainActivity extends Activity {
                 saveDownload(data.getData(),pendingDownloadUrl,pendingDownloadCookie);
             pendingDownloadUrl=null;pendingDownloadCookie=null;
         }
+    }
+
+    private void offerRecoveredPhoto() {
+        RecoveredChatPhoto photo = recoveredPhoto;
+        if (photo == null || !photo.file.isFile() || recoveredPhotoPage == web || !pageReady || !origin.value.equals(pickerOrigin)
+                || !origin.isAppPage(web.getUrl()) || assets == null || !assets.allowsBusiness()) return;
+        recoveredPhotoPage = web;
+        String script = "window.PipiAndroidPage&&window.PipiAndroidPage.receivePickedPhoto&&window.PipiAndroidPage.receivePickedPhoto("
+                + JSONObject.quote(pickerScope) + "," + JSONObject.quote(pickerRole) + "," + JSONObject.quote(photo.path()) + ")";
+        web.evaluateJavascript(script, result -> {
+            if (!"true".equals(result) && photo == recoveredPhoto) { photo.file.delete(); toast("当前页面无法恢复照片，请重新选择"); }
+        });
     }
 
     private void addSelectedUri(ArrayList<Uri> files,Uri selected) {

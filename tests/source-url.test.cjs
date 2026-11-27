@@ -41,7 +41,7 @@ function productFunction(name){
 async function renderFromStatus(status){
   const calls=[],scope=vm.createContext({status,calls});
   vm.runInContext(`let sourceUrl='',state=null,binaryMedia=false,imageVariants=false,storageMaintenance=false,streamingBackup=false,accountSecurity=false,setupTokenRequired=false,momentExclusions=false,rolePanelAvailable=false;
-    const window={PipiSkins:{configure(){}}};async function restoreBrowserPage(){}
+    const window={PipiSkins:{configure(){}},PipiHistorySearch:{configure(){}}};async function restoreBrowserPage(){}
     const icons={chat:'',chevron:''};
     const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     function header(){return '';}

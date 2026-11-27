@@ -32,6 +32,7 @@
   let skipNextOverlayExit = false;
 
   const classicArrivals = new Map();
+  let incomingPatRole = '';
   let lastAnimatedPanelKey = '';
 
   function isWaterdrop() {
@@ -395,19 +396,32 @@
     longest.oncancel = finish;
   }
 
-  // Track newly arrived / sent chat messages for Classic skin (Waterdrop has waterdrop-chat.js)
-  function observeChatState(previous, next, view) {
+  function patAvatar(button) {
+    if (!button || reduceMotion.matches) return;
+    if (button.classList.contains('avatar-patting')) {
+      button.classList.remove('avatar-patting');
+      void button.offsetWidth; // Restart the animation when the same avatar is patted again.
+    }
+    button.classList.add('avatar-patting');
+  }
+
+  function observeChatState(previous, next, view, candidates = next.messages) {
     const now = Date.now();
     for (const [id, item] of classicArrivals) {
       if (item.until < now) classicArrivals.delete(id);
     }
     if (!previous || !view || view.dataset.route !== 'chat' || document.hidden || reduceMotion.matches) return;
-    if (isWaterdrop()) return;
+    const waterdrop = isWaterdrop();
     const roleId = view.dataset.chatRole;
     if (!roleId) return;
     const known = new Set((previous.messages || []).map(m => m.id));
-    for (const msg of (next.messages || [])) {
-      if (msg.roleId !== roleId || msg.sender === 'system' || known.has(msg.id)) continue;
+    for (const msg of candidates) {
+      if (msg.roleId !== roleId || known.has(msg.id)) continue;
+      if (msg.sender === 'system') {
+        if (msg.meta?.kind === 'pat' && msg.meta.author === roleId && msg.meta.target === 'self') incomingPatRole = roleId;
+        continue;
+      }
+      if (waterdrop) continue;
       classicArrivals.set(msg.id, { roleId, until: now + 1200, mine: msg.sender === 'user' || msg.meta?.author === 'me' });
     }
   }
@@ -479,6 +493,11 @@
   function decorateView(view, route) {
     if (!view) return;
     syncScrollElevation(view);
+    if (incomingPatRole && route?.name === 'chat' && view.dataset.chatRole === incomingPatRole) {
+      const avatars = view.querySelectorAll('#chat-messages [data-chat-avatar="self"]');
+      patAvatar(avatars[avatars.length - 1]);
+    }
+    incomingPatRole = '';
     if (route?.name === 'chat') {
       animateClassicChatArrivals(view);
       animateComposerTools(view);
@@ -697,6 +716,7 @@
     captureOverlayExit,
     cancelOverlayExit,
     observeChatState,
+    patAvatar,
     decorateView
   };
 })();

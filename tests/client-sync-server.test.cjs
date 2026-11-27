@@ -27,7 +27,7 @@ async function fixture(t,extra={}){
 test('sync bootstrap is authenticated, advertises capabilities and contains only role heads with normal redaction',async t=>{
   const f=await fixture(t);assert.equal((await f.request('/api/sync',undefined,{},true)).status,401);
   const status=(await f.request('/api/status')).value,manifest=(await f.request('/api/android-shell-manifest')).value;
-  assert.deepEqual(status.clientProtocol,{name:'pipi-phone',version:1,features:['state-v1','chat-progress-v1','sync-v1','messages-v1']});assert.deepEqual(manifest.clientProtocol,status.clientProtocol);
+  assert.deepEqual(status.clientProtocol,{name:'pipi-phone',version:1,features:['state-v1','chat-progress-v1','sync-v1','messages-v1','messages-global-search-v1']});assert.deepEqual(manifest.clientProtocol,status.clientProtocol);
   const response=await f.sync();assert.equal(response.status,200);const value=response.value;assert.equal(value.mode,'reset');assert.equal(value.schema,1);assert.equal(value.messageCoverage,'heads');assert.equal(value.state.messages.length,2);
   assert.deepEqual(value.state.messages.map(m=>m.id),f.raw().messages.filter((m,i,all)=>all.findLastIndex(x=>x.roleId===m.roleId)===i).map(m=>m.id));
   const serialized=JSON.stringify(value);for(const secret of ['PRIVATE_PROVIDER_KEY','PRIVATE_SUMMARY','PRIVATE_EXECUTION','PRIVATE_AI_KEY','PRIVATE_OVERRIDE_KEY','PRIVATE_ROLE_MEDIA','PRIVATE_VECTOR'])assert.ok(!serialized.includes(secret));
@@ -48,6 +48,19 @@ test('delta settings response preserves legacy replies and carries deletion, rec
   await f.action('message.delete',{id:quoted.id});const deleted=(await f.sync(recalled.cursor)).value;assert.ok(deleted.changes.deleteMessageIds.includes(quoted.id));assert.ok(!deleted.changes.upsertMessages.some(m=>m.id===quoted.id));
   const stable=(await f.sync(deleted.cursor)).value;assert.deepEqual(stable.changes,{upsertMessages:[],deleteMessageIds:[],replace:{}});
 });
+test('read receipts and favorites change metadata while thumbnail edits still reach other devices',async t=>{
+  const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWVQAAAAASUVORK5CYII=';
+  const f=await fixture(t,{seed(s){s.roles[0].unread=4;S.message(s,s.roles[0],'user',image,'image',{status:'sent'});}});
+  const roleId=f.raw().roles[0].id,media=f.raw().messages.at(-1),start=(await f.sync()).value;
+  const read=await f.action('conversation.read',{roleId},{'X-Pipi-State-Mode':'delta','X-Pipi-Sync-Cursor':start.cursor});assert.equal(read.status,200);
+  assert.equal(read.value.sync.changes.replace.roles.find(role=>role.id===roleId).unread,0);
+  assert.deepEqual(read.value.sync.changes.upsertMessages,[]);assert.deepEqual(read.value.sync.changes.deleteMessageIds,[]);
+  const favorite=await f.action('message.favorite',{id:media.id},{'X-Pipi-State-Mode':'delta','X-Pipi-Sync-Cursor':read.value.sync.cursor});assert.equal(favorite.status,200);
+  assert.equal(favorite.value.sync.changes.replace.favorites.at(-1).messageId,media.id);assert.deepEqual(favorite.value.sync.changes.upsertMessages,[]);
+  const thumb=await f.request('/api/chat/media/thumbnail',{messageId:media.id,thumb:image},{'X-Pipi-State-Mode':'delta','X-Pipi-Sync-Cursor':favorite.value.sync.cursor});assert.equal(thumb.status,200,JSON.stringify(thumb.value));
+  const changes=(await f.sync(favorite.value.sync.cursor)).value.changes;
+  assert.deepEqual(changes.upsertMessages.map(message=>message.id),[media.id]);assert.equal(changes.upsertMessages[0].meta.thumb,f.raw().messages.at(-1).meta.thumb);
+});
 test('message pages preserve equal-time array order, protect roles and support old search and by-id references',async t=>{
   const f=await fixture(t),s=f.raw(),roleId=s.roles[0].id,all=s.messages.filter(m=>m.roleId===roleId),base='/api/messages?roleId='+roleId;
   const first=await f.request(base+'&limit=3');assert.equal(first.status,200);assert.deepEqual(first.value.messages.map(m=>m.id),all.slice(-3).map(m=>m.id));assert.equal(first.value.hasMore,true);
@@ -57,6 +70,26 @@ test('message pages preserve equal-time array order, protect roles and support o
   await f.action('message.delete',{id:first.value.nextBeforeId});const gone=await f.request(base+'&beforeId='+first.value.nextBeforeId);assert.equal(gone.status,409);assert.equal(gone.value.code,'MESSAGE_ANCHOR_GONE');
   const pageText=JSON.stringify((await f.request(base+'&limit=100')).value);assert.ok(!pageText.includes('[消息编号'));assert.ok(!pageText.includes('[媒体ID'));
   await f.action('role.save',{id:roleId,permissions:{blocked:true}});assert.equal((await f.request(base)).status,200);
+});
+test('global search pages across contacts and retains the public message format',async t=>{
+  const f=await fixture(t),path='/api/messages/global-search?query=ReCoRd&limit=5';
+  assert.equal((await f.request(path,undefined,{},true)).status,401);
+  const expected=f.raw().messages.filter(m=>m.content.startsWith('record ')).reverse();
+  const first=(await f.request(path)).value,second=(await f.request(path+'&beforeId='+first.nextBeforeId)).value;
+  assert.deepEqual([...first.messages,...second.messages].map(m=>m.id),expected.slice(0,10).map(m=>m.id));
+  assert.equal(first.hasMore,true);assert.ok(new Set(first.messages.map(m=>m.roleId)).size>1);
+  assert.equal((await f.request('/api/messages/global-search?query=old%20needle')).value.messages[0].content,'find this old needle');
+  assert.equal((await f.request('/api/messages/global-search?query=')).status,400);
+  assert.equal((await f.request(path+'&beforeId='+randomUUID())).status,409);
+});
+test('paged login and sync report the true message count while older clients receive full login state',async t=>{
+  const f=await fixture(t),headers={'X-Pipi-State-Mode':'delta','X-Pipi-Message-Coverage':'pages'},password='Synthetic-sync-only-2026!';
+  const old=(await f.request('/api/login',{password})).value,count=old.state.messages.length;
+  const login=(await f.request('/api/login',{password},headers)).value;
+  assert.equal(login.state,undefined);assert.equal(login.sync.messageCount,count);assert.equal(login.sync.state.messages.length,2);
+  await f.action('message.delete',{id:old.state.messages[0].id});
+  const sync=(await f.request('/api/sync?cursor='+encodeURIComponent(login.sync.cursor),undefined,headers)).value;
+  assert.equal(sync.messageCount,count-1);assert.equal((await f.sync()).value.messageCount,undefined);
 });
 test('invalid or future cursors reset explicitly and restarting invalidates a previous epoch',async t=>{
   const f=await fixture(t),initial=(await f.sync()).value;assert.equal(initial.mode,'reset');assert.equal((await f.sync('invalid')).value.reason,'invalid');

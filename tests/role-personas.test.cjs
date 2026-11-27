@@ -63,8 +63,8 @@ test('备份完整往返、旧备份缺字段兼容及非法引用拒绝',()=>{
  delete backup.state.rolePersonas;delete backup.state.personaFolders;for(const r of backup.state.roles){delete r.rolePersonaId;delete r.patText;}const old=S.validateBackup(backup,s);assert.deepEqual(old.rolePersonas,[]);assert.equal(old.roles[0].rolePersonaId,'');assert.equal(old.roles[0].patText,'');
 });
 test('拍一拍显示好友内容，模型和备份保留事件发生时文字',()=>{
- const s=fixture(),r=s.roles[0];S.apply(s,'role.save',{id:r.id,patText:'肩膀'});S.apply(s,'message.pat',{roleId:r.id});const m=s.messages.at(-1);assert.ok(m.content.endsWith('的肩膀'));assert.equal(m.meta.patText,'肩膀');assert.ok(P.render(s,m,false).content.includes('用户拍了拍你的肩膀'));
- S.apply(s,'role.save',{id:r.id,patText:'脑袋'});assert.ok(P.render(s,m,false).content.includes('肩膀'));const restored=S.validateBackup({format:'pipi-phone',version:1,state:S.backupState(s)},s);assert.equal(restored.messages.at(-1).meta.patText,'肩膀');
+ const s=fixture(),r=s.roles[0];S.apply(s,'role.save',{id:r.id,patText:'肩膀'});S.apply(s,'message.pat',{roleId:r.id});const m=s.messages.at(-1);assert.ok(m.content.endsWith('的肩膀'));assert.equal(m.meta.patText,'肩膀');assert.equal(P.render(s,m,false).content,'[系统记录] 用户拍了拍角色的肩膀');
+ S.apply(s,'role.save',{id:r.id,patText:'脑袋'});assert.ok(P.render(s,m,false).content.includes('肩膀'));const restored=S.validateBackup({format:'pipi-phone',version:1,state:S.backupState(s)},s);assert.equal(restored.messages.at(-1).meta.patText,'肩膀');assert.equal(restored.messages.at(-1).content,m.content);assert.equal(P.render(restored,restored.messages.at(-1),false).content,'[系统记录] 用户拍了拍角色的肩膀');
 });
 test('人设上限及正文长度在入口拒绝，正文允许10万字符',()=>{
  const s=fixture();save(s,'长正文','文'.repeat(100000));assert.throws(()=>save(s,'过长','文'.repeat(100001)));assert.throws(()=>save(s,'名'.repeat(81)));for(let i=s.rolePersonas.length;i<100;i++)save(s,'人设'+i);const before=structuredClone(s);assert.throws(()=>save(s,'第101份'));assert.deepEqual(s,before);

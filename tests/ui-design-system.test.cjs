@@ -54,7 +54,7 @@ test('Design System: muted conversation preview clears muted bell icon and both 
   assert.match(polish, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
 });
 
-test('Big-Tech Craft: English WeChat topbar, native 消息 tab, unified OFL typography, and 60fps motion engine', () => {
+test('Big-Tech Craft: English WeChat topbar, native 消息 tab, system typography, and 60fps motion engine', () => {
   const socialJs = fs.readFileSync(path.join(publicDir, 'classic-social.js'), 'utf8');
   const appJs = fs.readFileSync(path.join(publicDir, 'app.js'), 'utf8');
   const indexHtml = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8');
@@ -67,7 +67,9 @@ test('Big-Tech Craft: English WeChat topbar, native 消息 tab, unified OFL typo
   assert.match(motionJs, /preparePageTransition/);
   assert.match(motionJs, /captureOverlayExit/);
   assert.match(motionJs, /bindEdgeSwipeBack/);
-  assert.match(polish, /"Inter",\s*"Noto Sans SC"/);
+  assert.match(readCss('styles.css'),/--ui-font:\s*-apple-system,[^;]+sans-serif/);
+  assert.match(polish,/font-family:\s*var\(--ui-font\)/);
+  assert.doesNotMatch(indexHtml,/as="font"|\/fonts\//);
   assert.match(polish, /font-synthesis:\s*none/);
   assert.match(polish, /\.ui-nav-scrim/);
   assert.match(polish, /\.ui-exit-stage/);

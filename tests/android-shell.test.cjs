@@ -35,7 +35,7 @@ test('installed page bundle matches server and each authenticated session has it
   assert.match(bundled.sha256,/^[0-9a-f]{64}$/);
   const manifest=await (await fetch(base+'/api/android-shell-manifest')).json();
   assert.equal(manifest.sha256,bundled.sha256);
-  assert.deepEqual(manifest.clientProtocol,{name:'pipi-phone',version:1,features:['state-v1','chat-progress-v1','sync-v1','messages-v1']});
+  assert.deepEqual(manifest.clientProtocol,{name:'pipi-phone',version:1,features:['state-v1','chat-progress-v1','sync-v1','messages-v1','messages-global-search-v1']});
   assert.deepEqual((await status()).clientProtocol,manifest.clientProtocol);
   assert.equal((await status()).appSessionScope,undefined);
   const payload={displayName:'隔离检查',password:'Android-shell-local-test!'};

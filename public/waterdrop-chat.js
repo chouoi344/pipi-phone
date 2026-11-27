@@ -10,13 +10,13 @@
   let connected = true;
   const enabled = view => document.documentElement.dataset.skin === 'waterdrop' && view.dataset.route === 'chat';
 
-  function observeState(previous, next, view) {
+  function observeState(previous, next, view, candidates = next.messages) {
     for (const [id, arrival] of arrivals) if (arrival.until < Date.now()) arrivals.delete(id);
     for (const id of waiting.keys()) if (!next.messages.some(message => message.id === id && message.status === 'pending')) waiting.delete(id);
     if (enabled(view)) paintWaiting(view, window.PipiEngine.isTyping(view.dataset.chatRole));
     if (!previous || !enabled(view) || !connected || document.hidden) return;
     const known = new Map(previous.messages.map(message => [message.id, message]));
-    for (const message of next.messages) {
+    for (const message of candidates) {
       if (message.roleId !== view.dataset.chatRole) continue;
       if (message.sender === 'user' && message.status === 'pending' && known.get(message.id)?.status !== 'pending') waiting.set(message.id, message.roleId);
       if (message.sender !== 'system' && !known.has(message.id) && !motion.matches) {
@@ -26,16 +26,18 @@
   }
 
   function paintWaiting(view, typing) {
-    for (const label of view.querySelectorAll('.waterdrop-waiting')) label.remove();
-    if (typing || !connected) return;
-    const rows = [...view.querySelectorAll('.message-row[data-message]')];
+    const current = view.querySelector('.waterdrop-waiting');
+    const rows = typing || !connected || !waiting.size ? [] : [...view.querySelectorAll('.message-row[data-message]')];
     const row = rows.findLast(item => waiting.get(item.dataset.message) === view.dataset.chatRole);
-    if (!row) return;
+    const body = row?.querySelector('.message-body');
+    if (current && current.parentElement === body) return;
+    if (current) current.remove();
+    if (!body) return;
     const label = document.createElement('span');
     label.className = 'waterdrop-waiting';
     label.setAttribute('role', 'status');
     label.textContent = '等待回复';
-    row.querySelector('.message-body').append(label);
+    body.append(label);
   }
 
   function updateTyping(view) {

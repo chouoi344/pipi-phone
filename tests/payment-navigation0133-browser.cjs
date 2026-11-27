@@ -98,13 +98,10 @@ fs.mkdirSync(out, { recursive: true });
             await page.locator('[data-pay-key=done]').click();
         };
         try {
-          await page.goto('http://127.0.0.1:' + app.server.address().port);
-          await page.locator('[name=displayName]').fill('隔离测试');
-          await page.locator('[name=password]').fill('Only-Isolated-0133');
-          await page
-            .locator('[name=confirmPassword]')
-            .fill('Only-Isolated-0133');
-          await page.locator('#auth-form [type=submit]').click();
+          const origin='http://127.0.0.1:'+app.server.address().port;
+          const setup=await page.request.post(origin+'/api/setup',{headers:{Origin:origin},data:{displayName:'隔离测试',password:'Only-Isolated-0133'}});
+          assert.equal(setup.status(),200);
+          await page.goto(origin);
           await page.locator('[data-open-chat]').click();
           await page.evaluate(
             (skin) => (document.documentElement.dataset.skin = skin),
@@ -117,7 +114,7 @@ fs.mkdirSync(out, { recursive: true });
               const n = await page.evaluate(
                 () => Pipi.getState().wallet.transactions.length,
               );
-              if (exit === 'arrow') await page.locator('.modal-back').click();
+              if (exit === 'arrow') await page.locator('#overlay > .page-editor .modal-back').click();
               else if (exit === 'Escape') await page.keyboard.press('Escape');
               else await page.goBack();
               await settled();
@@ -196,7 +193,7 @@ fs.mkdirSync(out, { recursive: true });
               .last()
               .click();
             await page.locator('.wallet-transaction-detail').waitFor();
-            await page.locator('.modal-back').click();
+            await page.locator('#overlay > .page-editor .modal-back').click();
             await settled();
             await metric(type + ' outgoing detail back');
             await page
@@ -210,7 +207,7 @@ fs.mkdirSync(out, { recursive: true });
                   ?.status === 'received',
               'incoming-' + type,
             );
-            await page.locator('.modal-back').click();
+            await page.locator('#overlay > .page-editor .modal-back').click();
             await settled();
             await metric(type + ' incoming receive back');
             // Commit the real HTTP request, then lose its response before the browser sees it.
@@ -235,7 +232,9 @@ fs.mkdirSync(out, { recursive: true });
               if (requestIds.length === 1) {
                 const response = await route.fetch();
                 assert.equal(response.status(), 200);
-                committed = await response.json();
+                const snapshot=await page.request.get(origin+'/api/state');
+                assert.equal(snapshot.status(),200);
+                committed=await snapshot.json();
                 await route.abort('failed');
               } else await route.continue();
             });
@@ -245,11 +244,11 @@ fs.mkdirSync(out, { recursive: true });
             );
             assert.equal(await page.locator('[name=amount]').inputValue(), '1');
             assert.equal(
-              committed.state.wallet.transactions.length,
+              committed.wallet.transactions.length,
               paymentBefore.transactions + 1,
             );
             assert.equal(
-              committed.state.wallet.balanceCents,
+              committed.wallet.balanceCents,
               paymentBefore.balance - 100,
             );
             await page.locator('.wallet-pay-confirm').click();
@@ -291,17 +290,17 @@ fs.mkdirSync(out, { recursive: true });
             await page.locator('#wallet-' + type).click();
             await page.locator('[data-wallet-person]').click();
             await amount(type);
-            await page.locator('.modal-back').click();
+            await page.locator('#overlay > .page-editor .modal-back').click();
             await page.locator('.wallet-recipients').waitFor();
             await page.locator('[data-wallet-person]').click();
             await amount(type);
             await page.locator('.wallet-pay-confirm').click();
-            await page.locator('.wallet-balance-page').waitFor();
+            await page.locator('#overlay > .page-editor .wallet-balance-page').waitFor();
             await page.waitForTimeout(100);
-            assert.equal(await page.locator('.wallet-balance-page').count(), 1);
+            assert.equal(await page.locator('#overlay > .page-editor .wallet-balance-page').count(), 1);
             await metric(type + ' wallet send returns balance');
           }
-          await page.locator('.modal-back').click();
+          await page.locator('#overlay > .page-editor .modal-back').click();
           await page.waitForFunction(
             () => !document.querySelector('.page-editor'),
           );

@@ -601,3 +601,20 @@ test('a legacy settings update works on legacy configuration and cannot overwrit
   assert.throws(()=>S.apply(s,'settings.save',update('stale-model')),{code:'PROVIDER_CONFIG_CHANGED',status:409});
   assert.deepEqual(s.settings,before);
 });
+
+test('中转把工具放进正文时不执行，并在真实请求日志里标记原因；仍可保留正常回复',async t=>{
+  let text='pat_user({})';
+  const remote=await server(t,(_req,res)=>answer(res,text)),s=configured(remote.url,[model('main')]),logs=[];
+  const options={messages:[{role:'user',content:'聊聊'}],retry:false,onUsage:r=>logs.push(r)};
+  await assert.rejects(M.call(s,options),e=>e.code==='PROVIDER_EMPTY');
+  const usage=require('../lib/engine/usage.cjs');
+  assert.equal(logs[0].error,usage.toolEchoNotice);assert.equal(logs[0].success,false);
+  text='晚上好\npat_user({})\n你吃饭了吗？';
+  const result=await M.call(s,options);
+  assert.equal(result.message.tool_calls,undefined);
+  assert.equal(require('../lib/engine/response.cjs').dialogueText(result.message),'晚上好\n你吃饭了吗？');
+  assert.equal(logs[1].error,usage.toolEchoNotice);assert.equal(logs[1].success,true);
+  text='pat_user({})';
+  const toolOnly=await M.call(s,{...options,allowEmptyResponse:true});
+  assert.equal(require('../lib/engine/response.cjs').dialogueText(toolOnly.message),'');
+});

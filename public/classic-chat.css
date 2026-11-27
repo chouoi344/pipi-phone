@@ -122,6 +122,7 @@ body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] > .chat-
   padding: 12px 12px 16px;
   background-color: #ededed;
 }
+body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .system-message,
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] .message-date {
   margin: 6px 0 14px;
   color: #9398a0;

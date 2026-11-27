@@ -2,10 +2,8 @@
  * Final layer: measurements taken from the owner's iPhone WeChat 8.0.80 screenshots
  * (1125px wide = 375pt @3x). Earlier layers were calibrated on a rescaled image and
  * ended up 4-7% oversized; the values here are the authoritative ones.
- * Apple devices render their own system font (the real WeChat look); other devices
- * fall back to the bundled OFL fonts, which are only downloaded when needed.
  */
-:root{--ui-font:-apple-system,"PingFang SC","Inter","Noto Sans SC","Helvetica Neue",sans-serif;--ink:#191919;--hair:rgba(0,0,0,.1);--fg1:rgba(0,0,0,.5);--fg2:rgba(0,0,0,.3);--link:#576b95}
+:root{--ink:#191919;--hair:rgba(0,0,0,.1);--fg1:rgba(0,0,0,.5);--fg2:rgba(0,0,0,.3);--link:#576b95}
 body,.phone-shell{font-family:var(--ui-font)}
 .phone-shell{-webkit-font-smoothing:antialiased}
 
@@ -61,9 +59,8 @@ body,.phone-shell{font-family:var(--ui-font)}
 :is(#view,.navigation-snapshot) .chat-messages .message-bubble:not(.image-bubble):not(.payment-card)::before{top:15px;width:9px;height:9px;border-radius:1.5px}
 :is(#view,.navigation-snapshot) .chat-messages .message-row:not(.mine) .message-bubble:not(.image-bubble):not(.payment-card)::before{left:-4px}
 :is(#view,.navigation-snapshot) .chat-messages .mine .message-bubble:not(.image-bubble):not(.payment-card)::before{right:-4px}
-:is(#view,.navigation-snapshot) .message-date{font-size:14px;line-height:1.43;color:var(--fg2);margin:7px 0 17px}
-:is(#view,.navigation-snapshot) .message-date:first-child{margin-top:0}
-:is(#view,.navigation-snapshot) .system-message{font-size:14px;line-height:1.43;color:var(--fg2);margin:7px 30px 17px}
+:is(#view,.navigation-snapshot) .system-message,:is(#view,.navigation-snapshot) .message-date{font-size:14px;line-height:1.43;color:var(--fg2);margin:7px 0 17px}
+:is(#view,.navigation-snapshot) .system-message:first-child,:is(#view,.navigation-snapshot) .message-date:first-child{margin-top:0}
 :is(#view,.navigation-snapshot) .message-quote{font-size:14px;line-height:1.43;color:rgba(0,0,0,.5);background:#e1e1e1;padding:7px 12px;margin-top:4px;border-radius:4px}
 
 :is(#view,.navigation-snapshot) .voice-body>.message-bubble{max-width:100%;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;font-variant-numeric:tabular-nums}
@@ -197,7 +194,7 @@ body,.phone-shell{font-family:var(--ui-font)}
 .transfer-to strong{display:block;font-size:17px;line-height:1.25;font-weight:500;color:#181818;overflow-wrap:anywhere}
 .transfer-to span{display:block;margin-top:4px;font-size:14px;line-height:1.43;color:rgba(0,0,0,.55);overflow-wrap:anywhere}
 .transfer-head>.avatar{margin-top:10px;border-radius:5px}
-.transfer-sheet{flex:1;background:#fff;border-radius:12px 12px 0 0;padding:22px 32px 0;min-height:160px}
+.transfer-sheet{flex:1 0 auto;background:#fff;border-radius:12px 12px 0 0;padding:22px 32px 0;min-height:160px}
 .transfer-label{display:block;font-size:14px;line-height:1.43;color:#191919}
 .pay-amount{display:flex;align-items:baseline;gap:14px;min-width:0}
 .transfer-sheet .pay-amount{margin-top:19px;height:auto;min-height:66px;padding-bottom:4px;border-bottom:.5px solid rgba(0,0,0,.1);line-height:1.3}

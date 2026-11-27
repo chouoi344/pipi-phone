@@ -32,3 +32,14 @@ test('App reading snapshot replaces edited text and removes deleted and recalled
   assert.deepEqual(JSON.parse(JSON.stringify(context.result.contacts)),[{roleId:'one',name:'好友'}]);
   assert.equal(context.result.chats[0].messages.length,1);assert.equal(context.result.chats[0].messages[0].content,'修改后的文字');assert.doesNotMatch(JSON.stringify(context.result),/被删除的秘密|被撤回的秘密|旧文字/);
 });
+test('offline reading keeps evicted pages and removes recalled, deleted or reset text',()=>{
+  const js=fs.readFileSync(path.join(__dirname,'../public/android-page.js'),'utf8');
+  const reconcile=vm.runInNewContext(js.slice(js.indexOf('  function updateReadings('),js.indexOf('  function restore()',js.indexOf('  function updateReadings(')))+';updateReadings',{scheduleCheckpoint(){}});
+  const chat={roleId:'one',messages:[{id:'saved',sender:'user',content:'之前看过'},{id:'edit',sender:'assistant',content:'旧字'},{id:'gone',sender:'user',content:'删除前的字'},{id:'recall',sender:'assistant',content:'已撤回原文'}]};
+  const readings=new Map([['one',chat]]);
+  reconcile(readings,{upserts:[{id:'another',sender:'user',type:'text',content:'其他聊天'}],deletedIds:[]});
+  assert.equal(readings.get('one'),chat);
+  reconcile(readings,{upserts:[{id:'edit',type:'text',sender:'assistant',content:'新字'},{id:'recall',type:'text',sender:'system',content:'已撤回'}],deletedIds:['gone']});
+  assert.deepEqual(Array.from(readings.get('one').messages,m=>m.content),['之前看过','新字']);
+  reconcile(readings,{reset:true,upserts:[],deletedIds:[]});assert.equal(readings.get('one').messages.length,0);
+});

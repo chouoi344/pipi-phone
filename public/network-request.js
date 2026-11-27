@@ -5,6 +5,7 @@
     const route=String(path).split('?')[0];
     if(/^\/api\/(?:media(?:\/|$)|backup(?:\/|$)|restore(?:\/|$)|engine\/memory\/(?:import|export)(?:\/|$))/.test(route))return {ms:60000,idle:true};
     if(/^\/api\/(?:engine\/(?:schedule|life|memory)(?:\/|$)|engine\/models\/(?:test|list)$|voice\/|ledger\/recognize$|providers(?:\/|$))/.test(route))return {ms:180000,idle:false};
+    if(route==='/api/chat')return {ms:60000,idle:false};
     return {ms:20000,idle:false};
   }
   function create({fetch:send=globalThis.fetch,XHR=globalThis.XMLHttpRequest,Controller=globalThis.AbortController,setTimer=setTimeout,clearTimer=clearTimeout}={}){

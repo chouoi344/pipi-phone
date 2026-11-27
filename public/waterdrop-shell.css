@@ -4,7 +4,6 @@ html[data-skin="waterdrop"] body {
   --wd-canvas:#f2f4f7; --wd-paper:#fff; --wd-ink:#1b1d1f; --wd-muted:#646b74;
   --wd-line:#0000000a; --wd-green:#1ec96b;
   --wd-card-shadow:inset 0 1px 0 #fff,0 3px 14px rgba(15,25,42,.055);
-  --ui-font:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   --ink:var(--wd-ink); --bg:var(--wd-canvas); --muted:var(--wd-muted); --line:var(--wd-line);
   --green:var(--wd-green); --green-dark:#0a8244;
   --icon-primary:var(--wd-ink); --icon-secondary:#454b55; --icon-muted:#939ba8; --icon-inverse:#fff; --icon-active:var(--wd-green);
@@ -12,7 +11,6 @@ html[data-skin="waterdrop"] body {
   font-synthesis:weight style; -webkit-font-smoothing:antialiased;
 }
 html[data-skin="waterdrop"] .phone-shell {
-  --ui-font:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   --ink:var(--wd-ink); --bg:var(--wd-canvas); --muted:var(--wd-muted); --line:var(--wd-line);
   --green:var(--wd-green); --green-dark:#0a8244;
   --icon-primary:var(--wd-ink); --icon-secondary:#454b55; --icon-muted:#939ba8; --icon-inverse:#fff; --icon-active:var(--wd-green);

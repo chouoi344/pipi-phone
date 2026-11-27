@@ -124,7 +124,7 @@ test('真实setState/receiveState：新epoch低revision可以替换，随后迟�
   const replaced=(await f.client.refresh()).state;
   const start=app.indexOf('  function setState('),end=app.indexOf('  // A revision gap',start),scope=vm.createContext({initial:state(10,[message('old-installation')])});
   scope.sync={observe:f.client.observe,replaces:f.client.replaces};
-  vm.runInContext(`let state=initial,pendingRender=false;const view={};globalThis.window={PipiStateSync:sync};function trackNewChatMessages(){}function syncVisibleChatRead(){}function scheduleRender(){}function flushRender(){}${app.slice(start,end)}globalThis.ui={setState,receiveState,get:()=>state};`,scope);
+  vm.runInContext(`let state=initial,pendingRender=false;const pendingSends=new Map(),view={};globalThis.window={PipiStateSync:sync};function trackNewChatMessages(){}function syncVisibleChatRead(){}function scheduleRender(){}function flushRender(){}${app.slice(start,end)}globalThis.ui={setState,receiveState,get:()=>state};`,scope);
   scope.ui.receiveState(replaced);assert.equal(scope.ui.get().revision,0);assert.equal(scope.ui.get().messages[0].id,'restored');
   const next=await f.client.accept({sync:delta(0,2,{upsertMessages:[message('new')]},'server-b')});scope.ui.receiveState(next.state);
   scope.ui.receiveState(replaced);assert.equal(scope.ui.get().revision,2);assert.equal(scope.ui.get().messages.at(-1).id,'new');assert.equal(f.client.replaces(next.state),false);

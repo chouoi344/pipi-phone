@@ -6,9 +6,7 @@
  * XML attributes: #ededed canvas, #95ec69 outgoing bubble, inset rules and 12px bubble padding.
  * APK artwork and fonts are intentionally not redistributed.
  */
-/* Self-hosted OFL fonts shared by mobile browsers and future app WebViews. */
-@font-face{font-family:"Inter";src:url('/fonts/InterVariable.woff2') format('woff2');font-style:normal;font-weight:100 900;font-display:swap}
-:root{--ui-font:"Inter","Noto Sans SC",-apple-system,BlinkMacSystemFont,sans-serif;--green:#07c160;--green-dark:#078544;--bg:#ededed;--paper:#fff;--ink:#191919;--muted:#a7a7a7;--line:#e5e5e5;--blue:#576b95;--danger:#fa5151;--icon-primary:var(--ink);--icon-secondary:#4c4c4c;--icon-muted:#b2b2b2;--icon-inverse:#fff;--icon-active:var(--green-dark);--icon-stroke:1.5;--icon-stroke-nav:1.6;font-family:var(--ui-font);color:var(--ink);font-synthesis:none;-webkit-text-size-adjust:100%}
+:root{--ui-font:-apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","MiSans","Noto Sans CJK SC","Source Han Sans SC","Microsoft YaHei","Segoe UI",sans-serif;--green:#07c160;--green-dark:#078544;--bg:#ededed;--paper:#fff;--ink:#191919;--muted:#a7a7a7;--line:#e5e5e5;--blue:#576b95;--danger:#fa5151;--icon-primary:var(--ink);--icon-secondary:#4c4c4c;--icon-muted:#b2b2b2;--icon-inverse:#fff;--icon-active:var(--green-dark);--icon-stroke:1.5;--icon-stroke-nav:1.6;font-family:var(--ui-font);color:var(--ink);font-synthesis:none;-webkit-text-size-adjust:100%}
 
 *{box-sizing:border-box}
 html,body{height:100%;width:100%;margin:0}
@@ -213,7 +211,7 @@ button svg{pointer-events:none}
 .mine .message-failure{position:absolute;left:-27px;top:8px;display:flex;align-items:center;justify-content:center;color:#fff;background:var(--danger);border-radius:50%;width:18px;height:18px;font-size:12px}
 .message-error{font-size:10px;line-height:1.6;color:#be6b67;margin-top:5px;max-width:230px}
 .demo-tag{display:inline-block;font-size:9px;color:#8c8c8c;background:#e4e4e4;padding:0 4px;border-radius:2px;line-height:15px;vertical-align:1px;margin-left:5px}
-.system-message{text-align:center;font-size:11px;color:#999;margin:12px 18px 18px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}
+.system-message{text-align:center;white-space:pre-wrap;overflow-wrap:anywhere}
 .chat-composer{background:#f6f6f6;border-top:0.5px solid #d9d9d9;padding:7px 7px calc(7px + var(--safe-bottom));flex-shrink:0;position:relative}
 .compose-row{display:flex;align-items:flex-end;gap:7px;min-width:0}
 .compose-row .icon-btn{padding:5px 0;min-width:30px;min-height:40px;flex-shrink:0}
@@ -436,7 +434,7 @@ to{opacity:1}
 .search-result{display:flex;gap:12px;padding:16px;background:#fff;border-bottom:.5px solid #ddd}.search-result>div{min-width:0}.search-result b{font-size:15px;font-weight:400}.search-result p{font-size:14px;margin:4px 0;color:#888;overflow-wrap:anywhere}.search-result time{font-size:11px;color:#aaa}
 .info-line{display:flex;padding:16px 0;gap:24px;font-size:15px}.info-line p{margin:0;color:#888;overflow-wrap:anywhere}
 .chat-messages{padding:12px 12px 20px}.message-row{gap:10px;margin-bottom:16px}.message-bubble{padding:9px 12px;line-height:1.45;font-size:17px;border-radius:4px;min-height:40px}
-.message-date{color:#b2b2b2;font-size:12px;line-height:1.5;margin:12px 0 20px}
+.system-message,.message-date{color:#b2b2b2;font-size:12px;line-height:1.5;margin:12px 0 20px}
 .message-quote{background:#dedede;color:#888;font-size:12px;line-height:1.45;border-radius:3px;padding:6px 8px;margin-top:5px;overflow-wrap:anywhere;max-width:100%}
 .voice-message{min-width:95px;gap:8px}.voice-message .icon{width:22px;height:22px}.voice-mine{flex-direction:row-reverse}
 .demo-notice{font-size:11px;color:#aaa;margin:4px 10px 20px}

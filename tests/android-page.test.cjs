@@ -28,9 +28,9 @@ function fixture(options={}){
   let checkpoint={route,stack:[{name:'chats'}],drafts:[{roleId:'one',text:'未发送草稿'}],chats:[{roleId:'one',name:'好友一',top:144,bottom:false,anchor:'old-message',offset:-12,limit:240,messages:[{id:'old-message',sender:'assistant',content:'已经读过的文字'}]}]};
   const timers=new Map();let sequence=0;
   const Clock=options.now?class extends Date {static now(){return options.now;}}:Date;
-  const context={window,document,navigator:{userAgent:options.web?'Chrome/120':'Chrome/120 PipiPhoneAndroid/1.0'},location:{href:'http://isolated.test'},localStorage:{getItem:key=>storage.get(key)||null,removeItem:key=>storage.delete(key),setItem:(key,value)=>{if(options.full)throw Error('quota');storage.set(key,value);}},console:{warn(){},error(){}},setTimeout:fn=>{timers.set(++sequence,fn);return sequence;},requestAnimationFrame:fn=>{timers.set(++sequence,fn);return sequence;},clearTimeout:id=>timers.delete(id),Intl,Date:Clock,Map,Set};
+  const context={window,document,fetch:options.fetch,navigator:{userAgent:options.web?'Chrome/120':'Chrome/120 PipiPhoneAndroid/1.0'},location:{href:'http://isolated.test'},localStorage:{getItem:key=>storage.get(key)||null,removeItem:key=>storage.delete(key),setItem:(key,value)=>{if(options.full)throw Error('quota');storage.set(key,value);}},console:{warn(){},error(){}},setTimeout:fn=>{timers.set(++sequence,fn);return sequence;},requestAnimationFrame:fn=>{timers.set(++sequence,fn);return sequence;},clearTimeout:id=>timers.delete(id),Intl,Date:Clock,Map,Set};
   vm.runInNewContext(source,context);const api=window.PipiAndroidPage;
-  const adapter={ready:()=>ready,clear:()=>clears++,capture:()=>checkpoint,warn:message=>warnings.push(message),retry:()=>retries++,route:()=>route,
+  const adapter={restorePickedFile:options.restorePickedFile,ready:()=>ready,clear:()=>clears++,capture:()=>checkpoint,warn:message=>warnings.push(message),retry:()=>retries++,route:()=>route,
     visibleChat:roleId=>!covered&&route.name==='chat'&&route.arg===roleId,canBack:()=>canBack,back:()=>backs++,previous:()=>({name:'chats',arg:null}),previewTarget:()=>view,previewPage:()=>new Element(),
     openChat:roleId=>{if(!openAllowed)return false;messages.push(roleId);route={name:'chat',arg:roleId};return true;}};if(api)api.connect(adapter);else window.PipiChatNotice.connect(adapter);
   return {api,prompts,notices:window.PipiChatNotice,covered:value=>covered=value,openAllowed:value=>openAllowed=value,storage,document,view,shell,messages,warnings,events,get backs(){return backs;},get clears(){return clears;},get retries(){return retries;},
@@ -173,4 +173,28 @@ test('authenticated App session uses the token scoped resume bridge only when th
   const old=fixture({token:'native-page-token'});old.api.beginSession(scope);assert.deepEqual(old.prompts,[]);
   const invalid=fixture({sessionResume:true,token:'native-page-token'});invalid.api.beginSession('invalid');assert.deepEqual(invalid.prompts,[]);
   const missing=fixture({sessionResume:true});missing.api.beginSession(scope);assert.deepEqual(missing.prompts,[]);
+});
+
+test('a recovered Android photo waits for the restored chat, then enters the existing uploader exactly once',async()=>{
+  const path='/__android/picked-photo/339319c9-69fa-457a-b1e5-99c178bd115a.photo',blob=new Blob(['fixture']),fetched=[],uploads=[];
+  const f=fixture({fetch:async url=>{fetched.push(url);return {ok:true,blob:async()=>blob};},restorePickedFile:file=>uploads.push(file)});
+  f.api.beginSession(scope);
+  assert.equal(f.api.receivePickedPhoto(scope,'one',path),true);
+  assert.deepEqual(fetched,[]);
+  f.api.ready();f.api.ready();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(fetched,[path]);assert.deepEqual(uploads,[blob]);
+});
+
+test('an Android photo cannot follow another chat, login or origin',async()=>{
+  const path='/__android/picked-photo/339319c9-69fa-457a-b1e5-99c178bd115a.photo';
+  let fetched=0,uploads=0,release;
+  const f=fixture({fetch:async()=>{fetched++;return {ok:true,blob:()=>new Promise(resolve=>{release=resolve;})};},restorePickedFile:()=>uploads++});
+  f.api.beginSession(scope);f.api.ready();
+  assert.equal(f.api.receivePickedPhoto(scope,'one','https://other.example'+path),false);
+  f.api.receivePickedPhoto('b'.repeat(64),'one',path);f.api.receivePickedPhoto(scope,'two',path);
+  assert.equal(fetched,0);
+  f.api.receivePickedPhoto(scope,'one',path);await new Promise(resolve=>setImmediate(resolve));
+  f.route({name:'chat',arg:'two'});release(new Blob(['fixture']));await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(uploads,0);assert.equal(f.warnings.length,3);
 });

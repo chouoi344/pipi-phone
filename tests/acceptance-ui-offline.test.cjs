@@ -43,9 +43,14 @@ for(const gender of ['male','female'])test('gender page selects and saves '+gend
   const selected=gender==='male'?'female':'male';await page.submit({isConnected:true,values:{gender:selected}});assert.equal(f.calls[0].type,'profile.save');assert.equal(f.calls[0].payload.gender,selected);
 });
 test('search results have cancel and drill-down links without a main-tab frame',()=>{
-  const scope=vm.createContext({});vm.runInContext(`let globalSearchTerm='Alice';const state={roles:[{id:'alice',name:'Alice',hidden:true}],messages:[{id:'old',roleId:'alice',content:'Alice hello',createdAt:1}]},icons={search:''};
+  const area={isConnected:true,innerHTML:''};
+  const scope=vm.createContext({area,view:{querySelector:()=>area},addEventListener(){},navigator:{onLine:false},URLSearchParams,clearTimeout});
+  vm.runInContext('globalThis.window=globalThis',scope);
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../public/history-search.js'),'utf8'),scope);
+  vm.runInContext(`const route={name:'global-search'};let globalSearchTerm='Alice';const state={roles:[{id:'alice',name:'Alice',hidden:true}],messages:[{id:'old',roleId:'alice',content:'Alice hello',createdAt:1}]},icons={search:''};
     function roleById(id){return state.roles.find(r=>r.id===id);}function roleName(r){return r.name;}function esc(x){return x;}function avatar(){return '';}function richText(x){return x;}function preview(m){return m.content;}function shortTime(){return '';}
-    ${productFunction('renderGlobalSearch')}globalThis.render=renderGlobalSearch;`,scope);
+    ${productFunction('renderGlobalSearch')}${productFunction('loadedSearchMessages')}${productFunction('bindHistorySearch')}
+    globalThis.render=()=>{bindHistorySearch();return renderGlobalSearch()+area.innerHTML;};`,scope);
   const html=scope.render();assert.match(html,/data-action="cancel-global-search"/);assert.match(html,/data-nav="role" data-arg="alice"/);assert.match(html,/data-global-message="old"/);assert.doesNotMatch(html,/bottom-tabs|top-nav|new-menu/);
 });
 test('settings and role manager no longer expose removed search or proactive controls',()=>{

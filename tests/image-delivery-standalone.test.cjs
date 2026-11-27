@@ -95,12 +95,12 @@ test('a similar new sentence is preserved rather than semantically deduplicated'
   const answer='胆子越来越大了，刚才还在喊绝交，你现在就理直气壮点菜了？';
   const f=await fixture(t,{waitingText:screenshotWaiting,answer,continueAfterImage:true,segments:false});assert.deepEqual(f.replies,[screenshotWaiting,'image',answer]);
 });
-test('no image action preserves standalone photo labels and the whole screenshot text',async t=>{
-  const answer=screenshotAnswer+'\n（图片）';const f=await fixture(t,{photo:false,answer,segments:false});assert.deepEqual(f.replies,[answer]);
+test('no image action preserves natural dialogue while dropping an isolated photo label',async t=>{
+  const answer=screenshotAnswer+'\n（图片）';const f=await fixture(t,{photo:false,answer,segments:false});assert.deepEqual(f.replies,[screenshotAnswer]);
 });
 test('failed generation preserves repeated waiting words and photo-label discussion in its actual final reply',async t=>{
   const answer='等着。\n（图片）要求提得挺顺口。\n（图片）';
-  const f=await fixture(t,{waitingText:screenshotWaiting,answer:'',failureAnswer:answer,failImage:true,segments:false});assert.deepEqual(f.replies,[screenshotWaiting,answer]);assert.equal(f.state.messages.filter(m=>m.type==='image').length,0);
+  const f=await fixture(t,{waitingText:screenshotWaiting,answer:'',failureAnswer:answer,failImage:true,segments:false});assert.deepEqual(f.replies,[screenshotWaiting,'等着。\n（图片）要求提得挺顺口。']);assert.equal(f.state.messages.filter(m=>m.type==='image').length,0);
 });
 test('waiting text from an earlier turn is not a deduplication source for this new photo',async t=>{
   const f=await fixture(t,{previousWaiting:screenshotWaiting,waitingText:'这次我换个角度。',answer:screenshotWaiting,continueAfterImage:true,segments:false});assert.deepEqual(f.replies,[screenshotWaiting,'这次我换个角度。','image',screenshotWaiting]);

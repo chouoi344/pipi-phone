@@ -38,7 +38,7 @@ test('F5: session drafts restore only existing friends and survive a disconnecte
  f.persistChatDrafts();f.state=null;f.persistChatDrafts();assert.ok(saved.get('pipi.chat-drafts'));f.state={};f.drafts.clear();f.composeText='';f.quoteId='';f.restoreChatDrafts();assert.equal(f.composeText,'当前草稿');assert.equal(f.quoteId,'q1');assert.equal(f.drafts.get('b').text,'另一个好友');
 });
 
-function sendFixture(api){const ready=section(app,'  function canSendComposerDraft(','  function syncComposerControls(');const f=context(ready+section(app,'  async function sendMessage(','  async function retryMessage('),{sending:false,imageVariants:false,composeImageMeta:null,composeComposing:false,recordingSession:null,composeText:'失败文字',composeImage:'',composeStickerId:'',quoteId:'',composerSelection:{start:0,end:0},panel:'',route:{name:'chat',arg:'a'},roleById:()=>({id:'a'}),quotedMessage:()=>null,failedSends:new Map(),drafts:new Map(),composerHistories:new Map(),chatScrolls:new Map(),window:{PipiEngine:{resetActivity(){}}},updateComposer(){},api,receiveState(){},toast(){},refresh(){},persistChatDrafts(){},rememberComposerEdit(){},syncComposerDraft(){},view:{querySelector:()=>null},document:{activeElement:null},uploadImageData:async image=>image});return f;}
+function sendFixture(api){const ready=section(app,'  function canSendComposerDraft(','  function syncComposerControls(');const f=context(ready+section(app,'  async function sendMessage(','  async function retryMessage('),{sending:false,imageVariants:false,composeImageMeta:null,composeComposing:false,recordingSession:null,composeText:'失败文字',composeImage:'',composeStickerId:'',quoteId:'',composerSelection:{start:0,end:0},panel:'',route:{name:'chat',arg:'a'},roleById:()=>({id:'a'}),quotedMessage:()=>null,pendingSends:new Map(),pendingStickers:new Set(),failedSends:new Map(),drafts:new Map(),composerHistories:new Map(),chatScrolls:new Map(),window:{PipiEngine:{resetActivity(){}}},updateComposer(){},api,receiveState(){},toast(){},refresh(){},persistChatDrafts(){},rememberComposerEdit(){},syncComposerDraft(){},view:{querySelector:()=>null},document:{activeElement:null},uploadImageData:async image=>image});return f;}
 
 test('F6: a lost response restores before newer input and retry reuses its request ID',async()=>{
  const calls=[];let reject;const f=sendFixture((route,body)=>{calls.push(body);return calls.length===1?new Promise((_,r)=>reject=r):Promise.resolve({state:{}});});
@@ -85,4 +85,26 @@ test('F20: a payment under an active child dialog waits until that dialog closes
 
 test('F23: a new installation without saved scheduler overrides keeps the one-hour default',()=>{
  const source=read('reminder-ui.js');let html;const sentinel=new Error('captured');const scope=context(section(source,'  function openEditor','  function bind(roleId)'),{P:()=>({getState:()=>({settings:{modules:{}}}),openModal:(_,body)=>{html=body;throw sentinel;}}),localParts:()=>({year:'2026',month:'11',day:'20',hour:'12',minute:'00'}),esc:escape,scheduleTypes:{once:'仅一次'},weekdays:['周日'],timezone:()=> 'Asia/Shanghai'});assert.throws(()=>scope.openEditor('a'),e=>e===sentinel);assert.match(html,/name="hours"[^>]+value="1"[^>]+min="1"/);
+});
+
+test('double submit while the first delivery is pending keeps just one request and the typed draft',async()=>{
+ const calls=[];let finish;const f=sendFixture((path,body)=>{calls.push(body);return new Promise(resolve=>finish=resolve);});
+ const first=f.sendMessage();for(let n=0;n<5;n++){f.composeText='失败文字';await f.sendMessage();}assert.equal(calls.length,1);assert.equal(f.composeText,'失败文字');assert.equal(f.pendingSends.size,1);
+ finish({state:{}});await first;assert.equal(f.pendingSends.size,0);
+});
+test('a rejected chat response carrying state restores the draft and reuses its send ID',async()=>{
+ const calls=[];const f=sendFixture(async(path,body)=>{calls.push(body);if(calls.length===1)throw Object.assign(new Error('未送达'),{state:{}});return {state:{}};});
+ await f.sendMessage();assert.equal(f.composeText,'失败文字');await f.sendMessage();assert.equal(calls[0].requestId,calls[1].requestId);
+});
+
+test('retry only locks the failed message and leaves the composer and other retries available',async()=>{
+ const pending=[],calls=[],buttons=new Map(['first','second'].map(id=>[id,{setAttribute(){}}]));
+ const f=context(section(app,'  async function retryMessage(','  function measureSafeInsets('),{
+   state:{messages:[{id:'first',type:'text'},{id:'second',type:'text'}]},CSS:{escape:id=>id},retryingMessages:new Set(),
+   view:{querySelector:selector=>buttons.get(selector.split('"')[1])},api:async(_,body)=>{calls.push(body.messageId);return new Promise(r=>pending.push(()=>r({state:{}})));},receiveState(){}
+ });
+ const first=f.retryMessage('first'),second=f.retryMessage('second');await f.retryMessage('first');
+ assert.deepEqual(calls,['first','second']);assert.equal(buttons.get('first').disabled,true);assert.equal(buttons.get('second').disabled,true);
+ pending[0]();await first;assert.equal(buttons.get('first').disabled,false);assert.equal(buttons.get('second').disabled,true);
+ pending[1]();await second;assert.equal(f.retryingMessages.size,0);
 });

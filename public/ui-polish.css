@@ -976,10 +976,10 @@ html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="setting
   font-weight: 500;
 }
 
-/* Waterdrop Chat: Pure Crystal Incoming + Luminous Mint-Dew Outgoing Bubbles */
+/* Waterdrop Chat: Pure Crystal Incoming and Outgoing Bubbles */
 html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] {
   --waterdrop-glass: linear-gradient(162deg, rgba(255, 255, 255, 0.56) 0%, rgba(255, 255, 255, 0.28) 48%, rgba(255, 255, 255, 0.46) 100%);
-  --waterdrop-glass-self: linear-gradient(156deg, rgba(216, 252, 234, 0.72) 0%, rgba(198, 248, 224, 0.48) 54%, rgba(232, 254, 244, 0.66) 100%);
+  --waterdrop-glass-self: linear-gradient(162deg, rgba(255, 255, 255, 0.56) 0%, rgba(255, 255, 255, 0.28) 48%, rgba(255, 255, 255, 0.46) 100%);
   --waterdrop-glass-shadow:
     inset 0 1.5px 1.5px rgba(255, 255, 255, 0.96),
     inset 1.5px 0 2.5px rgba(255, 255, 255, 0.56),
@@ -990,7 +990,7 @@ html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] 
 }
 html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"].has-custom-wallpaper {
   --waterdrop-glass: linear-gradient(162deg, rgba(255, 255, 255, 0.84) 0%, rgba(255, 255, 255, 0.72) 52%, rgba(255, 255, 255, 0.82) 100%);
-  --waterdrop-glass-self: linear-gradient(156deg, rgba(224, 252, 238, 0.88) 0%, rgba(210, 249, 230, 0.76) 54%, rgba(234, 254, 244, 0.86) 100%);
+  --waterdrop-glass-self: linear-gradient(162deg, rgba(255, 255, 255, 0.84) 0%, rgba(255, 255, 255, 0.72) 52%, rgba(255, 255, 255, 0.82) 100%);
 }
 html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"] .chat-messages .payment-card.message-transfer {
   border-radius: 22px;
@@ -1123,7 +1123,7 @@ html[data-skin="waterdrop"] body.wechat-classic #overlay > .page-editor.wallet-o
 }
 
 /* ==========================================================================
-   7. GLOBAL TYPOGRAPHY & FONT-ICON OPTICAL HARMONY (Free OFL Inter + Noto Sans SC)
+   7. GLOBAL TYPOGRAPHY & FONT-ICON OPTICAL HARMONY
    ========================================================================== */
 html,
 body,
@@ -1134,13 +1134,11 @@ html[data-skin="waterdrop"] body.wechat-classic,
 html[data-skin="waterdrop"] .phone-shell,
 html[data-skin="waterdrop"] :is(#view, .navigation-snapshot)[data-route="chat"],
 body.wechat-classic :is(#view, .navigation-snapshot)[data-route="chat"] {
-  --ui-font: -apple-system, "PingFang SC", "Inter", "Noto Sans SC", "Hiragino Sans GB", sans-serif;
   font-family: var(--ui-font);
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-feature-settings: "cv02" 1, "cv03" 1, "cv04" 1, "cv11" 1;
 }
 
 body.wechat-classic .message-bubble,
@@ -1176,6 +1174,9 @@ body.wechat-classic .alert-dialog p {
 .wallet-balance,
 .wallet-detail-amount,
 .usage-total,
+.payment-transfer .payment-title,
+.pay-amount-text,
+[data-model-pref] .preference-value,
 .payment-amount,
 .payment-receipt-amount {
   font-variant-numeric: tabular-nums;

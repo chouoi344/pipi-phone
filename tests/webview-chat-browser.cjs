@@ -47,6 +47,7 @@ async function exerciseVoiceOverlay(page, {width, tap, capture}) {
     return {commands, restore() { meta.remove(); window.prompt = prompt; }};
   });
   await tap('[data-action=toggle-voice]');
+  await page.waitForSelector('#view #compose-text', {hidden: true});
   const center = async selector => {
     const {x, y, width, height} = await (await page.$(selector)).boundingBox();
     return {x: x + width / 2, y: y + height / 2};
@@ -91,6 +92,7 @@ async function exerciseVoiceOverlay(page, {width, tap, capture}) {
   assert.deepEqual(await fixture.evaluate(f => f.commands), ['start', 'cancel'], 'lifting over cancel discards the recording');
   await fixture.dispose();
   await tap('[data-action=toggle-voice]');
+  await page.waitForSelector('#view #compose-text', {visible: true});
 }
 
 async function exerciseDraftRedraw(page, {skin, timing, width, tap, visible}) {

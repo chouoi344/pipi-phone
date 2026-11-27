@@ -53,7 +53,7 @@ async function main(){
     await chats.waitFor();
     const beforeData=await browserData();
     await chats.click();await page.locator('[data-message]').filter({hasText:message}).first().waitFor();
-    await page.goto(origin);await goAbout();
+    await goAbout();
     const status=page.locator('.software-update-status');
     await status.filter({hasText:'更新完成'}).waitFor();assert.equal(await page.locator('.about-logo p').innerText(),'v'+old);
     await fs.writeFile(path.join(shared,'feed'),next);
@@ -69,13 +69,27 @@ async function main(){
     await page.locator('body').waitFor();await page.waitForFunction(()=>!document.querySelector('#auth-form')&&document.querySelector('#view [data-nav=me],#view [data-update-entry],#view [data-action=about]'));
     assert.equal(new URL(page.url()).origin,origin);
     const afterData=await browserData();assert.deepEqual(afterData,beforeData);
-    await page.goto(origin);await goAbout();await status.filter({hasText:'更新完成'}).waitFor();assert.equal(await page.locator('.about-logo p').innerText(),'v'+next);
-    await page.goto(origin);
+    await goAbout();await status.filter({hasText:'更新完成'}).waitFor();assert.equal(await page.locator('.about-logo p').innerText(),'v'+next);
+    await returnToTabs();
     await page.locator('[data-nav=contacts]').click();await page.getByText(contact,{exact:true}).first().waitFor();
     await page.locator('[data-nav=chats]').click();await chats.click();await page.locator('[data-message]').filter({hasText:message}).first().waitFor();
     assert.deepEqual(pageErrors,[]);
     console.log(JSON.stringify({result:'passed',via:'normal web buttons and original v0.14.3 host updater',imageSource:'runner loopback registry pinned by digest',old, next, retained:['address','authenticated session','profile','contact ID and name','message ID and content','original named Docker volume'],beforeContainer:before.Id,afterContainer:after.Id,oldImage:before.Image,newImage:after.Image,job:finished.phase,errors:pageErrors}));
-    async function goAbout(){await page.locator('[data-nav=me]').click();await page.locator('[data-action=settings]').click();await page.locator('[data-action=about]').click();await page.locator('[data-update-entry] > summary').click();}
+    async function returnToTabs(){
+      while(!await page.locator('#view .bottom-tabs').isVisible()){
+        const route=await page.locator('#view').getAttribute('data-route');
+        await page.locator('#view [data-action=back]').first().click();
+        await page.waitForFunction(old=>document.querySelector('#view')?.dataset.route!==old,route);
+      }
+    }
+    async function goAbout(){
+      if(!await page.locator('#view[data-route=about]').isVisible()){
+        await returnToTabs();
+        await page.locator('#view [data-nav=me]').click();await page.locator('#view [data-action=settings]').click();await page.locator('#view [data-action=about]').click();
+      }
+      const entry=page.locator('#view [data-update-entry]');await entry.waitFor();
+      if(!await entry.evaluate(el=>el.open))await entry.locator('summary').click();
+    }
     async function browserData(){
       const snapshot=await page.evaluate(async({contact,message})=>{
         const [status,state]=await Promise.all(['/api/status','/api/state'].map(async u=>(await fetch(u,{cache:'no-store'})).json()));

@@ -60,7 +60,6 @@ jobs:
             gh release download android-v0.1.21 --repo "$GITHUB_REPOSITORY" --pattern pipi-phone-android-0.1.21-23.apk --output "$RUNNER_TEMP/official.apk"
             echo 'd8f09b861f83809091913d1338aa668c2c0725081fd7f03f6f9d8cfd66e7121f  '"$RUNNER_TEMP/official.apk" | sha256sum -c -
             echo "GATE_APK_PATH=$RUNNER_TEMP/official.apk" >> "$GITHUB_ENV"
-            echo "ADB_PATH=$(command -v adb)" >> "$GITHUB_ENV"
           fi
       - name: Build candidate only in the runner's isolated registry
         run: |

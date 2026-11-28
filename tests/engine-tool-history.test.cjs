@@ -12,12 +12,12 @@ function fixture(){
   const opts={getState:()=>structuredClone(state),mutate:fn=>{const next=structuredClone(state),value=fn(next);state=next;return {value};},roleId,
     modelApi:{resolve:()=>config,call:async(s,r)=>{const messages=await r.prepareMessages(config,r.messages);requests.push(structuredClone(messages));return {message:{content:'后续回答'},model:config,modelId:config.id};}}};
   function user(text,role=roleId){return S.message(state,S.role(state,role),'user',text);}
-  async function act(execute){
+  async function act(execute,{content=null}={}){
     const target=user('执行一件事'),run=E.start(state,{id:S.id(),roleId});run.targetId=target.id;
     const previous=opts.modelApi.call;let count=0;
     opts.modelApi.call=async(s,r)=>{
       const messages=await r.prepareMessages(config,r.messages);requests.push(structuredClone(messages));
-      return {message:count++?{content:'已办好'}:{content:null,tool_calls:[call]},model:config,modelId:config.id};
+      return {message:count++?{content:'已办好'}:{content,tool_calls:[call]},model:config,modelId:config.id};
     };
     try{
       await P.run({...opts,targetId:target.id,executionId:run.id,tools:[tool],executeTool:(name,args,ctx)=>E.execute(name,args,{...ctx,executionId:run.id},execute||((n,a,c)=>c.mutate(()=>({done:'已完成的事'})).value))});
@@ -39,6 +39,30 @@ test('下一轮收到持久化的完整工具调用和结果，网页状态不�
   assert.equal(sent.find(m=>m.role==='tool').tool_call_id,call.id);
   assert.ok(sent.findIndex(m=>m.tool_calls)<sent.findIndex(m=>m.content?.includes('刚才办好了吗')));
   assert.equal(S.publicState(f.state()).engine.data.execution,undefined);
+});
+
+for(const [name,content] of [
+  ['完整','我来处理。<system_reminder>本轮隔离提醒</system_reminder>'],
+  ['未闭合','我来处理。<system_reminder>本轮隔离提醒']
+])test(name+'本轮提醒回显不进入工具历史、备份或后续请求，动作和签名保持原样',async()=>{
+  const f=fixture();let effects=0;
+  const {target}=await f.act((name,args,ctx)=>ctx.mutate(()=>{effects++;return {done:'已完成的事'};}).value,{content});
+  const saved=f.state().engine.data.execution.history[target.id].blocks[0];
+  assert.equal(saved.assistant.content,'我来处理。');
+  assert.deepEqual(saved.assistant.tool_calls,[call]);
+  assert.equal(effects,1);
+  const followup=f.requests.at(-1).find(message=>message.tool_calls);
+  assert.equal(followup.content,'我来处理。');assert.deepEqual(followup.tool_calls,[call]);
+  const backup=JSON.parse(JSON.stringify({format:'pipi-phone',version:1,state:S.backupState(f.state())}));
+  assert.doesNotMatch(JSON.stringify(backup),/system_reminder|本轮隔离提醒/);
+  f.replace(S.validateBackup(backup,f.state()));
+  await P.run({...f.opts,targetId:f.user('刚才办好了吗？').id});
+  const sent=f.requests.at(-1),history=sent.find(message=>message.tool_calls);
+  assert.equal(history.content,'我来处理。');assert.deepEqual(history.tool_calls,[call]);
+  assert.equal(sent.find(message=>message.role==='tool').content,'{"done":"已完成的事"}');
+  assert.doesNotMatch(JSON.stringify(sent.filter(message=>message.role==='assistant'||message.role==='tool')),/system_reminder/);
+  assert.doesNotMatch(JSON.stringify(sent),/本轮隔离提醒/);
+  assert.equal(effects,1);
 });
 
 test('工具历史按好友隔离，按轮数裁剪时调用和结果一起退出',async()=>{

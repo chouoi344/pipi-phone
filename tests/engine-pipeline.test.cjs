@@ -345,10 +345,11 @@ test('整理模型自身容量不足时记录失败并截断历史，不发送�
 });
 
 test('自动识别容量在首轮压缩、整理预算和实际聊天请求中一致生效',async t=>{
+  // 留出新版固定规则的容量；旧历史仍超过预算，继续验证整轮裁剪。
   const Models=require('../lib/engine/models.cjs'),Providers=require('../lib/providers.cjs');
   t.mock.method(globalThis,'fetch',async url=>{
     assert.equal(url,'https://models.dev/api.json');
-    return {ok:true,json:async()=>({isolated:{models:{chat:{id:'auto-pipeline-chat',limit:{context:650}},summary:{id:'auto-pipeline-summary',limit:{context:300}}}}})};
+    return {ok:true,json:async()=>({isolated:{models:{chat:{id:'auto-pipeline-chat',limit:{context:1500}},summary:{id:'auto-pipeline-summary',limit:{context:300}}}}})};
   });
   const requests=[];
   t.mock.method(Providers,'request',async(config,path,{body})=>{
@@ -359,8 +360,8 @@ test('自动识别容量在首轮压缩、整理预算和实际聊天请求中�
   state.settings.ai.assign.compress='summary';state.settings.ai.assign.chatFallbacks=[];
   const savedModels=structuredClone(state.settings.ai.models);
   assert.equal(await P.run({...f.opts,modelApi:Models}),'已回复');
-  assert.equal(requests.length,1);assert.equal(requests[0].config.maxContextTokens,650);assert.equal(requests[0].config.capacity.source,'metadata');
-  assert.ok(P.estimate(requests[0].body.messages)<=650*R.values(state,'compression').triggerRatio);
+  assert.equal(requests.length,1);assert.equal(requests[0].config.maxContextTokens,1500);assert.equal(requests[0].config.capacity.source,'metadata');
+  assert.ok(P.estimate(requests[0].body.messages)<=1500*R.values(state,'compression').triggerRatio);
   assert.ok(JSON.stringify(requests[0].body.messages).includes('当前问题'));assert.ok(!JSON.stringify(requests[0].body.messages).includes('旧答'));
   assert.match(state.engine.data.compression.lastError.message,/对话容量/);assert.equal(state.engine.summaries.r,undefined);
   assert.deepEqual(state.settings.ai.models,savedModels);
@@ -448,13 +449,14 @@ test('切到裁剪从原文取历史，切回总结恢复原摘要与覆盖边�
 });
 
 test('裁剪方式在备用预算保留最新连发、系统设定和完整工具历史',async()=>{
+  // 留出新版固定规则的容量；旧历史仍超过预算，继续验证整轮裁剪。
   const f=fixture({capabilities:['text','tool_use'],messages:[m('1','user','旧问'.repeat(500)),m('2','assistant','旧答'.repeat(500)),m('3','user','最新甲'),m('4','user','最新乙')]});
   R.apply(f.state(),'compression',{strategy:'truncate'});
   const messages=structuredClone(f.state().messages),prepared=[];
   f.api.resolve=(state,purpose)=>{assert.notEqual(purpose,'compress');return f.config;};
   f.api.call=async(state,request)=>{
     assert.equal(request.purpose,'chat');
-    const config={...f.config,id:'small',maxContextTokens:650};
+    const config={...f.config,id:'small',maxContextTokens:1500};
     prepared.push(await request.prepareMessages(config,request.messages));
     return {message:prepared.length===1?{content:'',tool_calls:[toolCall('truncate-tool')]}:{content:'完成'},model:config,modelId:config.id};
   };
@@ -463,7 +465,7 @@ test('裁剪方式在备用预算保留最新连发、系统设定和完整工�
     const body=JSON.stringify(sent);
     assert.ok(!body.includes('旧问'));assert.ok(!body.includes('旧答'));
     for(const text of ['最新甲','最新乙','角色设定：只知道甲','当前时间：'])assert.ok(body.includes(text));
-    assert.ok(P.estimate(sent)<=650*R.values(f.state(),'compression').triggerRatio);
+    assert.ok(P.estimate(sent)<=1500*R.values(f.state(),'compression').triggerRatio);
   }
   const second=prepared[1];assert.equal(second.find(m=>m.role==='tool').content,'裁剪动作结果');
   assert.equal(second.find(m=>m.tool_calls).tool_calls[0].extra_content.google.thought_signature,'preserved');
@@ -483,4 +485,80 @@ test('本轮动作之后切换到纯文字模型，只发送一句自然的动�
   assert.ok(prepared.some(m=>m.role==='system'&&m.content.includes('本轮已经处理的动作：已拍了拍对方。')));
   assert.ok(!prepared.some(m=>m.role==='tool'||m.tool_calls));
   assert.doesNotMatch(JSON.stringify(prepared),/pat_user|internal-message/);
+});
+
+
+test('普通回复的本轮提醒使用末尾 user，时间和回复要求不进入 system',async()=>{
+  const f=fixture({messages:[m('1','user','心情不好')]});
+  await P.run({...f.opts,replyGuidance:true});
+  const sent=f.requests[0].messages,reminder=sent.at(-1);
+  assert.equal(reminder.role,'user');assert.ok(reminder.content.startsWith('<system_reminder>\n'));
+  assert.ok(reminder.content.includes('当前时间：2026-11-15 星期日 17:00'));
+  assert.ok(reminder.content.includes(P.REPLY_GUIDANCE));assert.ok(reminder.content.endsWith('</system_reminder>'));
+  assert.ok(sent.filter(x=>x.role==='system').every(x=>!x.content.includes('当前时间：')&&!x.content.includes('【回复要求】')));
+  assert.equal(sent.at(-2).content,'心情不好');
+});
+
+test('默认及带 instruction 的请求保留本轮背景，但不带普通回复指导',async()=>{
+  for(const instruction of ['', '提醒对方今天的约定']){
+    const f=fixture({messages:[m('1','user','你好')]});await P.run({...f.opts,instruction});
+    const sent=f.requests[0].messages;
+    assert.equal(sent.at(-1).role,'user');assert.ok(sent.at(-1).content.startsWith('<system_reminder>'));
+    assert.ok(sent.at(-1).content.includes('当前时间：'));assert.ok(!sent.at(-1).content.includes('【回复要求】'));
+    if(instruction)assert.deepEqual(sent.at(-2),{role:'user',content:instruction});
+  }
+});
+
+test('组装钩子的 turnNotes 只进入本轮提醒',async()=>{
+  const module={id:'turn-notes-test',name:'临时背景测试',description:'',settings:[],hooks:{afterAssemble(ctx){ctx.turnNotes.push('TURN_NOTE_X');}},tools:[],jobs:[],data:'turn-notes-test',page:null};
+  R.modules.push(module);
+  try{
+    const f=fixture();await P.run({...f.opts,replyGuidance:true});const sent=f.requests[0].messages;
+    assert.ok(sent.at(-1).content.includes('TURN_NOTE_X'));assert.ok(!sent[0].content.includes('TURN_NOTE_X'));
+    assert.ok(sent.at(-1).content.indexOf('TURN_NOTE_X')<sent.at(-1).content.indexOf('【回复要求】'));
+  }finally{R.modules.pop();}
+});
+
+test('本轮提醒不会写入聊天、摘要和备份',async()=>{
+  const S=require('../lib/state.cjs'),f=fixture({messages:[m('1','user','你好')]});
+  const initial=S.initial(),state=f.state();Object.assign(state,{...initial,...state,settings:{...initial.settings,...state.settings},wallet:{...initial.wallet,...state.wallet}});
+  const before=structuredClone(state.messages);await P.run({...f.opts,replyGuidance:true});
+  assert.deepEqual(f.state().messages,before);
+  for(const value of [f.state().messages,f.state().engine,S.backupState(f.state())])assert.doesNotMatch(JSON.stringify(value),/system_reminder|回复要求/);
+});
+
+test('工具循环只追加一次本轮提醒，后续工具消息保持在提醒之后',async()=>{
+  const f=fixture({capabilities:['text','tool_use'],messages:[m('1','user','做件事')]});let calls=0;
+  f.api.call=async(s,r)=>{f.requests.push(structuredClone({messages:r.messages}));return {message:calls++?{content:'做好了。'}:{role:'assistant',content:null,tool_calls:[toolCall('turn-note-tool')]},model:f.config,modelId:'chat'};};
+  await P.run({...f.opts,replyGuidance:true,tools:[toolDefinition],executeTool:async()=>({ok:true})});
+  assert.equal(f.requests.length,2);
+  for(const request of f.requests)assert.equal(request.messages.filter(x=>x.role==='user'&&x.content.startsWith('<system_reminder>')).length,1);
+  const sent=f.requests[1].messages,index=sent.findIndex(x=>x.role==='user'&&x.content.startsWith('<system_reminder>'));
+  assert.ok(index<sent.findIndex(x=>x.tool_calls));assert.ok(index<sent.findIndex(x=>x.role==='tool'));
+});
+
+test('summary 和 truncate 压缩之后仍保留唯一末尾提醒，摘要输入不含临时背景',async()=>{
+  for(const strategy of ['summary','truncate']){
+    const messages=[];for(let i=1;i<=8;i++)messages.push(m(String(i*2-1),'user','旧事'.repeat(150)),m(String(i*2),'assistant','旧答'.repeat(150)));
+    messages.push(m('17','user','当前问题'));
+    const f=fixture({capacity:900,messages});R.apply(f.state(),'compression',{strategy});
+    await P.run({...f.opts,replyGuidance:true});
+    const sent=f.requests.at(-1).messages;
+    assert.equal(sent.at(-1).role,'user');assert.ok(sent.at(-1).content.startsWith('<system_reminder>'));
+    assert.equal(sent.filter(x=>x.role==='user'&&x.content.startsWith('<system_reminder>')).length,1);
+    assert.ok(sent.some(x=>x.content==='当前问题'));assert.ok(sent.length<messages.length);
+    if(strategy==='summary'){
+      assert.equal(f.requests[0].purpose,'compress');assert.doesNotMatch(JSON.stringify(f.requests[0].messages),/system_reminder|回复要求/);
+      assert.doesNotMatch(JSON.stringify(f.state().engine.summaries),/system_reminder|回复要求/);
+    }
+  }
+});
+
+test('system 先给背景再给人设和输出规则，最终以人设优先收尾',async()=>{
+  const f=fixture(),system=P.system(f.state(),f.state().roles[0]).content;
+  assert.ok(system.indexOf('你的虚拟零钱余额')<system.indexOf('# 角色设定'));
+  assert.ok(system.indexOf('# 角色设定')<system.indexOf('# 输出要求'));
+  assert.ok(system.includes('角色设定：只知道甲'));assert.ok(system.includes(P.OUTPUT_RULES));
+  assert.ok(!system.includes('多条之间用换行分开'));
+  await P.run(f.opts);assert.ok(f.requests[0].messages[0].content.endsWith(P.CLOSING));
 });

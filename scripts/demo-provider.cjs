@@ -81,7 +81,7 @@ function createDemoProvider({host='127.0.0.1',port=0,appUrl='',password=''}={}){
           const message=pat&&!completed?{role:'assistant',content:null,tool_calls:[{id:'demo-pat-'+event.id,type:'function',function:{name:pat.function.name,arguments:'{}'}}]}:{role:'assistant',content:'[本地模拟响应] 动作已完成。'};
           json(res,200,{id:'local-demo-'+event.id,choices:[{message,finish_reason:message.tool_calls?'tool_calls':'stop'}],usage:{prompt_tokens:31,completion_tokens:12,total_tokens:43}});return;
         }
-        const system=body.messages.find(m=>m.role==='system')?.content||'',last=body.messages.findLast(m=>m.role==='user')?.content;
+        const system=body.messages.find(m=>m.role==='system')?.content||'',last=body.messages.findLast(m=>m.role==='user'&&!(typeof m.content==='string'&&m.content.startsWith('<system_reminder>')))?.content;
         event.hasImage=body.messages.some(m=>Array.isArray(m.content)&&m.content.some(p=>p.type==='image_url'));
         const receipt=system.startsWith('识别账单或小票')||system.startsWith('Extract bookkeeping entries');
         const moment=typeof last==='string'&&last.startsWith('以你的角色身份写一条简短自然的朋友圈动态');

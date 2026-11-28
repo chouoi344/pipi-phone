@@ -36,3 +36,12 @@ test('engine demo provider: existing retry mode still fails its first request an
 test('engine demo provider: invalid scenarios are rejected without replacing an existing queue',async t=>{
   const {provider,chat}=await fixture(t);provider.enqueueResponses([{status:409,body:{marker:'retained'}}]);for(const responses of [[{status:200},{status:999}],null,[{delayMs:-1}],['invalid']])assert.throws(()=>provider.setScenario({mode:'tools',responses}),TypeError);assert.equal(provider.mode,'success');const retained=await chat();assert.equal(retained.status,409);assert.equal(retained.body.marker,'retained');assert.throws(()=>provider.setScenario({mode:'unknown'}),TypeError);
 });
+
+test('engine demo provider: temporary reminders do not replace user text or moment instructions',async t=>{
+  const {chat}=await fixture(t),reminder={role:'user',content:'<system_reminder>当前时间：中午，按人设回复</system_reminder>'};
+  const ordinary=await chat({model:'local-demo-chat',messages:[{role:'user',content:'心情不好'},reminder]});
+  assert.match(ordinary.body.choices[0].message.content,/已收到：心情不好/);
+  assert.doesNotMatch(ordinary.body.choices[0].message.content,/system_reminder/);
+  const moment=await chat({model:'local-demo-chat',messages:[{role:'user',content:'以你的角色身份写一条简短自然的朋友圈动态'},reminder]});
+  assert.match(moment.body.choices[0].message.content,/今天把一件小事慢慢做好了/);
+});

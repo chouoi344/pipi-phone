@@ -102,10 +102,27 @@ test('schedule circadian clamp + night lock + online-only sanitizer + mandatory 
 
   const s=sampleState(),r=s.roles[0];
   R.ensure(s);
-  const ctx={getState:()=>s,role:r,roleId:r.id,messages:[{role:'system',content:'base'}]};
+  const ctx={getState:()=>s,role:r,roleId:r.id,messages:[{role:'system',content:'base'}],turnNotes:[]};
   Schedule.hooks.afterAssemble(ctx);
-  assert.match(ctx.messages[0].content,/<life_rules>/);
-  assert.match(ctx.messages[0].content,/线上聊天/);
+  assert.match(ctx.turnNotes.join('\n'),/<life_rules>/);
+  assert.match(ctx.turnNotes.join('\n'),/线上聊天/);
+  assert.equal(ctx.messages[0].content,'base');
+});
+
+test('life rules keep persona speech and add character life guidance only with life context',()=>{
+  const plain=ScheduleCore.buildOnlineRules();
+  assert.doesNotMatch(plain,/character_life/);
+  assert.match(plain,/正常线上聊天/);
+  assert.match(plain,/怎么说话由人设决定，文字怎么打完全按人设/);
+  assert.match(plain,/所有互动均通过线上聊天、发语音条、发照片与朋友圈完成/);
+  const life=ScheduleCore.buildLifeInjection({nowHm:'12:00',nowLabel:'中午',dayKey:'2026-11-28',currentSlot:{activity:'读书',phone:'glance'},nextSlots:[],outfits:{}});
+  assert.match(life,/<character_life>/);
+  assert.match(life,/character_life 是你此刻真实的生活/);
+  assert.match(life,/「忙碌中偶尔看一眼手机」/);
+  const s=sampleState(),r=s.roles[0];R.ensure(s);Schedule.saveSettings(s,r.id,{injectIntoChat:false});
+  const ctx={getState:()=>s,role:r,roleId:r.id,messages:[{role:'system',content:'base'}],turnNotes:[]};
+  Schedule.hooks.afterAssemble(ctx);
+  assert.deepEqual(ctx.turnNotes,[plain]);assert.equal(ctx.messages[0].content,'base');
 });
 
 test('voice dual-track VOICE_TAGS, strip on text bubbles, 503 history recovery, disk cache, and live failure handoff',async t=>{
@@ -287,12 +304,13 @@ test('outreach (主动信息): 1h hold expiry, 5 triggers, night sleep lock, and
   Outreach.commit(s,r.id,initiated.opts.outreach,{text:'忙完想跟我聊聊吗？',now:fireNow});
   Outreach.errorRelease(s,r.id,initiated.opts.outreach,{now:fireNow});
 
-  // User replies -> clears unanswered and injects waitReplyFacts into next system prompt
+  // User replies -> clears unanswered and injects reply facts into temporary turn notes
   S.message(s,r,'user','我忙完回来啦','text',{status:'pending',createdAt:fireNow+60000});
   await Outreach.hooks.afterReceive({getState:()=>s,mutate,roleId:r.id,now:fireNow+60000});
-  const ctx={getState:()=>s,role:s.roles[0],messages:[{role:'system',content:'sys'}]};
+  const ctx={getState:()=>s,role:s.roles[0],messages:[{role:'system',content:'sys'}],turnNotes:[]};
   await Outreach.hooks.afterAssemble(ctx);
-  assert.match(ctx.messages[0].content,/前情衔接/);
+  assert.match(ctx.turnNotes.join('\n'),/前情衔接/);
+  assert.equal(ctx.messages[0].content,'sys');
 });
 
 test('livingmemory SQLite store, tools, decay immunity, and HTTP 128MB import/export',async t=>{

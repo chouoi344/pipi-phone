@@ -43,7 +43,8 @@ for(const maxTurns of [-1,1000])test('生产Pipeline在token充足、maxTurns='+
   const f=fixture({large:true,maxTurns,capacity:100000000}),before=hash(f.state);
   assert.equal(await Pipeline.run(f.options),'固定协议的测试回复。');assert.equal(f.requests.length,1);
   const sent=f.requests[0],encodedBytes=Buffer.byteLength(JSON.stringify(sent));
-  const history=sent.filter(message=>message.role==='user'||message.role==='assistant');
+  assert.equal(sent.at(-1).role,'user');assert.ok(sent.at(-1).content.startsWith('<system_reminder>'));
+  const history=sent.slice(0,-1).filter(message=>message.role==='user'||message.role==='assistant');
   t.diagnostic(JSON.stringify({maxTurns,encodedBytes,oldLimitBytes:OLD_LIMIT,estimatedTokens:Pipeline.estimate(sent),capacity:f.config.maxContextTokens,retainedHistoryMessages:history.length,originalHistoryMessages:f.state.messages.length,maxMessageCharacters:Math.max(...f.state.messages.map(message=>message.content.length))}));
   assert.equal(hash(f.state),before,'projection must not change authoritative state');assert.equal(f.mutations.length,0);
   assert.ok(Pipeline.estimate(sent)<f.config.maxContextTokens,'fixture must fit the model token capacity');

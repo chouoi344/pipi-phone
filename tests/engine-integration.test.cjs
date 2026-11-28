@@ -3,6 +3,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {randomUUID}=require('node:crypto'),{setTimeout:wait}=require('node:timers/promises');
 const {createApp}=require('../scripts/sample-data.cjs');
+const {BOUNDARY}=require('../lib/engine/pipeline.cjs');
 const KEY='ENGINE_ISOLATED_HTTP_KEY',PASSWORD='Engine-isolated-password_2026!';
 async function fixture(t,respond,{disableAutomaticSchedules=false}={}){
   const old=process.env.ALLOW_PRIVATE_PROVIDERS;process.env.ALLOW_PRIVATE_PROVIDERS='1';
@@ -332,8 +333,22 @@ test('engine HTTP: send returns before generation, burst combines, usage and bac
   const sent=await until(async()=>{const s=await f.read();return ids.every(id=>s.messages.find(m=>m.id===id).status==='sent')&&s.messages.some(m=>m.content==='第二句！')&&s;},'三条合并回复');
   assert.equal(f.requests.length-before,1);assert.equal(sent.messages.filter(m=>m.sender==='assistant'&&m.status==='sent').length,2);
   const payload=JSON.stringify(f.requests.at(-1).body);for(const text of ['一','二','三'])assert.ok(payload.includes(text));
+  const reminder=f.requests.at(-1).body.messages.at(-1);assert.equal(reminder.role,'user');assert.match(reminder.content,/^<system_reminder>/);assert.match(reminder.content,/【回复要求】/);
+  assert.doesNotMatch(JSON.stringify(sent.messages),/system_reminder|【回复要求】/);
+  assert.doesNotMatch(JSON.stringify((await f.request('/api/backup')).body.state.messages),/system_reminder|【回复要求】/);
   const usage=(await f.request('/api/engine/config')).body.usage;assert.equal(usage.length,1);assert.equal(usage[0].count,1);assert.equal(usage[0].inputTokens,10);
   await f.restart();assert.equal((await f.read()).messages.filter(m=>ids.includes(m.id)).length,3);assert.deepEqual((await f.request('/api/engine/config')).body.usage,usage);
+});
+
+test('engine HTTP: instruction reminders keep moment instructions before temporary notes without reply guidance',async t=>{
+  const f=await fixture(t,undefined,{disableAutomaticSchedules:true});
+  const before=(await f.read()).moments.length;
+  assert.equal((await f.request('/api/moments/generate',{roleId:f.roleId})).status,200);
+  await until(async()=>(await f.read()).moments.length>before,'朋友圈指令生成');
+  const messages=f.requests.find(request=>request.body.messages)?.body.messages;
+  assert.ok(messages);assert.match(messages.at(-2).content,/^以你的角色身份写一条简短自然的朋友圈动态/);
+  assert.equal(messages.at(-1).role,'user');assert.match(messages.at(-1).content,/^<system_reminder>/);
+  assert.match(messages.at(-1).content,/当前时间：/);assert.doesNotMatch(messages.at(-1).content,/【回复要求】/);
 });
 
 test('engine events: login required, revisions and typing delivered, logout closes the stream',async t=>{
@@ -500,9 +515,11 @@ test('voice tool uses the friend voice, ends on success and requests a text repl
   assert.ok(syntheses().length>2);
   requestFrom=f.requests.length;
   assert.equal((await send('singleWithText','周六我在书店等你。')).type,'voice');
-  const singleVoiceRequests=f.requests.slice(requestFrom).map(r=>r.body.messages?.at(-1));
-  assert.equal(singleVoiceRequests.filter(m=>m?.role==='user').length,1);
-  assert.ok(!singleVoiceRequests.some(m=>m?.role==='tool'&&m.tool_call_id==='voice'));
+  const singleVoiceRequests=f.requests.slice(requestFrom).filter(r=>r.body.messages?.[0]?.content?.startsWith(BOUNDARY));
+  assert.equal(singleVoiceRequests.length,1);
+  assert.equal(singleVoiceRequests[0].body.messages.at(-1).role,'user');
+  assert.match(singleVoiceRequests[0].body.messages.at(-1).content,/^<system_reminder>/);
+  assert.ok(!singleVoiceRequests.some(r=>r.body.messages.at(-1).role==='tool'&&r.body.messages.at(-1).tool_call_id==='voice'));
   for(const phase of [...queuedVoiceCases,'offDuringTts']){
     mode=phase;releaseReply=undefined;
     requestFrom=f.requests.length;

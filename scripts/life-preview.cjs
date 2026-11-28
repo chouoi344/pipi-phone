@@ -22,7 +22,7 @@ const image=png(),audio=wav();
 function plan(){return {outfit:'模拟浅蓝外套和长裤',mood:'平静',daySummary:'模拟验收：读书、散步与规律休息',dayType:'休息日',dayTypeReason:'隔离验收资料',slots:Array.from({length:12},(_,i)=>({start:String(i*2).padStart(2,'0')+':00',end:i===11?'23:59':String(i*2+2).padStart(2,'0')+':00',activity:i<3?'夜间熟睡':['洗漱与早餐','阅读与整理','模拟午间阅读','吃午饭','散步','读书','晚饭','整理笔记','睡前阅读'][i-3],scene:'模拟书房',phone:i<3?'offline':'free',restType:i<3?'night_sleep':'none',mood:'平静'}))};}
 function chat(body){
  const messages=body.messages||[],system=messages.filter(m=>m.role==='system').map(m=>typeof m.content==='string'?m.content:'').join('\n');
- const text=messages.filter(m=>m.role==='user').map(m=>typeof m.content==='string'?m.content:JSON.stringify(m.content)).at(-1)||'';
+ const text=messages.filter(m=>m.role==='user'&&!(typeof m.content==='string'&&m.content.startsWith('<system_reminder>'))).map(m=>typeof m.content==='string'?m.content:JSON.stringify(m.content)).at(-1)||'';
  let content;
  if(/10个字段/.test(system))content=Object.fromEntries(Data.PROFILE_FIELDS.map(k=>[k,'模拟验收：喜欢安静阅读和散步，规律休息。']));
  else if(/scheduleChanges/.test(system))content={scheduleChanges:[],promises:[],userEvents:[],promiseUpdates:[],userEventUpdates:[],longEventUpdates:[],userEventDoneIds:[],moodUpdate:'',changeNote:''};

@@ -1,0 +1,112 @@
+name: Verify prompt release and old user upgrades
+on:
+  push:
+    branches: ['ci/prompt-upgrade-*']
+permissions:
+  contents: read
+jobs:
+  tests:
+    name: Full application and installer tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.3'
+          package-manager-cache: false
+      - run: npm ci --omit=dev --no-audit --no-fund
+      - name: Test the installer and both domestic release channels
+        run: |
+          python3 -B -m unittest discover -s tests -p test_install_https.py
+          python3 -B -m unittest discover -s tests -p test_acr_release.py
+          python3 -B -m unittest discover -s tests -p test_android_acr_release.py
+      - name: Test application behavior with only loopback model fixtures
+        run: |
+          node --require ./.ci-gate/loopback.cjs --test --test-concurrency=2 --test-timeout=120000 tests/*.test.cjs
+          node --require ./.ci-gate/loopback.cjs --test --test-concurrency=2 --test-timeout=120000 test/*.test.cjs
+  upgrade:
+    name: Real old user upgrade (${{ matrix.client }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        client: [browser, android]
+    env:
+      GATE_CLIENT: ${{ matrix.client }}
+      GATE_EVIDENCE_DIR: ${{ github.workspace }}/artifacts/upgrade-gate/${{ matrix.client }}
+      ADB_SERVER_SOCKET: tcp:127.0.0.1:5037
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.3'
+          package-manager-cache: false
+      - name: Retrieve the actual official old image and unchanged APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download v0.14.4 --repo "$GITHUB_REPOSITORY" --pattern update.json --output "$RUNNER_TEMP/official.json"
+          OLD=$(jq -er '.image | select(test("^ghcr[.]io/chouoi344/pipi-phone@sha256:[0-9a-f]{64}$"))' "$RUNNER_TEMP/official.json")
+          docker pull "$OLD"
+          test "$(docker run --rm --network none --entrypoint node "$OLD" -p "require('./package.json').version")" = 0.14.4
+          echo "GATE_OLD_IMAGE=$OLD" >> "$GITHUB_ENV"
+          if [[ "$GATE_CLIENT" == android ]]; then
+            gh release download android-v0.1.21 --repo "$GITHUB_REPOSITORY" --pattern pipi-phone-android-0.1.21-23.apk --output "$RUNNER_TEMP/official.apk"
+            echo 'd8f09b861f83809091913d1338aa668c2c0725081fd7f03f6f9d8cfd66e7121f  '"$RUNNER_TEMP/official.apk" | sha256sum -c -
+            echo "GATE_APK_PATH=$RUNNER_TEMP/official.apk" >> "$GITHUB_ENV"
+            echo "ADB_PATH=$(command -v adb)" >> "$GITHUB_ENV"
+          fi
+      - name: Build candidate only in the runner's isolated registry
+        run: |
+          set -euo pipefail
+          test "$(node -p "require('./package.json').version")" = 0.14.5
+          docker run -d --name gate-ephemeral-registry -p 127.0.0.1:5017:5000 registry:2
+          curl --retry 10 --retry-connrefused --fail -sS http://127.0.0.1:5017/v2/
+          TAG=127.0.0.1:5017/isolated/pipi-phone:candidate
+          docker build --tag "$TAG" .
+          docker push "$TAG"
+          REF=$(docker image inspect "$TAG" --format '{{index .RepoDigests 0}}')
+          test "${REF%@*}" = 127.0.0.1:5017/isolated/pipi-phone
+          docker image rm "$TAG"
+          echo "GATE_NEXT_IMAGE=$REF" >> "$GITHUB_ENV"
+      - name: Install the headless browser used for normal web UI and account setup
+        run: |
+          npm install --prefix "$RUNNER_TEMP/gate-driver" --no-save --ignore-scripts --no-audit --no-fund playwright-core@1.55.0
+          echo "PIPI_PLAYWRIGHT_MODULE=$RUNNER_TEMP/gate-driver/node_modules/playwright-core" >> "$GITHUB_ENV"
+          echo "PIPI_BROWSER_EXECUTABLE=$(command -v google-chrome)" >> "$GITHUB_ENV"
+      - name: Upgrade through ordinary browser buttons
+        if: matrix.client == 'browser'
+        run: bash .ci-gate/run.sh
+      - name: Enable the hosted runner's Android hardware acceleration
+        if: matrix.client == 'android'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Upgrade through the unchanged signed Android App
+        if: matrix.client == 'android'
+        # v2.38.0 commit, dereferenced from the upstream signed/annotated tag.
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_7
+          avd-name: pipi-release-gate
+          emulator-options: -no-window -no-audio -no-snapshot -gpu swiftshader_indirect -no-boot-anim
+          disable-animations: true
+          script: bash .ci-gate/run.sh
+      - name: Preserve version, container, retained data and UI evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: upgrade-${{ matrix.client }}-${{ github.run_attempt }}
+          path: artifacts/upgrade-gate/${{ matrix.client }}/
+          if-no-files-found: warn
